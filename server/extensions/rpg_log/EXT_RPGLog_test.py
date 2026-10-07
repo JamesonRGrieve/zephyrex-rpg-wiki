@@ -15,9 +15,9 @@ class TestExtensionMetadata:
         assert "log" in RPGLogExtension.description.lower()
 
     def test_depends_on_rpg_state(self):
-        assert RPGLogExtension.extension_dependencies == ["rpg_state"]
+        declared = [(d.name, d.optional) for d in RPGLogExtension.dependencies.ext]
+        assert declared == [("rpg_state", False)]
 
-    def test_models_returns_full_roster(self):
-        models = RPGLogExtension.models()
-        assert set(models) == set(ALL_MODELS)
-        assert len(models) == 7  # bump when adding log tables.
+    def test_discovered_models_are_the_roster(self):
+        assert RPGLogExtension.models == set(ALL_MODELS)
+        assert len(ALL_MODELS) == 7  # bump when adding log tables.

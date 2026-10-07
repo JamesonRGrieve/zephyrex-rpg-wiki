@@ -1,9 +1,11 @@
 name = "rpg_log"
 version = "0.1.0"
-description = "Event-log schema for RPG campaigns — encounters, combat, dialogue, interactions, transactions"
+description = "Event-log schema for RPG campaigns (combat, dialogue, transactions)"
+entry_module = "EXT_RPGLog"
+minimum_framework_version = "0.0.1"
+# Where this extension's source is offered (AGPL-3.0 section 13).
+repository = "https://github.com/JamesonRGrieve/zephyrex-rpg"
 
 [[extension_dependencies]]
 name = "rpg_state"
 optional = false
-
-[python_dependencies]
