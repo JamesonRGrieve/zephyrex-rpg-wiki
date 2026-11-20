@@ -1,0 +1,61 @@
+{
+  "$comment": "An entry is a Plate (Slate) value: a list of block elements, each with children that are text leaves or inline elements. Its plain-text copy (stored as the record's description, for search) is the text of each block, blocks joined by a newline, inline elements contributing their children's text. Both back ends derive it the same way: server/extensions/world_spatial/Entry.py and client/src/lib/entry.ts. Refusals: not a list, a node that is neither an element (children) nor a leaf (text), or deeper than limits.entry_depth.",
+  "cases": [
+    { "name": "an empty entry", "entry": [], "text": "" },
+    {
+      "name": "one paragraph",
+      "entry": [{ "type": "p", "children": [{ "text": "A port city." }] }],
+      "text": "A port city."
+    },
+    {
+      "name": "marks keep their text",
+      "entry": [{ "type": "p", "children": [{ "text": "The " }, { "text": "Salt", "bold": true }, { "text": " Gate." }] }],
+      "text": "The Salt Gate."
+    },
+    {
+      "name": "blocks join with a newline",
+      "entry": [
+        { "type": "h2", "children": [{ "text": "History" }] },
+        { "type": "p", "children": [{ "text": "Founded by smugglers." }] }
+      ],
+      "text": "History\nFounded by smugglers."
+    },
+    {
+      "name": "an inline element gives its children's text",
+      "entry": [
+        {
+          "type": "p",
+          "children": [
+            { "text": "Ruled by " },
+            {
+              "type": "mention",
+              "target_entity_type": "person",
+              "target_entity_id": "00000000-0000-0000-0000-000000000001",
+              "children": [{ "text": "Mira" }]
+            },
+            { "text": "." }
+          ]
+        }
+      ],
+      "text": "Ruled by Mira."
+    },
+    {
+      "name": "nested blocks each take a line",
+      "entry": [
+        {
+          "type": "ul",
+          "children": [
+            { "type": "li", "children": [{ "type": "lic", "children": [{ "text": "Docks" }] }] },
+            { "type": "li", "children": [{ "type": "lic", "children": [{ "text": "Old town" }] }] }
+          ]
+        }
+      ],
+      "text": "Docks\nOld town"
+    }
+  ],
+  "refusals": [
+    { "name": "not a list", "entry": { "type": "p", "children": [] } },
+    { "name": "a node with neither children nor text", "entry": [{ "type": "p" }] },
+    { "name": "a text leaf that is not a string", "entry": [{ "type": "p", "children": [{ "text": 7 }] }] }
+  ]
+}

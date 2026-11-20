@@ -27,7 +27,7 @@ docs/       DESIGN.md
 ## Commands
 
 ```bash
-cd server && uv sync && .venv/bin/python app.py
+cd server && uv sync && .venv/bin/python rpg_wiki_app.py
 cd server && .venv/bin/python -m pytest extensions/
 cd client && pnpm install && pnpm dev
 ```

@@ -1,0 +1,12 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+/**
+ * Zephyrex RPG Wiki's knowledge shared with the server: the kinds each record may take and the
+ * limits on what it holds. It lives once, in contract/wiki.json at the repository root, which the
+ * server reads too (server/extensions/world_spatial/Contract.py). Nothing here restates it.
+ */
+import contract from '../../contract/wiki.json';
+
+export const LIMITS = contract.limits;
+export const LOCATION_KINDS = contract.location_kinds as readonly string[];
+export const PERSON_KINDS = contract.person_kinds as readonly string[];
+export const ENTITY_TYPES = contract.entity_types as readonly string[];

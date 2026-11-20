@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+const path = require('node:path');
+
 // Which back end answers /api/v1/*. The UI is the same either way: it only ever calls the
 // same-origin /api, so switching editions is a build-time config change (docs/DESIGN.md, Editions).
 //   lite (default): the app's own `route.lite.ts` handlers (one person, self-hosted, Next.js only).
@@ -16,8 +18,15 @@ const SERVER_URI = process.env.RPG_WIKI_SERVER_URI || 'http://127.0.0.1:2000';
 
 const DEFAULT_PAGE_EXTENSIONS = ['tsx', 'ts', 'jsx', 'js'];
 
+// The repository root, not this directory: the app reads contract/wiki.json, the knowledge it shares
+// with the SaaS server, from beside client/. Turbopack resolves nothing outside its root, and the
+// standalone output is traced from the same root.
+const REPOSITORY_ROOT = path.join(__dirname, '..');
+
 /** @type {import('next').NextConfig} */
 module.exports = {
+  outputFileTracingRoot: REPOSITORY_ROOT,
+  turbopack: { root: REPOSITORY_ROOT },
   // Lets a test build sit beside a running dev server without sharing its output.
   distDir: process.env.NEXT_DIST_DIR || '.next',
   ...(process.env.NEXT_OUTPUT_STANDALONE ? { output: 'standalone' } : {}),

@@ -1,0 +1,148 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+'use client';
+/**
+ * The records the UI reads and writes, through the framework client: the same calls whichever back
+ * end answers. Every change is guarded by the version the person saw (If-Match), so a stale one
+ * surfaces as a conflict, never a silent overwrite.
+ *
+ * `resource`, `jsonBody`, `Fields` and `ResourceHooks` are zephyrex-rpg-ai's
+ * (client/src/features/data/records.ts), copied as they stand: the second copy, flagged for the
+ * framework with columns.ts.
+ */
+import useSWR, { type SWRResponse, useSWRConfig } from 'swr';
+import { useClient } from 'zephyrex';
+import { z } from 'zod';
+import { LOCATION_KINDS, PERSON_KINDS } from '~/contract';
+
+const JSON_BODY = z.json();
+
+/** A record's id: one function for every list, so hooks keyed on it (useHidden) stay stable. */
+export const idOf = (record: { id: string }): string => record.id;
+
+/**
+ * A request body as the JSON the wire carries (fields left undefined are dropped). Typed form
+ * fields hold `unknown` in places, which JSON alone can vouch for.
+ */
+export function jsonBody(value: unknown): z.infer<typeof JSON_BODY> {
+  return JSON_BODY.parse(JSON.parse(JSON.stringify(value)) as unknown);
+}
+
+const versioned = { id: z.string(), created_at: z.string(), updated_at: z.string().nullable() };
+const kindIn = (kinds: readonly string[]) => z.enum(kinds as [string, ...string[]]).nullable();
+
+export const worldSchema = z.object({
+  ...versioned,
+  name: z.string(),
+  description: z.string().nullable(),
+});
+export type World = z.infer<typeof worldSchema>;
+
+export const placeSchema = z.object({
+  ...versioned,
+  name: z.string(),
+  description: z.string().nullable(),
+  entry: z.string().nullable(),
+  kind: kindIn(LOCATION_KINDS),
+  parent_id: z.string().nullable(),
+  campaign_id: z.string().nullable(),
+});
+export type Place = z.infer<typeof placeSchema>;
+
+export const personSchema = z.object({
+  ...versioned,
+  name: z.string(),
+  description: z.string().nullable(),
+  entry: z.string().nullable(),
+  kind: kindIn(PERSON_KINDS),
+  campaign_id: z.string().nullable(),
+  location_id: z.string().nullable(),
+});
+export type Person = z.infer<typeof personSchema>;
+
+type Versioned = { id: string; created_at: string; updated_at: string | null };
+/** What a write may set: a record's own fields (and, for write-only fields, `Extra`). */
+export type Fields<T extends Versioned, Extra = object> = Partial<Omit<T, keyof Versioned>> & Extra;
+
+/** The record a single-record answer wraps (`{ <resource>: {...} }`). */
+function one<T>(schema: z.ZodType<T>, key: string, body: unknown): T {
+  return schema.parse(z.record(z.string(), z.unknown()).parse(body)[key]);
+}
+
+export interface ResourceHooks<T extends Versioned, Create, Extra> {
+  path: string;
+  /** The records, read only while `enabled` (by default, always). */
+  useList(query?: Record<string, string>, enabled?: boolean): SWRResponse<T[], Error>;
+  useOne(id: string | null): SWRResponse<T, Error>;
+  useActions(): {
+    create(fields: Create): Promise<T>;
+    update(seen: T, changes: Fields<T, Extra>): Promise<T>;
+    remove(seen: T): Promise<void>;
+  };
+}
+
+/** A resource's hooks, from its singular name, plural and schema. */
+export function resource<T extends Versioned, Create extends object, Extra = object>(
+  singular: string,
+  plural: string,
+  schema: z.ZodType<T>,
+): ResourceHooks<T, Create, Extra> {
+  const path = `/v1/${singular}`;
+  const listKey = (query?: Record<string, string>) =>
+    query === undefined || Object.keys(query).length === 0 ? path : `${path}?${new URLSearchParams(query).toString()}`;
+  return {
+    path,
+    useList(query, enabled = true) {
+      const client = useClient();
+      const key = listKey(query);
+      return useSWR(enabled ? key : null, () => client.list(key, plural, schema));
+    },
+    useOne(id) {
+      const client = useClient();
+      return useSWR(id === null ? null : `${path}/${id}`, async () =>
+        one(schema, singular, await client.get(`${path}/${id ?? ''}`)),
+      );
+    },
+    useActions() {
+      const client = useClient();
+      const { mutate } = useSWRConfig();
+      // A change has every list of this resource, and the record itself, read again.
+      const refresh = async (id?: string) => {
+        await mutate(
+          (key) => typeof key === 'string' && (key === path || key.startsWith(`${path}?`) || key === `${path}/${id ?? ''}`),
+        );
+      };
+      return {
+        async create(fields) {
+          const saved = one(schema, singular, await client.post(path, jsonBody({ [singular]: fields })));
+          await refresh(saved.id);
+          return saved;
+        },
+        async update(seen, changes) {
+          const saved = one(
+            schema,
+            singular,
+            await client.put(`${path}/${seen.id}`, jsonBody({ [singular]: changes }), seen),
+          );
+          await refresh(saved.id);
+          return saved;
+        },
+        async remove(seen) {
+          await client.delete(`${path}/${seen.id}`, seen);
+          await refresh(seen.id);
+        },
+      };
+    },
+  };
+}
+
+export const worlds = resource<World, Fields<World> & { name: string }>('campaign', 'campaigns', worldSchema);
+export const places = resource<Place, Fields<Place, { entry?: unknown }> & { name: string }>(
+  'location',
+  'locations',
+  placeSchema,
+);
+export const people = resource<Person, Fields<Person, { entry?: unknown }> & { name: string }>(
+  'person',
+  'persons',
+  personSchema,
+);

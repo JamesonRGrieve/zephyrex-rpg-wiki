@@ -1,0 +1,22 @@
+name = "rpg_core"
+version = "0.1.0"
+description = "Game systems and campaigns; widens Person into the character table and scopes world records to a campaign"
+entry_module = "EXT_RPGCore"
+minimum_framework_version = "0.0.1"
+# Where this extension's source is offered (AGPL-3.0 section 13).
+repository = "https://github.com/JamesonRGrieve/zephyrex-rpg-wiki"
+
+# rpg_core widens genealogy.PersonModel into the character table.
+[[extension_dependencies]]
+name = "genealogy"
+optional = false
+
+# rpg_core scopes a location to a campaign (it injects campaign_id onto LocationModel), and a
+# person stands in a location.
+[[extension_dependencies]]
+name = "world_spatial"
+optional = false
+
+[[extension_dependencies]]
+name = "acl_rbac"
+optional = true

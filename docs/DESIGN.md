@@ -121,7 +121,7 @@ elements, entity links), recorded in OBJECT_PLAN when that phase starts.
 | `/w` | Your worlds and campaigns. |
 | `/w/[world]` | The campaign dashboard (W26). |
 | `/w/[world]/[kind]` | An entity list per kind: cards or a table, filters (tag, status, location), a tree view for hierarchical kinds. |
-| `/w/[world]/e/[id]` | **The entity page.** Header art and portrait, title, kind, tags. Then the entry, posts (pinned first), properties, relations, inventory, mentions-of-this, and a "seen in" list (sessions, timelines, maps). Edit in place. |
+| `/w/[world]/[kind]/[id]` | **The entity page** (the kind is in the path: each kind has its own table, OBJECT_PLAN; S1, 2026-11-20). Header art and portrait, title, kind, tags. Then the entry, posts (pinned first), properties, relations, inventory, mentions-of-this, and a "seen in" list (sessions, timelines, maps). Edit in place. |
 | `/w/[world]/map/[id]` | Map viewer: pins, layers, groups, search a pin, open an entity in a side sheet. |
 | `/w/[world]/timeline/[id]` | Timeline editor and viewer; `?chronicle` fuses it with a map (W14). |
 | `/w/[world]/calendar/[id]` | Fantasy calendar: month grid, moons, seasons, events, reminders. |
@@ -168,6 +168,22 @@ first-class. A parchment-warm light theme is the default for reading.
   - lorebook generation sources (`ai_lorebook.source_entity_*`).
   These are the wiki's ordinary endpoints. The AI product adds nothing to the wiki's schema.
 
+### Decided (operator, 2026-11-20)
+
+- **Dependencies point one way: rpg_core → world_\*.** Tier 1 (`world_spatial`, `world_social`,
+  `world_inventory`, `world_narrative`) stays campaign-free. `rpg_core` scopes its records to a
+  campaign by injecting `campaign_id` onto them with `@extension_model`, as it injects `kind`,
+  `campaign_id`, `user_id`, `location_id` and `entry` onto genealogy's Person. Each `*_id` names its
+  model, so the framework gives it a real foreign key. (OBJECT_PLAN's §3 and §7 otherwise made
+  `world_spatial` and `rpg_core` depend on each other.)
+- **Per-entity property values (W4)** live in the framework's `metadata` key-value store, keyed by
+  `target_entity_type` and `target_entity_id`. Property kits (`world_taxonomy`) are the templates.
+- **An entry is a Plate value** (decision 16), stored as JSON text, with its plain-text copy kept as
+  the record's `description` for search. Both back ends derive it by one rule, held to
+  `contract/entry-text-cases.json`. An `@` mention is an inline node carrying
+  `target_entity_type` and `target_entity_id`, never a name.
+- **Kinds are enums in `contract/wiki.json`**, which the server and the client both read.
+
 ## Campaigns, frames and scenarios
 
 The wiki owns campaigns. The AI product owns how a campaign is framed and its scenarios are
@@ -190,6 +206,16 @@ records.
   stands in for real players.
 - **SaaS:** members and roles, public pages, cloud media with quotas, sync, revision
   retention by plan.
+
+## Progress
+
+| Slice | What | State |
+|---|---|---|
+| S1 | Worlds (`rpg_core` campaigns), places (`world_spatial`), people (genealogy + `rpg_core`); `/w` screens; lite twin | In progress: server and client written; framework `@extension_model` fix awaited for 3 server tests |
+| S2 | Organisations and families (`world_social`), items and inventory (`world_inventory`, W8) | Not started |
+| S3 | Journals and notes (`world_narrative`), posts (`entity_posts`, W3) | Not started |
+| S4 | Tags, statuses, categories (W6), property kits and values (W4), templates (W7), relations (W5) | Not started |
+| S5 | Cross-kind search, the mention editor (W2), Kanka import | Not started |
 
 ## Phases
 

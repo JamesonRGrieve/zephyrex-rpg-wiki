@@ -1,0 +1,66 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// The lite edition's records: the same resources, fields and rules as the SaaS server's
+// extensions (server/extensions/rpg_core, world_spatial; genealogy's Person). Lite is one
+// person's app with no accounts, so every record belongs to the one local owner
+// (@zephyrex/lite localOwner). Entries are Plate values as JSON text (src/lib/entry.ts).
+
+datasource db {
+  provider = "sqlite"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+/// A world: the top-level container every record scopes to (rpg_core's CampaignModel).
+model Campaign {
+  id           String   @id @default(uuid())
+  createdById  String
+  name         String
+  description  String   @default("")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime
+  updatedById  String?
+
+  @@index([createdById])
+}
+
+/// A place at any scale, under its parent (world_spatial's LocationModel, with rpg_core's campaign).
+model Location {
+  id           String   @id @default(uuid())
+  createdById  String
+  name         String
+  description  String   @default("")
+  entry        String?
+  kind         String?
+  parentId     String?
+  campaignId   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime
+  updatedById  String?
+
+  @@index([createdById])
+  @@index([campaignId])
+  @@index([parentId])
+}
+
+/// A person or creature (genealogy's PersonModel, with rpg_core's character fields).
+model Person {
+  id           String    @id @default(uuid())
+  createdById  String
+  name         String
+  description  String    @default("")
+  entry        String?
+  kind         String?
+  campaignId   String?
+  locationId   String?
+  gender       String?
+  birthDate    DateTime?
+  deathDate    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime
+  updatedById  String?
+
+  @@index([createdById])
+  @@index([campaignId])
+}

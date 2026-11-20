@@ -1,0 +1,13 @@
+name = "world_spatial"
+version = "0.1.0"
+description = "Locations as a tree, at every scale from a star system to a room"
+entry_module = "EXT_WorldSpatial"
+minimum_framework_version = "0.0.1"
+# Where this extension's source is offered (AGPL-3.0 section 13).
+repository = "https://github.com/JamesonRGrieve/zephyrex-rpg-wiki"
+
+# Optional: when present, ACL drives per-row visibility (secret places). world_spatial never
+# carries its own visibility column (OBJECT_PLAN §7).
+[[extension_dependencies]]
+name = "acl_rbac"
+optional = true

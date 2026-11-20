@@ -1,0 +1,29 @@
+{
+  "$comment": "Zephyrex RPG Wiki's knowledge shared by both back ends and the front end: the kinds each record may take, and the limits on what it holds. Read by server/extensions/world_spatial/Contract.py and client/src/contract.ts; nothing restates it.",
+  "limits": {
+    "name_characters": 200,
+    "entry_bytes": 200000,
+    "entry_depth": 32
+  },
+  "location_kinds": [
+    "system",
+    "planet",
+    "moon",
+    "continent",
+    "region",
+    "city",
+    "district",
+    "building",
+    "facility",
+    "room",
+    "vessel",
+    "underground_complex",
+    "container",
+    "equipment_slot",
+    "body",
+    "body_part",
+    "organ"
+  ],
+  "person_kinds": ["pc", "npc", "creature", "monster", "vehicle", "construct"],
+  "entity_types": ["person", "location"]
+}
