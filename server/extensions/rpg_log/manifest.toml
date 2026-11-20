@@ -4,7 +4,7 @@ description = "Event-log schema for RPG campaigns (combat, dialogue, transaction
 entry_module = "EXT_RPGLog"
 minimum_framework_version = "0.0.1"
 # Where this extension's source is offered (AGPL-3.0 section 13).
-repository = "https://github.com/JamesonRGrieve/zephyrex-rpg"
+repository = "https://github.com/JamesonRGrieve/zephyrex-rpg-wiki"
 
 [[extension_dependencies]]
 name = "rpg_state"

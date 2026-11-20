@@ -2,8 +2,8 @@
 
 A worldbuilding and campaign wiki that competes with Kanka and World Anvil. It is the
 world's record: who, where, when, what happened and what is secret. The VTT and the AI
-product build on it. Suite context and ownership: [../SUITE.md](../SUITE.md). Entity
-fields: [OBJECT_PLAN](../../server/OBJECT_PLAN.md) §4 (Tier 0 `entity_posts` and Tier 1
+product build on it. Suite context and ownership: [zephyrex-rpg-ai: docs/SUITE.md](https://github.com/JamesonRGrieve/zephyrex-rpg-ai/blob/main/docs/SUITE.md). Entity
+fields: [OBJECT_PLAN](../server/OBJECT_PLAN.md) §4 (Tier 0 `entity_posts` and Tier 1
 `world_*`), §7 (cross-cutting) and §8 (World Anvil templates).
 
 ## Who it is for
@@ -151,7 +151,7 @@ first-class. A parchment-warm light theme is the default for reading.
 ## Data and contract
 
 - The server extensions are `entity_posts` and `world_*` (OBJECT_PLAN §3 Tiers 0–1), with
-  map authoring moved to the VTT ([../SUITE.md](../SUITE.md)), plus campaigns from `rpg_core`
+  map authoring moved to the VTT ([zephyrex-rpg-ai: docs/SUITE.md](https://github.com/JamesonRGrieve/zephyrex-rpg-ai/blob/main/docs/SUITE.md)), plus campaigns from `rpg_core`
   and `rpg_log` (the campaign's event history, written by the VTT and the AI GM, shown as a
   filterable log beside session reports).
 - Framework reuse: `genealogy` (family trees), `calendar`, `media`, `maps` (real-world tiles),
@@ -185,4 +185,4 @@ first-class. A parchment-warm light theme is the default for reading.
    co-authors, statblock library, world directory, marketplace.
 
 Ported back from the AI product's build: the shared UI shell, the entity type registry,
-mention hover cards and the lore drawer ([../ai/DESIGN.md](../ai/DESIGN.md)).
+mention hover cards and the lore drawer ([zephyrex-rpg-ai: docs/DESIGN.md](https://github.com/JamesonRGrieve/zephyrex-rpg-ai/blob/main/docs/DESIGN.md)).

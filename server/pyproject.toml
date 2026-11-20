@@ -3,9 +3,9 @@ requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "zephyrex-rpg"
+name = "zephyrex-rpg-wiki"
 version = "0.1.0"
-description = "RPG extensions for Zephyrex Framework Server — state tracking and logging"
+description = "Zephyrex RPG Wiki: entities, lore, secrets, timelines, maps, history"
 requires-python = ">=3.11"
 dependencies = [
     # rpg_state widens the framework's genealogy extension. The framework's
