@@ -6,7 +6,8 @@ suite ownership and composition: zephyrex-rpg-ai `docs/SUITE.md`. Design: `docs/
 ## Structure
 
 ```
-server/     Python backend: zephyrex server consumer (PyPI `zephyrex[genealogy]~=0.0.1`); extension `rpg_log`
+server/     Python backend: zephyrex server consumer (server-framework at the deploy/frameworks.env pin); extension `rpg_log`
+deploy/     frameworks.env (the five framework pins), fetch-frameworks.sh, compile-frameworks.sh
 client/     Next.js frontend: zephyrex npm consumer
 docs/       DESIGN.md
 ```
@@ -26,7 +27,7 @@ docs/       DESIGN.md
 ## Commands
 
 ```bash
-cd server && pip install -e ".[dev]" && python app.py
-cd server && python -m pytest extensions/
+cd server && uv sync && .venv/bin/python app.py
+cd server && .venv/bin/python -m pytest extensions/
 cd client && pnpm install && pnpm dev
 ```

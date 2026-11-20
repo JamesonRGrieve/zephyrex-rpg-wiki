@@ -18,7 +18,9 @@ _extensions_dir = _project_root / "extensions"
 # the zephyrex.extensions namespace package path.
 os.environ.setdefault("EXTENSIONS_PATH", str(_extensions_dir))
 os.environ.setdefault("DATABASE_TYPE", "sqlite")
-os.environ.setdefault("DATABASE_NAME", "test_rpg_wiki")
+# Assigned, never setdefault: the xdist controller loads this file first, so with setdefault every
+# worker would inherit its name and they would all share and seed one database (SOP Python §11).
+os.environ["DATABASE_NAME"] = f"test_zephyrex_rpg_wiki_{os.environ.get('PYTEST_XDIST_WORKER', 'main')}"
 os.environ.setdefault("JWT_SECRET", "test-jwt-secret-32-bytes-or-more-aaaaaa")
 os.environ.setdefault("SEED_DATA", "true")
 

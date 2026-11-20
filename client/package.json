@@ -9,16 +9,32 @@
     "build": "next build",
     "start": "next start -p 1109",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "refresh:zephyrex": "pnpm update --no-save zephyrex @zephyrex/auth @jgrieve/forms zod2gql"
   },
   "dependencies": {
-    "zephyrex": "file:../../client-framework",
-    "@zephyrex/auth": "file:../../auth",
-    "zod2gql": "file:../../zod2gql",
-    "@jgrieve/forms": "file:../../dynamic-form",
+    "@jgrieve/forms": "^0.0.1-alpha.1",
+    "@zephyrex/auth": "^0.0.1-alpha.1",
     "next": "^16.2.6",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "zephyrex": "^0.0.1-alpha.1",
+    "zod": "^4.4.3",
+    "zod2gql": "^0.1.0-alpha.1"
+  },
+  "dependenciesMeta": {
+    "zephyrex": {
+      "injected": true
+    },
+    "@zephyrex/auth": {
+      "injected": true
+    },
+    "@jgrieve/forms": {
+      "injected": true
+    },
+    "zod2gql": {
+      "injected": true
+    }
   },
   "devDependencies": {
     "@types/node": "^25.8.0",

@@ -8,12 +8,20 @@ version = "0.1.0"
 description = "Zephyrex RPG Wiki: entities, lore, secrets, timelines, maps, history"
 requires-python = ">=3.11"
 dependencies = [
-    # rpg_state widens the framework's genealogy extension. The framework's
-    # public 0.0.x releases on PyPI.
-    "zephyrex[genealogy]~=0.0.1",
+    # rpg_state widens the framework's genealogy extension.
+    "zephyrex[genealogy]",
+    # zephyrex passes FastAPI(openapi_version=...), which FastAPI 0.162 rejects;
+    # hold the version the framework's own requirements.lock vets.
+    "fastapi~=0.142.2",
 ]
 
-[project.optional-dependencies]
+# The framework from the checkout deploy/fetch-frameworks.sh lays out beside this repository
+# (Source/server-framework on the desktop), at the commit deploy/frameworks.env pins, as the
+# other Zephyrex apps use it; back to the PyPI release once one ships what they need.
+[tool.uv.sources]
+zephyrex = { path = "../../server-framework", editable = true }
+
+[dependency-groups]
 dev = [
     "pytest",
     "pytest-asyncio",
