@@ -106,6 +106,8 @@ self-hosted single-user build.
 | W48 | Files attached to any entity, with per-plan limits | Kanka | ✓ | ✓ |
 | W49 | Entity map polygons and areas (not only pins) | Kanka (1.42) | ✓ | ✓ |
 | W50 | Calendar weather per date | Kanka | ✓ | ✓ |
+| W51 | Campaign brief and frame on the campaign page, when the AI product's campaign frame is loaded (premise, tone, truths, boundaries; GM secrets withheld) | ours | ✓ | ✓ |
+| W52 | Scenarios drafted from the world (plots, quests, factions, places), and a scenario's outcome written back as events, journal entries and changed relations | ours | ✓ | ✓ |
 
 OBJECT_PLAN decision 28 (whiteboards out of scope, "pure frontend") is superseded by the
 operator's full-parity direction. W35 needs a `whiteboard` model in the wiki (board,
@@ -165,6 +167,22 @@ first-class. A parchment-warm light theme is the default for reading.
   - writes of journal entries and session reports;
   - lorebook generation sources (`ai_lorebook.source_entity_*`).
   These are the wiki's ordinary endpoints. The AI product adds nothing to the wiki's schema.
+
+## Campaigns, frames and scenarios
+
+The wiki owns campaigns. The AI product owns how a campaign is framed and its scenarios are
+modeled (zephyrex-rpg-ai `docs/DESIGN.md`, *Campaign framing* and *Scenario modeling*). With
+both loaded:
+
+- a campaign's page shows its brief, and the setting truths the frame lists are wiki entities
+  (W51);
+- a scenario can be drafted from the wiki's plots, quests, factions and places, and its cast
+  and places link to wiki entities;
+- a scenario's outcome is written back: events on the timeline, a session report, changed
+  relations and dispositions (W52), under the wiki's ACL like any other write.
+
+The wiki adds no schema for this. It is the AI product reading and writing the wiki's own
+records.
 
 ## Editions
 
