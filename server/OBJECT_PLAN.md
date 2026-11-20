@@ -176,8 +176,11 @@ TIER 0 — Generic (this repo)
 ├── calendar          [NEW]         Custom calendars, dates, eras, reminders
 ├── conversation      [NEW]         Multi-participant threaded dialogue,
 │                                   branching, bookmarks
-└── media             [NEW]         Asset library (image/audio/file),
-                                    gallery, polymorphic entity attachment
+├── media             [NEW]         Asset library (image/audio/file),
+│                                   gallery, polymorphic entity attachment
+└── entity_posts      [NEW]         Pinnable rich-text notes on any entity,
+                                    per-post visibility. Generic cross-cutting
+                                    concern (not narrative-specific).
 
 TIER 1 — Worldbuilding (the Kanka/World Anvil replacement)
 ├── world_taxonomy     [NEW]        Hierarchical tags, races/species,
@@ -195,10 +198,9 @@ TIER 1 — Worldbuilding (the Kanka/World Anvil replacement)
 ├── world_narrative    [NEW]        Events, timelines, chronicles (event→
 │                                   location+time fusion), quests/hooks (DAG),
 │                                   journals/manuscripts (multi-page: text/
-│                                   image/pdf/video), lore notes, entity posts
-│                                   (pinnable, visibility-controlled),
+│                                   image/pdf/video), lore notes,
 │                                   plots (story structure), session reports
-│   └── depends: calendar, world_spatial, genealogy
+│   └── depends: calendar, world_spatial, genealogy, entity_posts
 ├── world_social       [NEW]        Factions/organisations/families (hierarchy),
 │                                   membership (role/rank/status), faction
 │                                   relations (diplomacy web), disposition
@@ -304,6 +306,16 @@ Covers: Kanka conversations + messages, SillyTavern chat history / branching / b
 
 Covers: Kanka entity images + header images + entity assets + gallery, World Anvil image/music/sound embedding.
 
+#### `entity_posts` [NEW]
+
+| Model | Key Fields |
+|-------|------------|
+| EntityPostModel | target_entity_type + target_entity_id (polymorphic), name, content (rich text), position (pinned_top\|default), visibility (all\|admin\|self), ordinal |
+
+Covers: Kanka Posts (pinnable rich-text notes on any entity with per-post
+visibility). Generic cross-cutting concern — not narrative-specific. Any
+entity from any extension can have posts without pulling in world_narrative.
+
 ### Phase 2 — Tier 1 Worldbuilding
 
 #### `world_taxonomy` [NEW]
@@ -349,9 +361,12 @@ Examples:
 
 A `MapStampInstanceModel` selects the active value for each axis via
 `active_variants` (a JSON map of axis→value). Axes not specified fall back to
-the variant marked `is_default`. The frontend composites the selected variant
-per axis into the rendered stamp (simple: pick the single variant that matches
-all active axes; advanced: layer multiple axes if the art supports it).
+the variant marked `is_default`. Compositing is **per-stamp, author's choice**:
+simple stamps use one pre-made image per axis combination (a door with 4 states
+= 4 images); complex stamps use layer-per-axis compositing (a ship with 8
+orientations × 3 damage = 8 base images + 3 transparent damage overlays,
+composited at render time). The model supports both — the renderer checks
+whether a stamp's variants are single-image or multi-layer.
 
 At runtime (in a VTT scene or video game), changing a stamp instance's
 `active_variants` changes its visual state — a building burns down, a door
@@ -393,11 +408,14 @@ in two ways:
    - `action_config` (JSON) — parameters specific to the action_type
    - Multiple hooks per event are allowed (chained in ordinal order)
 
-This replaces the need for a separate "actor on map" system. Foundry's Token
-(actor placed on scene) and Kanka's Map Marker (entity pinned to map) are both
-subsumed: a stamp instance with an entity link IS a token/marker, but it also
-supports non-actor entities (items, locations, factions) and scripted
-interactions that neither platform offers natively.
+Stamps and tokens are **separate concepts**. SceneTokenModel (rpg_scene)
+represents actors on a scene with actor-specific semantics (vision, bars,
+initiative, disposition). MapStampInstanceModel (world_spatial) represents
+everything else placed on a map — furniture, terrain features, interactable
+objects (chests, doors, levers, vehicles). An NPC is always a Token, never a
+stamp. A chest is always a stamp (with an entity link to a container Location),
+never a token. Kanka's Map Marker maps to a MapPinModel (lightweight) or a
+stamp (if it needs visual state / interaction hooks).
 
 Covers: Kanka Locations + Maps + Markers + Layers + Groups. World Anvil
 Geographic Location + Settlement + Building / Landmark templates (as location
@@ -432,11 +450,10 @@ Cycle guard: manager-layer hook rejects parent_id mutations that would close a c
 | FactionHookModel | faction_id FK, hook_id FK, status, accepted_at, completed_at, progress |
 | JournalModel | name, description, kind (session_report\|in_world_diary\|lore\|handout\|note\|manuscript\|prose\|chapter), campaign_id (opt), location_id (opt), author_person_id (opt), session_number, occurred_at |
 | JournalPageModel | journal_id FK, ordinal, kind (text\|image\|pdf\|video), content, asset_id FK (opt) |
-| EntityPostModel | target_entity_type + target_entity_id (polymorphic), name, content (rich text), position (pinned_top\|default), visibility (all\|admin\|self), ordinal |
 | PlotModel | name, description, campaign_id (opt), kind (main\|subplot\|arc), parent_plot_id (self-FK for sub-plots) |
 | PlotElementModel | plot_id FK, target_entity_type + target_entity_id (polymorphic — links to hooks, events, persons, factions, etc.), role (protagonist\|antagonist\|mcguffin\|setting\|complication), ordinal, notes |
 
-Covers: Kanka Events + Timelines + Quests + Journals + Notes + Posts. World Anvil Plot + Prose + Myth + Military Conflict + Report templates (as event/journal/plot kinds). dh-campaign Hooks (DAG) + session logs.
+Covers: Kanka Events + Timelines + Quests + Journals + Notes. World Anvil Plot + Prose + Myth + Military Conflict + Report templates (as event/journal/plot kinds). dh-campaign Hooks (DAG) + session logs. (Posts moved to `entity_posts` extension.)
 
 Chronicles (World Anvil's map+timeline fusion) is not a separate model — it's the query "give me all TimelineEntries whose Events have a location_id, ordered by timeline position." The frontend renders the map-zoom-on-scroll behavior.
 
@@ -503,7 +520,7 @@ uses it to know what's in the room, who can see what, and what's interactable.
 | SceneRegionModel | scene_id FK, name, color, shapes (JSON), elevation_bottom, elevation_top |
 | SceneRegionBehaviorModel | region_id FK, behavior_type (teleport\|adjust_darkness\|execute_script\|pause_game), config (JSON), is_disabled |
 | SceneMeasuredTemplateModel | scene_id FK, x, y, shape (circle\|cone\|ray\|rect), distance, direction, angle, width, texture_asset_id FK, border_color, fill_color |
-| FogExplorationModel | scene_id FK, user_id FK, explored_data (JSON/binary) |
+| FogExplorationModel | scene_id FK, user_id FK, mode (bitmap\|polygon), explored_data (JSON — polygon mode: array of convex hull polygons for explored regions; bitmap mode: base64 compressed bitmap of revealed grid cells) |
 | PlaylistModel | name, description, campaign_id FK, mode (sequential\|shuffle\|simultaneous), is_playing, fade_duration |
 | PlaylistSoundModel | playlist_id FK, asset_id FK, name, volume, is_repeat, fade_duration, sort_order |
 
@@ -514,11 +531,12 @@ generated from room boundaries — when two rooms share a boundary, the shared
 wall segment exists once with independent textures per side
 (`texture_left_asset_id` / `texture_right_asset_id`). This handles:
 
-- **Room-in-room nesting** (`parent_room_id` self-FK) — a jail cell inside a
-  guardhouse. The cell's boundary walls that coincide with the guardhouse walls
-  are shared segments; only the cell's inner walls (the bars) have a different
-  texture. The parent room's floor shows through in the gap between rooms, or
-  the child overrides it.
+- **Room-in-room nesting** (`parent_room_id` self-FK) — a child room (jail
+  cell) lives inside its parent (guardhouse). The child uses the parent's
+  walls plus its own walls to form a sub-enclosed space. Only the child's
+  own walls (the bars) need a different texture; the parent's walls that
+  bound the child are inherited, not duplicated. The parent room's floor
+  shows through where no child room overrides it.
 - **Door states** — `door_type` covers: none, door, secret, window, gate,
   portcullis. `door_state` covers: closed, open, locked, barred, broken. A
   broken door permanently ceases to block movement/sight.
@@ -540,13 +558,13 @@ compatibility), and curved walls in a single field.
 **Cover system** — walls and stamps carry two system-agnostic physical
 properties that enable auto-calculation of cover across any rule system:
 
-- `cover_height` (float, grid units) — how tall the object is. `null` on a
-  wall = full room/ceiling height (total cover from that wall). `0` = flush
-  with the floor (no cover). `0.5` on a 5ft grid = 2.5 ft, waist-high.
-  Combined with token elevation and height, the consumer draws a line from
-  attacker head/weapon to target center — if a cover object interposes AND its
-  height exceeds the line's elevation at the intersection point, it provides
-  cover.
+- `cover_height` (float, grid units) — how tall the object is. `null` = no
+  cover (decorative only). `-1` = full room/ceiling height (total cover).
+  `0` = flush with floor. `0.5` on a 5ft grid = 2.5 ft, waist-high. Sentinel
+  `-1` is used consistently on both walls and stamps — no context-dependent
+  null semantics. Combined with token elevation and height, the consumer draws
+  a line from attacker to target — if a cover object interposes AND its height
+  exceeds the line's elevation at the intersection point, it provides cover.
 - `cover_density` (float, 0–1) — how opaque/solid the cover is. `1.0` = solid
   stone, full cover. `0.75` = arrow slit, portcullis, heavy cover.
   `0.5` = iron bars, wooden fence, half/light cover. `0` = decorative only.
@@ -565,8 +583,8 @@ shot up → density drops to 0.3). Variant state changes can also affect cover �
 a door stamp with variant axis `state=broken` could carry a hook that sets
 cover_density to 0.2.
 
-Walls on rooms inherit `cover_height=null` (full height) and
-`cover_density=1.0` (solid) by default — a full wall is full cover. A low wall
+Walls on rooms default to `cover_height=-1` (full height) and
+`cover_density=1.0` (solid) — a full wall is full cover. A low wall
 (half-height garden wall, barricade) is authored with explicit values.
 
 #### `rpg_dice` [NEW]
@@ -686,7 +704,9 @@ Clean break — no compatibility shim. Dev uses `create_all`, no Alembic migrati
 
 **Extension widening:** `rpg_core` → PersonModel, `world_social` → RelationshipModel.
 
-**Import/export adapters** live in separate consumer scripts, not in extensions.
+**Import/export adapters** live in an `adapters/` directory in this repo as
+optional modules — not imported at runtime by default, no runtime dependency.
+Can be used standalone or by downstream consumers.
 Target formats:
 - **Kanka API** — entity CRUD + relations + attributes + maps + posts
 - **Foundry VTT** — Actor/Item/JournalEntry/Scene/RollTable/Combat/Cards JSON
@@ -751,21 +771,35 @@ description or in EntityPosts; the structured classification lives in
 
 ### What the framework provides
 
-The `zephyrex` npm package (client-framework) gives us:
+The `zephyrex` npm package is an **installable Next.js framework**
+(`npm install zephyrex`). Downstream projects consume it as a dependency —
+they do not fork or merge. It gives us:
 
-- **UI primitives** — full shadcn/radix component library (buttons, dialogs,
-  tabs, accordions, inputs, selects, etc.)
-- **Data tables** — sortable, filterable, paginated tables with column headers,
-  export, toolbar, view options
-- **Dynamic forms** — schema-driven CRUD forms (`DynamicForm` + Field
-  primitives: text, password, select, radio, checkbox, etc.)
+- **UI primitives** — 35 shadcn/radix components
+- **Data tables** — sortable, filterable, paginated with export/toolbar
+- **Dynamic forms** — schema-driven CRUD (`DynamicForm` + Field primitives)
 - **Markdown rendering** — code blocks, headings, images, links, tab panels
 - **Dropzone** — file upload with drag-and-drop
-- **Auth** — login/register/MFA flows, session management, route protection
+- **Auth** — login/register/MFA flows, session management, route protection,
+  auth flow injection points (identifyExtras, loginExtras, mfaVerify, etc.)
 - **Sidebar + navigation** — collapsible sidebar with nav items, breadcrumbs
 - **Settings** — user/team settings panels
-- **Extension plugin system** — `ZephyrexClientExtension` interface: pages,
-  navItems, settingsPanel, providers, middleware
+- **PWA** — service worker via Serwist, manifest generation
+- **Extension plugin system** — `ZephyrexClientExtension` interface:
+  - `pages` — routes to register
+  - `navItems` — sidebar entries (with nested children)
+  - `settingsPanel` — settings UI component
+  - `providers` — React context wrappers
+  - `middleware` — middleware hooks
+  - `pageSlots` — inject before/after/replace/sidebar content into any
+    built-in page via `PageWithSlots`
+  - `authFlow` — inject into auth UI (OAuth buttons, MFA steps)
+  - `managementTabs` — add tabs to the user management page
+- **59 client extension stubs** matching server extensions 1:1 — including
+  `genealogy`, `rpg_state`, `rpg_log`, `meta_labels`, `acl_rbac`, `fileio`.
+  Each is a minimal `AutoSettingsPanel` stub. Our consumer extensions either
+  **replace** these stubs (providing full pages/editors) or **extend** them
+  (adding pageSlots into the stub's built-in pages).
 
 ### What this repo adds
 
@@ -773,6 +807,11 @@ The current client has a single `rpg` extension stub. It needs to be
 decomposed into client extensions mirroring the server tiers, each providing
 the pages, components, and editors for its domain. Downstream consumers (VTT,
 AI framework, video game) import the extensions they need.
+
+The framework already ships stubs for our Tier 0 server extensions (genealogy,
+etc.). Our client extensions replace those stubs with full implementations —
+the consumer's `extensions` array in `zephyrex.config.ts` lists our extensions
+instead of (or in addition to) the framework's auto-generated ones.
 
 ### Client extension map
 
@@ -799,7 +838,8 @@ client/src/extensions/
 ```
 
 Each extension exports a `ZephyrexClientExtension` with pages, nav items, and
-optionally a settings panel and context providers.
+optionally a settings panel, context providers, pageSlots (to inject into
+other extensions' pages), and managementTabs.
 
 ### Component categories
 
@@ -814,7 +854,7 @@ render with zero custom UI. Specialisations needed:
 
 | Component | Used by | Description |
 |-----------|---------|-------------|
-| **RichTextEditor** | All entities (entry/description), EntityPosts, JournalPages | Block-based editor (Tiptap or Plate) with entity mention/linking (`@Character Name` → inline tooltip with preview card, resolved to entity ID on save). Supports Kanka-style `[entity:id]` syntax and World Anvil–style secrets/spoiler blocks (visibility-controlled inline regions via ACL). |
+| **RichTextEditor** | All entities (entry/description), EntityPosts, JournalPages | Block-based editor (**Plate** — Slate-based, React-native, shadcn-compatible) with entity mention/linking (`@Character Name` → inline tooltip with preview card, resolved to entity ID on save). Supports Kanka-style `[entity:id]` syntax and World Anvil–style secrets/spoiler blocks (visibility-controlled inline regions via ACL). |
 | **EntityMentionPopover** | RichTextEditor | Typeahead search across all entity types; on select, inserts a mention token; on hover/click in rendered text, shows a preview card (name, image, type, first line of description). |
 | **HierarchyTree** | Locations, Factions, Tags, Taxonomy, Hooks, Plots | Recursive expandable tree with drag-to-reparent, inline create, context menu (edit, delete, move). Reusable for any model with `parent_id`. |
 | **PolymorphicEntityPicker** | Map pins, lorebook sources, posts, reminders, scene notes, stamp entity links | Searchable select that spans all entity types. Stores `target_entity_type + target_entity_id`. Shows type icon + name. |
@@ -825,7 +865,7 @@ render with zero custom UI. Specialisations needed:
 
 | Component | Extension | Description | Key library |
 |-----------|-----------|-------------|-------------|
-| **MapEditor** | world-spatial | The Inkarnate-style cartography canvas. Full 2D editor for authoring maps at any scale (stellar → interior). Sub-components: | Pixi.js or Konva |
+| **MapEditor** | world-spatial | The Inkarnate-style cartography canvas. Full 2D editor for authoring maps at any scale (stellar → interior). Sub-components: | **Pixi.js** (WebGL) |
 | ↳ StampPalette | | Browsable/searchable stamp library filtered by map scale. Category tree, thumbnail grid, drag-to-canvas. | |
 | ↳ StampTransformHandles | | Move, rotate, scale, flip placed stamps. Variant axis selector (state/damage/orientation dropdown per axis). | |
 | ↳ TerrainBrush | | Polygon drawing tool for biome/terrain regions. Paint mode (click-to-add vertices, close polygon) or freehand. Texture/color picker per region. | |
@@ -835,7 +875,7 @@ render with zero custom UI. Specialisations needed:
 | ↳ GridOverlay | | Toggleable grid render (square, hex variants) with snap-to-grid for stamp placement. | |
 | ↳ ZoomPanControls | | Scroll-to-zoom, drag-to-pan, minimap, fit-to-view. | |
 | ↳ ExportDialog | | Export to flat image (PNG/WEBP) or UVTT format (image + walls/portals/lights JSON). | |
-| **SceneEditor** | rpg-scene | Room-first scene authoring on top of a map. Extends MapEditor with: | Same canvas lib |
+| **SceneEditor** | rpg-scene | Room-first scene authoring on top of a map. Extends MapEditor with: | Pixi.js (shared) |
 | ↳ RoomTool | | Draw room polygons. Walls auto-generate from boundaries. Floor texture/color picker. Room nesting (draw inside existing room = child). | |
 | ↳ WallTool | | Place/edit wall segments. Per-sense blocking toggles (move, sight, sound, light). Door type/state selector. Per-side texture picker. Cover height/density sliders. | |
 | ↳ LightTool | | Place lights with dim/bright radius, angle, color, animation preview. Darkness source toggle. | |
@@ -843,9 +883,9 @@ render with zero custom UI. Specialisations needed:
 | ↳ TokenPlacer | | Place tokens (entity-linked stamps with actor data). Disposition, vision, light emission, bar binding to traits. | |
 | ↳ RegionTool | | Draw trigger regions with behavior config (teleport, darkness, script). | |
 | ↳ CoverOverlay | | Visualise cover height/density as a heat map overlay for GM review. | |
-| **TimelineEditor** | world-narrative | Horizontal scrollable timeline. Eras as color-banded sections; events as cards positioned chronologically. Drag-to-reorder, click-to-edit. Link events to locations for chronicle view. | react-flow or custom SVG |
+| **TimelineEditor** | world-narrative | Horizontal scrollable timeline. Eras as color-banded sections; events as cards positioned chronologically. Drag-to-reorder, click-to-edit. Link events to locations for chronicle view. | Custom SVG |
 | **CalendarDisplay** | calendar | Custom calendar month grid. Moon phase indicators. Season color bands. Event markers on dates. Clickable dates open reminder/event editor. | Custom — no standard lib handles fantasy calendars |
-| **RelationshipGraph** | genealogy, world-social | Force-directed or hierarchical graph of entity relationships. Nodes = entities (with avatar thumbnail), edges = relationships (labeled, colored by kind). Filter by relationship kind. Click node → entity detail. Two modes: family tree (hierarchical DAG) and diplomacy web (force-directed). | d3-force or react-flow |
+| **RelationshipGraph** | genealogy, world-social | Force-directed or hierarchical graph of entity relationships. Nodes = entities (with avatar thumbnail), edges = relationships (labeled, colored by kind). Filter by relationship kind. Click node → entity detail. Two modes: family tree (hierarchical DAG via dagre layout) and diplomacy web (force-directed). | react-flow + dagre |
 | **CharacterSheet** | rpg-traits | Computed stat display driven by the trait math pipeline. Shows base values, derivative contributions (expand to see what's adding/multiplying), active effects with duration. Layout is game-system-configurable (the extension provides the renderer; the game system provides the template). | |
 | **DiceRoller** | rpg-dice | Formula input, roll button, animated result display. Roll history log. Roll table quick-access. | |
 | **CombatTracker** | rpg-combat | Initiative list with turn indicator, round counter. Add/remove combatants, roll initiative, next turn, combatant groups. Defeat/hidden toggles. | |
@@ -865,9 +905,9 @@ render with zero custom UI. Specialisations needed:
 
 | Concern | Approach |
 |---------|----------|
-| **Canvas library** | Single choice for map editor + scene editor + chronicle viewer. Pixi.js (WebGL, performant for large maps with many stamps) or Konva (Canvas 2D, simpler API, good enough for authoring). The VTT downstream consumer may swap in its own renderer for real-time play but the authoring canvas is in this repo. |
-| **Graph library** | d3-force for relationship/diplomacy graphs, or react-flow if we want interactive node editing. Family tree needs a hierarchical layout (dagre or ELK). |
-| **Rich text** | Tiptap (ProseMirror-based) or Plate (Slate-based). Needs custom extensions for entity mentions, spoiler blocks, and inline dice rolls. |
+| **Canvas library** | **Pixi.js** (WebGL) for map editor + scene editor + chronicle viewer. One renderer for authoring and play — the VTT downstream adds real-time layers (fog shader, dynamic lighting, WebSocket sync) on top of the same Pixi stage. |
+| **Graph library** | **react-flow** for relationship/diplomacy graphs with interactive node editing. **dagre** for hierarchical family tree layout. |
+| **Rich text** | **Plate** (Slate-based, React-native, shadcn-compatible). Custom extensions for entity mentions, spoiler blocks, and inline dice rolls. |
 | **GraphQL client** | The framework's `zephyrex` lib provides the server connection. The client extensions use auto-generated GraphQL queries (via zod2gql) for all CRUD. |
 | **State management** | React context per extension (provided via the `providers` array on `ZephyrexClientExtension`). No global store — each extension owns its state. The framework's auth/session state is provided by `ZephyrexProvider`. |
 | **Entity type registry** | A client-side registry mapping `entity_type` strings to their icon, color, label, detail page route, and preview card component. Used by PolymorphicEntityPicker, EntityMentionPopover, MapPinTool, and anywhere an entity reference resolves to UI. |
@@ -916,3 +956,40 @@ Phase 3 — Tier 2 RPG + Tier AI
 | **VTT** | Real-time play canvas (live token movement, fog-of-war pixel reveal, dynamic lighting shader, chat/dice panel, initiative HUD, player cursors, WebSocket sync). Uses the scene data from rpg-scene but replaces the authoring canvas with a play-mode renderer. |
 | **AI framework** | AI chat interface (response streaming, persona switcher, generation controls, context window display), AI GM/player orchestration UI, sentiment sprite renderer, lorebook context debugger. |
 | **Video game** | Game engine integration (Unity/Godot/Bevy scene loader that reads rpg-scene data), in-game HUD, inventory/dialogue/combat UI in the game engine's native toolkit. No web UI — consumes the API directly. |
+
+---
+
+## 10. Resolved Decisions
+
+Decisions surfaced from plan audit, resolved with operator input.
+
+| # | Decision | Resolution |
+|---|----------|------------|
+| 1 | Faction RelationshipModel injection: world_social vs rpg_core | **world_social** — fiction worldbuilding also has factions |
+| 2 | conversation vs rpg_log dialogue | **Keep both** — conversation is live/editable/branching; rpg_log is append-only audit |
+| 3 | World Anvil templates: kind values vs dedicated tables | **Kind values** on shared tables — no separate tables per template type |
+| 4 | Kanka Creatures: PersonModel or separate entity | **PersonModel** with `kind=creature` — no separate table |
+| 5 | EntityPostModel location | **Generic standalone extension** (`entity_posts`, Tier 0) — not narrative-specific |
+| 6 | ai_character: injection or separate table | **Separate table** with person_id FK — card schema is large and AI-specific |
+| 7 | Scene vs Map: reference or IS-a | **Reference** — SceneModel has map_id FK. Two distinct models. |
+| 8 | Tokens vs stamps overlap | **Keep both separate** — SceneTokenModel for actors (vision, bars, initiative); MapStampInstanceModel for everything else (furniture, terrain, interactables). An NPC is always a Token, never a stamp. |
+| 9 | Room-wall shared boundary | **Parent_id room nesting** — child room uses parent's walls plus its own walls to form a sub-enclosed space. No dual FK or join table needed. |
+| 10 | Playlists: rpg_scene or media | **rpg_scene** — playlists are scene-specific (auto-play, mode) |
+| 11 | rpg_scene dependency on rpg_core | **Keep** — campaign_id is optional; video game consumers still use rpg_core for game system definitions |
+| 12 | Cover calculation: backend or frontend | **Backend API endpoint** for consistency across all three consumers. Given attacker + target + scene_id → cover result. |
+| 14 | Canvas library | **Pixi.js** for both authoring and play. One renderer, shared code. VTT downstream adds real-time layers on top. |
+| 15 | Graph/relationship library | **react-flow** + **dagre** for hierarchical family tree layout |
+| 16 | Rich text editor | **Plate** (Slate-based, React-native, shadcn-compatible) |
+| 17 | Hierarchical graph layout | **dagre** (lighter than ELK, sufficient for family trees) |
+| 18 | Timeline editor | **Custom SVG** (react-flow overkill for a linear timeline) |
+| 20 | Stamp variant compositing | **Per-stamp author's choice** — simple stamps: one pre-made image per combination. Complex stamps: layer-per-axis compositing. Model supports both. |
+| 21 | Stamp variant axes | **Free-form strings** — any stamp defines its own axes. UI provides common axis widgets (compass for orientation, slider for damage) based on convention. |
+| 23 | cover_height null semantics | **Sentinel -1 = full height.** `null` = no cover, consistently on both walls and stamps. No context-dependent null. |
+| 24 | EntityInventoryModel vs ItemInstanceModel.owner | **Keep both, clarify semantics.** owner_person_id = de jure ("who this belongs to"). EntityInventoryModel = de facto ("what this entity is carrying/stocking right now"). Like a library book: owned by the library, checked out to a person. |
+| 25 | CalendarDateModel: sparse vs dense | **Sparse authored dates.** Events store raw (year, month_ordinal, day) directly; CalendarDateModel is for authored date markers with notes. Events don't require a pre-authored CalendarDateModel row. |
+| 27 | FogExplorationModel storage | **Both modes.** `mode` discriminator field: `bitmap` (compressed base64 of revealed grid cells) or `polygon` (array of convex hull polygons). Bitmap for grid-based, polygon for gridless. |
+| 28 | Whiteboards | **Out of scope** — pure frontend, no backend model |
+| 29 | Kanka Dice Rolls entity | **Covered by rpg_dice.DiceFormulaModel** — named formulas serve the same purpose |
+| 30 | Abilities at Tier 1 | **No** — abilities are inherently RPG. Worldbuilding consumers describe them in prose. |
+| 31 | Dashboard widgets | **Frontend state only** — no backend model. Campaign dashboard config is a user preference. |
+| 33 | Import/export adapter location | **Optional modules in this repo** (`adapters/` directory). Not imported at runtime by default. |
