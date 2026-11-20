@@ -1,8 +1,13 @@
 allowBuilds:
+  '@parcel/watcher': true
+  '@swc/core': true
   # postinstall only prints a funding banner
   core-js: false
+  core-js-pure: true
+  esbuild: true
   # ships prebuilt @img/* binaries; the install script is a build-from-source fallback
   sharp: false
+  unrs-resolver: true
 
 # The Zephyrex packages are not on a registry yet, so resolve them from the checkouts
 # deploy/fetch-frameworks.sh lays out beside this repository at the commits
@@ -10,7 +15,13 @@ allowBuilds:
 # They are injected (hard-linked copies, peers resolved from this app) via package.json
 # dependenciesMeta, so there is one React/Next/zod tree.
 overrides:
+  # The runners carry the browser build Playwright 1.63 drives, not 1.65's: hold every copy,
+  # the Storybook test-runner's included, at 1.63.0 (standards page Testing, Playwright pins).
+  playwright: 1.63.0
+  playwright-core: 1.63.0
   zephyrex: file:../../client-framework/packages/zephyrex
   '@zephyrex/auth': file:../../auth
+  '@zephyrex/lite': file:../../client-framework/packages/lite
+  '@zephyrex/marketing': file:../../client-framework/packages/marketing
   '@jgrieve/forms': file:../../dynamic-form
   zod2gql: file:../../zod2gql

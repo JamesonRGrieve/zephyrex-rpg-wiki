@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { ZephyrexApp } from 'zephyrex';
 import type { ReactNode } from 'react';
-import config from '@/zephyrex.config';
+import { Providers } from './Providers';
+import './globals.css';
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export { metadata, viewport } from './metadata';
+
+export default function RootLayout({ children }: { children: ReactNode }): ReactNode {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang='en' className='dark' suppressHydrationWarning>
       <body>
-        <ZephyrexApp config={config}>
-          {children}
-        </ZephyrexApp>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
