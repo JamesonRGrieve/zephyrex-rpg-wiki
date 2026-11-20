@@ -204,3 +204,20 @@ records.
 
 Ported back from the AI product's build: the shared UI shell, the entity type registry,
 mention hover cards and the lore drawer ([zephyrex-rpg-ai: docs/DESIGN.md](https://github.com/JamesonRGrieve/zephyrex-rpg-ai/blob/main/docs/DESIGN.md)).
+
+## Proposed, not confirmed
+
+Ideas this product proposes beyond the operator's confirmed scope above. **None is built until the
+operator confirms it.** Size: S (days), M (one to two weeks), L (more). Requested 2026-11-20 for the
+operator's review.
+
+| # | Idea | Why it helps | Size | Depends on |
+|---|---|---|---|---|
+| WP1 | Contradiction finder | AI flags facts that disagree across pages (dates, family, who died), each with links to both | M | The AI product, W12, W18 |
+| WP2 | What a player knows | The wiki as one player has seen it so far, from visibility and session reports; a GM's prep check | M | W9, W11, W24 |
+| WP3 | Names in a culture's style | A name generator that matches the style of the names a culture already has in the world | S | The AI product |
+| WP4 | Backlinks and orphans | Automatic "mentioned in" lists on every page and a report of pages nothing links to | S | W2 |
+| WP5 | Printable campaign book | Chosen pages laid out as a PDF sourcebook in the world's theme | M | W27, W29 |
+| WP6 | Pages unlocked by play | A player-facing wiki whose pages open as the campaign reaches beats, so it never spoils | M | W9, A60 |
+| WP7 | Name pronunciation | A spoken sample stored with each name, so the table says it the same way | S | A29 |
+| WP8 | Import Obsidian, Notion and Markdown | Bring an existing notes vault in, links and folders kept | M | W31 |
