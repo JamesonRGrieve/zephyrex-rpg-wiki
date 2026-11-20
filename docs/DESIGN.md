@@ -183,6 +183,14 @@ first-class. A parchment-warm light theme is the default for reading.
   `contract/entry-text-cases.json`. An `@` mention is an inline node carrying
   `target_entity_type` and `target_entity_id`, never a name.
 - **Kinds are enums in `contract/wiki.json`**, which the server and the client both read.
+- **The wiki owns `rpg_core`** (campaigns, and the Person and Tier 1 injections) and the world
+  tables; zephyrex-vtt loads these extensions from a pinned commit of this repo and deletes its
+  own copies. Rule systems (`game_systems`, and `game_system_id` on campaigns and items) are the
+  VTT's `rpg_systems`, since the wiki depends on no other suite product.
+- **A record's world is fixed once set** (Zephyrex RPG, for rpg-ai's A15 sync): changing
+  `campaign_id` away from a world is refused (422); moving is copy and delete.
+- **Every wiki extension ships its own Alembic migrations**, and rpg_core's adds its injected
+  columns to other extensions' tables with real foreign keys.
 
 ## Campaigns, frames and scenarios
 

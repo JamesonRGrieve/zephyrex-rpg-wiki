@@ -2,7 +2,7 @@
 /**
  * A record's entry: a Plate (Slate) value, stored as JSON text, with a plain-text copy kept as the
  * record's description for search (decision 16; operator, 2026-11-20). The same rule as the
- * server's (server/extensions/world_spatial/Entry.py), held to contract/entry-text-cases.json on
+ * server's (server/extensions/wiki_shared/Entry.py), held to contract/entry-text-cases.json on
  * both sides: an element with a text leaf among its children is one line (inline elements in it
  * give their text); any other element is a container whose children are read in turn.
  */

@@ -8,7 +8,7 @@ text); any other element is a container whose children are read in turn."""
 import json
 from typing import Any
 
-from zephyrex.extensions.world_spatial.Contract import LIMITS  # type: ignore[import-not-found]
+from zephyrex.extensions.wiki_shared.Contract import LIMITS  # type: ignore[import-not-found]
 
 MAX_BYTES: int = LIMITS["entry_bytes"]
 MAX_DEPTH: int = LIMITS["entry_depth"]

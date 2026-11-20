@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-# server/extensions/world_spatial/Contract.py → the repository root, three levels up.
+# server/extensions/wiki_shared/Contract.py → the repository root, three levels up.
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 CONTRACT_PATH = REPOSITORY_ROOT / "contract" / "wiki.json"
 ENTRY_TEXT_CASES_PATH = REPOSITORY_ROOT / "contract" / "entry-text-cases.json"
@@ -16,3 +16,6 @@ CONTRACT: dict[str, Any] = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 LIMITS: dict[str, int] = CONTRACT["limits"]
 LOCATION_KINDS: tuple[str, ...] = tuple(CONTRACT["location_kinds"])
 PERSON_KINDS: tuple[str, ...] = tuple(CONTRACT["person_kinds"])
+FACTION_KINDS: tuple[str, ...] = tuple(CONTRACT["faction_kinds"])
+ITEM_KINDS: tuple[str, ...] = tuple(CONTRACT["item_kinds"])
+ENTITY_TYPES: tuple[str, ...] = tuple(CONTRACT["entity_types"])

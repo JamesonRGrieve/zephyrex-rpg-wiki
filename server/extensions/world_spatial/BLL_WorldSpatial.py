@@ -2,8 +2,11 @@
 """world_spatial models: a location tree, the same resource, fields and rules as the lite
 edition's (client/src/lib/locationRecords.ts).
 
-``/v1/location``: a place at any scale (``kind`` from contract/wiki.json), under its parent. Its
-entry is a Plate value; its description is the entry's plain-text copy, for search (Entry.py).
+``/v1/location``: a place at any scale (``kind`` from contract/wiki.json), under its parent. A place
+can belong to a person (``associated_person_id``): their equipment slots, body and body parts. What
+someone wears or wields is an item instance whose location is one of their equipment_slot or
+body_part places; carried anywhere else, it's packed (OBJECT_PLAN §4; zephyrex-vtt's checks). Its
+entry is a Plate value; its description is the entry's plain-text copy, for search (wiki_shared/Entry.py).
 Ported from zephyrex-vtt's rpg_state.LocationModel with the same table and field names
 (OBJECT_PLAN §6). The campaign link is rpg_core's (it injects ``campaign_id``), so this tier
 stays campaign-free. A parent change that would close a cycle is refused.
@@ -11,11 +14,15 @@ stays campaign-free. A parent change that would close a cycle is refused.
 
 from typing import Any, ClassVar, Optional, Type
 
-from fastapi import HTTPException
 from pydantic import Field, field_validator, model_validator
-from zephyrex.extensions.world_spatial.Contract import LIMITS, LOCATION_KINDS  # type: ignore[import-not-found]
-from zephyrex.extensions.world_spatial.Entry import parse as parse_entry  # type: ignore[import-not-found]
-from zephyrex.lib.CycleGuard import CycleGuardError, would_create_tree_cycle
+from zephyrex.extensions.genealogy.BLL_Genealogy import PersonModel
+from zephyrex.extensions.wiki_shared.Contract import LOCATION_KINDS  # type: ignore[import-not-found]
+from zephyrex.extensions.wiki_shared.Records import (  # type: ignore[import-not-found]
+    checked_kind,
+    checked_name,
+    refuse_parent_cycle,
+    with_entry_text,
+)
 from zephyrex.logic.AbstractLogicManager import (
     AbstractBLLManager,
     ApplicationModel,
@@ -34,37 +41,6 @@ from zephyrex.pydantic2.fastapi import RouterMixin
 # The framework's registry BaseModel, which it re-exports without declaring it.
 from zephyrex.pydantic2.registry import BaseModel  # type: ignore[attr-defined]
 
-MAX_NAME: int = LIMITS["name_characters"]
-
-
-def checked_name(value: Any) -> Any:
-    """A name, trimmed: required, and at most the contract's length."""
-    if value is None:
-        return None
-    stripped = str(value).strip()
-    if not stripped:
-        raise ValueError("A name is required")
-    if len(stripped) > MAX_NAME:
-        raise ValueError(f"A name has at most {MAX_NAME} characters")
-    return stripped
-
-
-def checked_kind(value: Any, kinds: tuple[str, ...], what: str) -> Any:
-    """A kind from the contract's list for ``what``, or None."""
-    if value is None or value in kinds:
-        return value
-    raise ValueError(f"A {what}'s kind is one of: {', '.join(kinds)}")
-
-
-def with_entry_text(payload: Any) -> Any:
-    """Store the entry as compact JSON text and its plain-text copy as the description."""
-    entry = getattr(payload, "entry", None)
-    if entry is not None:
-        stored, text = parse_entry(entry)
-        payload.entry = stored
-        payload.description = text
-    return payload
-
 
 class LocationModel(
     ApplicationModel.Optional,
@@ -77,9 +53,14 @@ class LocationModel(
     Manager: ClassVar[Type["LocationManager"]] = None
     kind: Optional[str] = Field(None, description="contract/wiki.json location_kinds")
     entry: Optional[str] = Field(None, description="The entry: a Plate value as JSON text")
+    associated_person_id: Optional[str] = Field(
+        None, description="The person this place belongs to: an equipment slot, a body or a body part"
+    )
     table_comment: ClassVar[str] = (
         "A place at any scale, under its parent (parent_id). entry is a Plate value; description "
-        "is its plain-text copy, for search."
+        "is its plain-text copy, for search. associated_person_id binds a place to a person: an "
+        "equipment_slot or body_part bound to someone is where what they wear or wield sits, so "
+        "equipping is a move (OBJECT_PLAN §4)."
     )
 
     class Create(BaseModel):
@@ -88,6 +69,7 @@ class LocationModel(
         entry: Optional[Any] = None
         parent_id: Optional[str] = None
         kind: Optional[str] = None
+        associated_person_id: Optional[str] = None
 
         _name = field_validator("name")(checked_name)
 
@@ -106,6 +88,7 @@ class LocationModel(
         entry: Optional[Any] = None
         parent_id: Optional[str] = None
         kind: Optional[str] = None
+        associated_person_id: Optional[str] = None
 
         _name = field_validator("name")(checked_name)
 
@@ -123,6 +106,7 @@ class LocationModel(
         description: Optional[StringSearchModel] = None
         kind: Optional[StringSearchModel] = None
         parent_id: Optional[StringSearchModel] = None
+        associated_person_id: Optional[StringSearchModel] = None
 
 
 class LocationManager(AbstractBLLManager, RouterMixin):
@@ -132,30 +116,12 @@ class LocationManager(AbstractBLLManager, RouterMixin):
 LocationModel.Manager = LocationManager
 
 
-def _parent_of(manager: AbstractBLLManager) -> Any:
-    def _get(location_id: str) -> Optional[str]:
-        try:
-            row = manager.get(id=location_id)
-        except Exception:
-            return None
-        return getattr(row, "parent_id", None) if row else None
-
-    return _get
-
-
 @hook_bll(LocationManager, timing=HookTiming.BEFORE, priority=10)
 def _location_no_cycle(context: HookContext) -> None:
     """A location can't sit under itself or under one of its own descendants."""
-    if context.method_name != "update":
-        return
-    candidate = context.kwarg("parent_id", default=None)
-    record_id = context.kwarg("id", default=None) or context.arg(0, default=None)
-    if not candidate or not record_id:
-        return
-    try:
-        cycle = would_create_tree_cycle(record_id, candidate, _parent_of(context.manager))
-    except CycleGuardError as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
-    if cycle:
-        # 422, as the lite edition answers: a request the server understood but won't apply.
-        raise HTTPException(status_code=422, detail="A location can't sit under itself or its own descendants")
+    refuse_parent_cycle(context, "location")
+
+
+# PersonModel is imported so associated_person_id gets its foreign key: the framework names a
+# `<entity>_id` column's table from its model, which must be loaded (genealogy is a dependency).
+__all__ = ["LocationModel", "PersonModel"]

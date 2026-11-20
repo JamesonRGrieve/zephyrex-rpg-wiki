@@ -35,6 +35,8 @@ model Location {
   kind         String?
   parentId     String?
   campaignId   String?
+  /// The person it belongs to: their equipment slots and body parts (what they wear sits there).
+  associatedPersonId String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime
   updatedById  String?
@@ -42,6 +44,7 @@ model Location {
   @@index([createdById])
   @@index([campaignId])
   @@index([parentId])
+  @@index([associatedPersonId])
 }
 
 /// A person or creature (genealogy's PersonModel, with rpg_core's character fields).
@@ -63,4 +66,76 @@ model Person {
 
   @@index([createdById])
   @@index([campaignId])
+}
+
+/// An organisation or family, under its parent (world_social's FactionModel, with rpg_core's campaign).
+model Faction {
+  id           String   @id @default(uuid())
+  createdById  String
+  name         String
+  description  String   @default("")
+  entry        String?
+  kind         String?
+  parentId     String?
+  campaignId   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime
+  updatedById  String?
+
+  @@index([createdById])
+  @@index([campaignId])
+  @@index([parentId])
+}
+
+/// A kind of thing, the catalogue (world_inventory's ItemModel, with rpg_core's campaign).
+model Item {
+  id           String   @id @default(uuid())
+  createdById  String
+  name         String
+  description  String   @default("")
+  entry        String?
+  kind         String?
+  weight       Float?
+  baseValue    Float?
+  stackSize    Int      @default(1)
+  campaignId   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime
+  updatedById  String?
+
+  @@index([createdById])
+  @@index([campaignId])
+}
+
+/// One item in the world: where it is, whose it is (de jure), how many.
+model ItemInstance {
+  id            String   @id @default(uuid())
+  createdById   String
+  itemId        String?
+  locationId    String?
+  ownerPersonId String?
+  quantity      Int      @default(1)
+  durability    Float?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime
+  updatedById   String?
+
+  @@index([createdById])
+  @@index([itemId])
+}
+
+/// What an entity carries now (W8): any person, place, faction or item holding an item instance.
+model EntityInventory {
+  id               String   @id @default(uuid())
+  createdById      String
+  targetEntityType String
+  targetEntityId   String
+  itemInstanceId   String?
+  quantity         Int      @default(1)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime
+  updatedById      String?
+
+  @@index([createdById])
+  @@index([targetEntityId])
 }

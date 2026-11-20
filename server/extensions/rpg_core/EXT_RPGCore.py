@@ -12,7 +12,7 @@ class RPGCoreExtension(AbstractStaticExtension):
     name: ClassVar[str] = "rpg_core"
     version: ClassVar[str] = "0.1.0"
     description: ClassVar[str] = (
-        "Game systems and campaigns; widens Person into the character table and scopes world records to a campaign"
+        "Campaigns; widens Person into the character table and scopes world records to a campaign"
     )
     dependencies: ClassVar[Dependencies] = Dependencies(
         [
@@ -27,6 +27,18 @@ class RPGCoreExtension(AbstractStaticExtension):
                 friendly_name="World: places",
                 optional=False,
                 reason="rpg_core scopes locations to a campaign, and a person stands in a location",
+            ),
+            EXT_Dependency(
+                name="world_social",
+                friendly_name="World: organisations",
+                optional=False,
+                reason="rpg_core scopes factions to a campaign",
+            ),
+            EXT_Dependency(
+                name="world_inventory",
+                friendly_name="World: items",
+                optional=False,
+                reason="rpg_core scopes items to a campaign",
             ),
             EXT_Dependency(
                 name="acl_rbac",

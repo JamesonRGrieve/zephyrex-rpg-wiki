@@ -6,8 +6,8 @@ import json
 from typing import Any
 
 import pytest
-from zephyrex.extensions.world_spatial.Contract import ENTRY_TEXT_CASES_PATH, LIMITS  # type: ignore[import-not-found]
-from zephyrex.extensions.world_spatial.Entry import parse, plain_text  # type: ignore[import-not-found]
+from zephyrex.extensions.wiki_shared.Contract import ENTRY_TEXT_CASES_PATH, LIMITS  # type: ignore[import-not-found]
+from zephyrex.extensions.wiki_shared.Entry import parse, plain_text  # type: ignore[import-not-found]
 
 CASES: dict[str, Any] = json.loads(ENTRY_TEXT_CASES_PATH.read_text(encoding="utf-8"))
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Sample worlds, places and people for this folder's tests and stories: one shape, both read it.
-import type { Person, Place, World } from '~/features/data/records';
+import type { Faction, Item, Person, Place, World } from '~/features/data/records';
 
 const STAMP = { created_at: '2026-11-20T12:00:00Z', updated_at: '2026-11-20T12:00:00Z' };
 
@@ -17,6 +17,7 @@ const place = (id: string, name: string, kind: string | null, parent_id: string 
   description,
   entry: null,
   campaign_id: 'w1',
+  associated_person_id: null,
   ...STAMP,
 });
 
@@ -36,6 +37,38 @@ export const PEOPLE: Person[] = [
     entry: null,
     campaign_id: 'w1',
     location_id: 'l3',
+    ...STAMP,
+  },
+];
+
+const faction = (id: string, name: string, kind: string, parent_id: string | null): Faction => ({
+  id,
+  name,
+  kind,
+  parent_id,
+  description: '',
+  entry: null,
+  campaign_id: 'w1',
+  ...STAMP,
+});
+
+export const FACTIONS: Faction[] = [
+  faction('f1', 'House Vell', 'family', null),
+  faction('f2', 'The Cadet Line', 'family', 'f1'),
+  faction('f3', 'Brine Syndicate', 'criminal', null),
+];
+
+export const ITEMS: Item[] = [
+  {
+    id: 'i1',
+    name: 'Salt-steel sabre',
+    kind: 'weapon',
+    description: 'Never rusts.',
+    entry: null,
+    weight: 1.5,
+    base_value: 40,
+    stack_size: 1,
+    campaign_id: 'w1',
     ...STAMP,
   },
 ];

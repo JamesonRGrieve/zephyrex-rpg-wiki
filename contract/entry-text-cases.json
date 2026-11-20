@@ -1,5 +1,5 @@
 {
-  "$comment": "An entry is a Plate (Slate) value: a list of block elements, each with children that are text leaves or inline elements. Its plain-text copy (stored as the record's description, for search) is the text of each block, blocks joined by a newline, inline elements contributing their children's text. Both back ends derive it the same way: server/extensions/world_spatial/Entry.py and client/src/lib/entry.ts. Refusals: not a list, a node that is neither an element (children) nor a leaf (text), or deeper than limits.entry_depth.",
+  "$comment": "An entry is a Plate (Slate) value: a list of block elements, each with children that are text leaves or inline elements. Its plain-text copy (stored as the record's description, for search) is the text of each block, blocks joined by a newline, inline elements contributing their children's text. Both back ends derive it the same way: server/extensions/wiki_shared/Entry.py and client/src/lib/entry.ts. Refusals: not a list, a node that is neither an element (children) nor a leaf (text), or deeper than limits.entry_depth.",
   "cases": [
     { "name": "an empty entry", "entry": [], "text": "" },
     {

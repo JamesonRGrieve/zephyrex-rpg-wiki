@@ -1,0 +1,20 @@
+name = "world_inventory"
+version = "0.1.0"
+description = "Item catalogue, items, and what any entity carries"
+entry_module = "EXT_WorldInventory"
+minimum_framework_version = "0.0.1"
+# Where this extension's source is offered (AGPL-3.0 section 13).
+repository = "https://github.com/JamesonRGrieve/zephyrex-rpg-wiki"
+
+# An item is owned by a person (genealogy) and sits in a place (world_spatial).
+[[extension_dependencies]]
+name = "genealogy"
+optional = false
+
+[[extension_dependencies]]
+name = "world_spatial"
+optional = false
+
+[[extension_dependencies]]
+name = "acl_rbac"
+optional = true

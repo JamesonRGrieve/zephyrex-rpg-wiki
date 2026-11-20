@@ -6,6 +6,11 @@ minimum_framework_version = "0.0.1"
 # Where this extension's source is offered (AGPL-3.0 section 13).
 repository = "https://github.com/JamesonRGrieve/zephyrex-rpg-wiki"
 
+# A place can belong to a person (associated_person_id): their equipment slots and body parts.
+[[extension_dependencies]]
+name = "genealogy"
+optional = false
+
 # Optional: when present, ACL drives per-row visibility (secret places). world_spatial never
 # carries its own visibility column (OBJECT_PLAN §7).
 [[extension_dependencies]]

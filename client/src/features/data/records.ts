@@ -12,7 +12,7 @@
 import useSWR, { type SWRResponse, useSWRConfig } from 'swr';
 import { useClient } from 'zephyrex';
 import { z } from 'zod';
-import { LOCATION_KINDS, PERSON_KINDS } from '~/contract';
+import { ENTITY_TYPES, FACTION_KINDS, ITEM_KINDS, LOCATION_KINDS, PERSON_KINDS } from '~/contract';
 
 const JSON_BODY = z.json();
 
@@ -45,6 +45,7 @@ export const placeSchema = z.object({
   kind: kindIn(LOCATION_KINDS),
   parent_id: z.string().nullable(),
   campaign_id: z.string().nullable(),
+  associated_person_id: z.string().nullable(),
 });
 export type Place = z.infer<typeof placeSchema>;
 
@@ -58,6 +59,49 @@ export const personSchema = z.object({
   location_id: z.string().nullable(),
 });
 export type Person = z.infer<typeof personSchema>;
+
+export const factionSchema = z.object({
+  ...versioned,
+  name: z.string(),
+  description: z.string().nullable(),
+  entry: z.string().nullable(),
+  kind: kindIn(FACTION_KINDS),
+  parent_id: z.string().nullable(),
+  campaign_id: z.string().nullable(),
+});
+export type Faction = z.infer<typeof factionSchema>;
+
+export const itemSchema = z.object({
+  ...versioned,
+  name: z.string(),
+  description: z.string().nullable(),
+  entry: z.string().nullable(),
+  kind: kindIn(ITEM_KINDS),
+  weight: z.number().nullable(),
+  base_value: z.number().nullable(),
+  stack_size: z.number().nullable(),
+  campaign_id: z.string().nullable(),
+});
+export type Item = z.infer<typeof itemSchema>;
+
+export const itemInstanceSchema = z.object({
+  ...versioned,
+  item_id: z.string().nullable(),
+  location_id: z.string().nullable(),
+  owner_person_id: z.string().nullable(),
+  quantity: z.number().nullable(),
+  durability: z.number().nullable(),
+});
+export type ItemInstance = z.infer<typeof itemInstanceSchema>;
+
+export const carriedSchema = z.object({
+  ...versioned,
+  target_entity_type: z.enum(ENTITY_TYPES as [string, ...string[]]),
+  target_entity_id: z.string(),
+  item_instance_id: z.string().nullable(),
+  quantity: z.number().nullable(),
+});
+export type Carried = z.infer<typeof carriedSchema>;
 
 type Versioned = { id: string; created_at: string; updated_at: string | null };
 /** What a write may set: a record's own fields (and, for write-only fields, `Extra`). */
@@ -146,3 +190,14 @@ export const people = resource<Person, Fields<Person, { entry?: unknown }> & { n
   'persons',
   personSchema,
 );
+export const factions = resource<Faction, Fields<Faction, { entry?: unknown }> & { name: string }>(
+  'faction',
+  'factions',
+  factionSchema,
+);
+export const items = resource<Item, Fields<Item, { entry?: unknown }> & { name: string }>('item', 'items', itemSchema);
+export const itemInstances = resource<ItemInstance, Fields<ItemInstance>>('item_instance', 'item_instances', itemInstanceSchema);
+export const carried = resource<
+  Carried,
+  Pick<Carried, 'target_entity_type' | 'target_entity_id' | 'item_instance_id'> & Fields<Carried>
+>('entity_inventory', 'entity_inventories', carriedSchema);

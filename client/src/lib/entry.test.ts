@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // An entry's plain-text copy, held to the cases the server is held to
-// (contract/entry-text-cases.json; server/extensions/world_spatial/Entry_test.py).
+// (contract/entry-text-cases.json; server/extensions/wiki_shared/Entry_test.py).
 import { describe, expect, it } from 'vitest';
 import cases from '../../../contract/entry-text-cases.json';
 import { LIMITS } from '~/contract';

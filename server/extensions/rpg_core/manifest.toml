@@ -1,6 +1,6 @@
 name = "rpg_core"
 version = "0.1.0"
-description = "Game systems and campaigns; widens Person into the character table and scopes world records to a campaign"
+description = "Campaigns; widens Person into the character table and scopes world records to a campaign"
 entry_module = "EXT_RPGCore"
 minimum_framework_version = "0.0.1"
 # Where this extension's source is offered (AGPL-3.0 section 13).
@@ -15,6 +15,15 @@ optional = false
 # person stands in a location.
 [[extension_dependencies]]
 name = "world_spatial"
+optional = false
+
+# ...and organisations and items (world_social, world_inventory), scoped the same way.
+[[extension_dependencies]]
+name = "world_social"
+optional = false
+
+[[extension_dependencies]]
+name = "world_inventory"
 optional = false
 
 [[extension_dependencies]]

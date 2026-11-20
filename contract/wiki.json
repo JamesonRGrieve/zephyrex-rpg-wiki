@@ -1,5 +1,5 @@
 {
-  "$comment": "Zephyrex RPG Wiki's knowledge shared by both back ends and the front end: the kinds each record may take, and the limits on what it holds. Read by server/extensions/world_spatial/Contract.py and client/src/contract.ts; nothing restates it.",
+  "$comment": "Zephyrex RPG Wiki's knowledge shared by both back ends and the front end: the kinds each record may take, and the limits on what it holds. Read by server/extensions/wiki_shared/Contract.py and client/src/contract.ts; nothing restates it.",
   "limits": {
     "name_characters": 200,
     "entry_bytes": 200000,
@@ -24,6 +24,37 @@
     "body_part",
     "organ"
   ],
-  "person_kinds": ["pc", "npc", "creature", "monster", "vehicle", "construct"],
-  "entity_types": ["person", "location"]
+  "person_kinds": [
+    "pc",
+    "npc",
+    "creature",
+    "monster",
+    "vehicle",
+    "construct"
+  ],
+  "faction_kinds": [
+    "political",
+    "military",
+    "religious",
+    "criminal",
+    "guild",
+    "family",
+    "other"
+  ],
+  "item_kinds": [
+    "weapon",
+    "armour",
+    "consumable",
+    "container",
+    "currency",
+    "document",
+    "authority",
+    "misc"
+  ],
+  "entity_types": [
+    "person",
+    "location",
+    "faction",
+    "item"
+  ]
 }

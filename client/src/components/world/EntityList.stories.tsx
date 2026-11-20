@@ -4,7 +4,7 @@ import { expect, fn, userEvent, within } from 'storybook/test';
 import { LOCATION_KINDS } from '~/contract';
 import { EntityList } from './EntityList';
 import { PLACES } from './fixtures';
-import { LocationTree } from './LocationTree';
+import { ParentTree } from './ParentTree';
 
 const hrefOf = (row: { id: string }) => `/w/w1/location/${row.id}`;
 
@@ -33,7 +33,7 @@ export const Default: Story = {
 };
 
 export const WithTree: Story = {
-  args: { aside: <LocationTree places={PLACES} hrefOf={hrefOf} /> },
+  args: { aside: <ParentTree rows={PLACES} label='Places by where they sit' hrefOf={hrefOf} /> },
   play: async ({ canvasElement }) => {
     await expect(within(canvasElement).getByRole('navigation', { name: 'Places by where they sit' })).toBeInTheDocument();
   },

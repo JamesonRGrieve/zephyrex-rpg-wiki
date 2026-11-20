@@ -16,6 +16,10 @@ export interface Capabilities {
   places: boolean;
   /** People (genealogy). */
   people: boolean;
+  /** Organisations and families (world_social). */
+  factions: boolean;
+  /** Items, and what anyone carries (world_inventory). */
+  items: boolean;
   /** Accounts: the same records on every device the person signs in on. */
   accounts: boolean;
 }
@@ -26,6 +30,8 @@ export function capabilitiesOf(names: ReadonlySet<string>, loaded: boolean): Cap
     worlds: names.has('rpg_core'),
     places: names.has('world_spatial'),
     people: names.has('genealogy'),
+    factions: names.has('world_social'),
+    items: names.has('world_inventory'),
     accounts: names.has('auth_session'),
   };
 }

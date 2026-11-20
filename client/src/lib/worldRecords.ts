@@ -9,7 +9,7 @@
 import type { Prisma } from '@prisma/client';
 import { type ResourceSpec, validationError } from '@zephyrex/lite';
 import { z } from 'zod';
-import { LIMITS, LOCATION_KINDS, PERSON_KINDS } from '~/contract';
+import { ENTITY_TYPES, FACTION_KINDS, ITEM_KINDS, LIMITS, LOCATION_KINDS, PERSON_KINDS } from '~/contract';
 import { type Columns, columnsOf, fieldsOf, plain } from '~/lib/columns';
 import { EntryError, parseEntry } from '~/lib/entry';
 import { prisma } from '~/lib/prisma';
@@ -48,6 +48,12 @@ async function checkWorld(ownerId: string, campaignId: unknown): Promise<void> {
   if (typeof campaignId !== 'string') return;
   if ((await prisma.campaign.count({ where: { id: campaignId, createdById: ownerId } })) === 0)
     throw validationError('That world is not one of yours', 'campaign_id');
+}
+
+async function checkPerson(ownerId: string, personId: unknown): Promise<void> {
+  if (typeof personId !== 'string') return;
+  if ((await prisma.person.count({ where: { id: personId, createdById: ownerId } })) === 0)
+    throw validationError('That person is not one of yours', 'associated_person_id');
 }
 
 async function checkPlace(ownerId: string, locationId: unknown, field: string): Promise<void> {
@@ -90,11 +96,13 @@ export const campaigns: ResourceSpec<CampaignRow, z.infer<typeof campaignCreate>
     await prisma.$transaction([
       prisma.location.updateMany({ where: { campaignId: id }, data: { campaignId: null } }),
       prisma.person.updateMany({ where: { campaignId: id }, data: { campaignId: null } }),
+      prisma.faction.updateMany({ where: { campaignId: id }, data: { campaignId: null } }),
+      prisma.item.updateMany({ where: { campaignId: id }, data: { campaignId: null } }),
       prisma.campaign.delete({ where: { id } }),
     ]);
   },
-  // The server's CampaignModel also answers these; lite has no game systems or other owners.
-  fields: (row) => ({ ...fieldsOf(CAMPAIGN_COLUMNS, row), game_system_id: null, user_id: null }),
+  // The server's CampaignModel also answers its owner; lite has one person and no accounts.
+  fields: (row) => ({ ...fieldsOf(CAMPAIGN_COLUMNS, row), user_id: null }),
 };
 
 // ---- location (a place) ----------------------------------------------------------------------
@@ -106,6 +114,7 @@ const LOCATION_COLUMNS: Columns = {
   kind: plain('kind'),
   parent_id: plain('parentId'),
   campaign_id: plain('campaignId'),
+  associated_person_id: plain('associatedPersonId'),
 };
 const locationFields = {
   name,
@@ -114,6 +123,7 @@ const locationFields = {
   kind: kindOf(LOCATION_KINDS),
   parent_id: reference,
   campaign_id: reference,
+  associated_person_id: reference,
 };
 const locationCreate = z.object({
   name,
@@ -122,23 +132,27 @@ const locationCreate = z.object({
   kind: locationFields.kind.default(null),
   parent_id: reference.default(null),
   campaign_id: reference.default(null),
+  associated_person_id: reference.default(null),
 });
 const locationUpdate = z.object(locationFields).partial();
 type LocationRow = Prisma.LocationGetPayload<object>;
 
-/** Refuses a parent that is the place itself or one of its own descendants. */
-async function checkNoCycle(id: string, parentId: unknown): Promise<void> {
+/** Reads a record's parent id from its table, or null when it has none (or isn't there). */
+type ParentOf = (id: string) => Promise<string | null>;
+const placeParent: ParentOf = async (id) =>
+  (await prisma.location.findUnique({ where: { id }, select: { parentId: true } }))?.parentId ?? null;
+const factionParent: ParentOf = async (id) =>
+  (await prisma.faction.findUnique({ where: { id }, select: { parentId: true } }))?.parentId ?? null;
+
+/** Refuses a parent that is the record itself or one of its own descendants (as the server, 422). */
+async function checkNoCycle(id: string, parentId: unknown, parentOf: ParentOf, what: string): Promise<void> {
   if (typeof parentId !== 'string') return;
   const seen = new Set<string>();
   for (let at: string | null = parentId; at !== null; ) {
-    if (at === id) throw validationError('A location can’t sit under itself or its own descendants', 'parent_id');
+    if (at === id) throw validationError(`A ${what} can’t sit under itself or its own descendants`, 'parent_id');
     if (seen.has(at)) return;
     seen.add(at);
-    const parent: { parentId: string | null } | null = await prisma.location.findUnique({
-      where: { id: at },
-      select: { parentId: true },
-    });
-    at = parent?.parentId ?? null;
+    at = await parentOf(at);
   }
 }
 
@@ -156,6 +170,7 @@ export const locations: ResourceSpec<LocationRow, z.infer<typeof locationCreate>
           ['campaign_id', 'campaignId'],
           ['parent_id', 'parentId'],
           ['kind', 'kind'],
+          ['associated_person_id', 'associatedPersonId'],
         ]),
       },
       orderBy: { name: 'asc' },
@@ -164,6 +179,7 @@ export const locations: ResourceSpec<LocationRow, z.infer<typeof locationCreate>
   async insert(ownerId, input, stamp) {
     await checkWorld(ownerId, input.campaign_id);
     await checkPlace(ownerId, input.parent_id, 'parent_id');
+    await checkPerson(ownerId, input.associated_person_id);
     return prisma.location.create({
       data: { createdById: ownerId, ...written(LOCATION_COLUMNS, input, stamp) } as Prisma.LocationUncheckedCreateInput,
     });
@@ -173,8 +189,9 @@ export const locations: ResourceSpec<LocationRow, z.infer<typeof locationCreate>
     if (owner !== null) {
       await checkWorld(owner.createdById, input.campaign_id);
       await checkPlace(owner.createdById, input.parent_id, 'parent_id');
+      await checkPerson(owner.createdById, input.associated_person_id);
     }
-    await checkNoCycle(id, input.parent_id);
+    await checkNoCycle(id, input.parent_id, placeParent, 'location');
     const { count } = await prisma.location.updateMany({
       where: { id, updatedAt: version },
       data: written(LOCATION_COLUMNS, input, stamp, userId) as Prisma.LocationUncheckedUpdateManyInput,
@@ -187,6 +204,8 @@ export const locations: ResourceSpec<LocationRow, z.infer<typeof locationCreate>
     await prisma.$transaction([
       prisma.location.updateMany({ where: { parentId: id }, data: { parentId: place?.parentId ?? null } }),
       prisma.person.updateMany({ where: { locationId: id }, data: { locationId: null } }),
+      prisma.itemInstance.updateMany({ where: { locationId: id }, data: { locationId: null } }),
+      prisma.entityInventory.deleteMany({ where: { targetEntityType: 'location', targetEntityId: id } }),
       prisma.location.delete({ where: { id } }),
     ]);
   },
@@ -264,7 +283,12 @@ export const people: ResourceSpec<PersonRow, z.infer<typeof personCreate>, z.inf
     return count === 0 ? null : prisma.person.findUnique({ where: { id } });
   },
   async remove(id) {
-    await prisma.person.delete({ where: { id } });
+    await prisma.$transaction([
+      prisma.itemInstance.updateMany({ where: { ownerPersonId: id }, data: { ownerPersonId: null } }),
+      prisma.entityInventory.deleteMany({ where: { targetEntityType: 'person', targetEntityId: id } }),
+      prisma.location.updateMany({ where: { associatedPersonId: id }, data: { associatedPersonId: null } }),
+      prisma.person.delete({ where: { id } }),
+    ]);
   },
   // The server's Person also answers its genealogy dates and the player; lite has no accounts.
   fields: (row) => ({
@@ -273,4 +297,321 @@ export const people: ResourceSpec<PersonRow, z.infer<typeof personCreate>, z.inf
     birth_date: row.birthDate?.toISOString() ?? null,
     death_date: row.deathDate?.toISOString() ?? null,
   }),
+};
+
+// ---- faction (an organisation or family) -----------------------------------------------------
+
+const FACTION_COLUMNS: Columns = {
+  name: plain('name'),
+  description: plain('description'),
+  entry: plain('entry'),
+  kind: plain('kind'),
+  parent_id: plain('parentId'),
+  campaign_id: plain('campaignId'),
+};
+const factionCreate = z.object({
+  name,
+  description: z.string().default(''),
+  entry: entry.optional(),
+  kind: kindOf(FACTION_KINDS).default(null),
+  parent_id: reference.default(null),
+  campaign_id: reference.default(null),
+});
+const factionUpdate = z
+  .object({ name, description: z.string(), entry, kind: kindOf(FACTION_KINDS), parent_id: reference, campaign_id: reference })
+  .partial();
+type FactionRow = Prisma.FactionGetPayload<object>;
+
+async function checkFaction(ownerId: string, factionId: unknown): Promise<void> {
+  if (typeof factionId !== 'string') return;
+  if ((await prisma.faction.count({ where: { id: factionId, createdById: ownerId } })) === 0)
+    throw validationError('That faction is not one of yours', 'parent_id');
+}
+
+export const factions: ResourceSpec<FactionRow, z.infer<typeof factionCreate>, z.infer<typeof factionUpdate>> = {
+  resource: 'faction',
+  plural: 'factions',
+  modelName: 'FactionModel',
+  createSchema: factionCreate,
+  updateSchema: factionUpdate,
+  list: (ownerId, query) =>
+    prisma.faction.findMany({
+      where: {
+        createdById: ownerId,
+        ...filters(query, [
+          ['campaign_id', 'campaignId'],
+          ['parent_id', 'parentId'],
+          ['kind', 'kind'],
+        ]),
+      },
+      orderBy: { name: 'asc' },
+    }),
+  find: (id, ownerId) => prisma.faction.findFirst({ where: { id, createdById: ownerId } }),
+  async insert(ownerId, input, stamp) {
+    await checkWorld(ownerId, input.campaign_id);
+    await checkFaction(ownerId, input.parent_id);
+    return prisma.faction.create({
+      data: { createdById: ownerId, ...written(FACTION_COLUMNS, input, stamp) } as Prisma.FactionUncheckedCreateInput,
+    });
+  },
+  async updateIfCurrent(id, version, input, stamp, userId) {
+    const owner = await prisma.faction.findUnique({ where: { id }, select: { createdById: true } });
+    if (owner !== null) {
+      await checkWorld(owner.createdById, input.campaign_id);
+      await checkFaction(owner.createdById, input.parent_id);
+    }
+    await checkNoCycle(id, input.parent_id, factionParent, 'faction');
+    const { count } = await prisma.faction.updateMany({
+      where: { id, updatedAt: version },
+      data: written(FACTION_COLUMNS, input, stamp, userId) as Prisma.FactionUncheckedUpdateManyInput,
+    });
+    return count === 0 ? null : prisma.faction.findUnique({ where: { id } });
+  },
+  async remove(id) {
+    // Its sub-factions move up to its parent, and what it carried is no longer carried.
+    const faction = await prisma.faction.findUnique({ where: { id }, select: { parentId: true } });
+    await prisma.$transaction([
+      prisma.faction.updateMany({ where: { parentId: id }, data: { parentId: faction?.parentId ?? null } }),
+      prisma.entityInventory.deleteMany({ where: { targetEntityType: 'faction', targetEntityId: id } }),
+      prisma.faction.delete({ where: { id } }),
+    ]);
+  },
+  fields: (row) => fieldsOf(FACTION_COLUMNS, row),
+};
+
+// ---- item (the catalogue) --------------------------------------------------------------------
+
+/** A count of one or more, as the server's checked_quantity. */
+const quantity = z.number().int().min(1, 'A quantity is a whole number of one or more');
+const amount = z.number().min(0, 'Can’t be below zero').nullable();
+
+const ITEM_COLUMNS: Columns = {
+  name: plain('name'),
+  description: plain('description'),
+  entry: plain('entry'),
+  kind: plain('kind'),
+  weight: plain('weight'),
+  base_value: plain('baseValue'),
+  stack_size: plain('stackSize'),
+  campaign_id: plain('campaignId'),
+};
+const itemCreate = z.object({
+  name,
+  description: z.string().default(''),
+  entry: entry.optional(),
+  kind: kindOf(ITEM_KINDS).default(null),
+  weight: amount.default(null),
+  base_value: amount.default(null),
+  stack_size: quantity.default(1),
+  campaign_id: reference.default(null),
+});
+const itemUpdate = z
+  .object({
+    name,
+    description: z.string(),
+    entry,
+    kind: kindOf(ITEM_KINDS),
+    weight: amount,
+    base_value: amount,
+    stack_size: quantity,
+    campaign_id: reference,
+  })
+  .partial();
+type ItemRow = Prisma.ItemGetPayload<object>;
+
+export const items: ResourceSpec<ItemRow, z.infer<typeof itemCreate>, z.infer<typeof itemUpdate>> = {
+  resource: 'item',
+  plural: 'items',
+  modelName: 'ItemModel',
+  createSchema: itemCreate,
+  updateSchema: itemUpdate,
+  list: (ownerId, query) =>
+    prisma.item.findMany({
+      where: {
+        createdById: ownerId,
+        ...filters(query, [
+          ['campaign_id', 'campaignId'],
+          ['kind', 'kind'],
+        ]),
+      },
+      orderBy: { name: 'asc' },
+    }),
+  find: (id, ownerId) => prisma.item.findFirst({ where: { id, createdById: ownerId } }),
+  async insert(ownerId, input, stamp) {
+    await checkWorld(ownerId, input.campaign_id);
+    return prisma.item.create({
+      data: { createdById: ownerId, ...written(ITEM_COLUMNS, input, stamp) } as Prisma.ItemUncheckedCreateInput,
+    });
+  },
+  async updateIfCurrent(id, version, input, stamp, userId) {
+    const owner = await prisma.item.findUnique({ where: { id }, select: { createdById: true } });
+    if (owner !== null) await checkWorld(owner.createdById, input.campaign_id);
+    const { count } = await prisma.item.updateMany({
+      where: { id, updatedAt: version },
+      data: written(ITEM_COLUMNS, input, stamp, userId) as Prisma.ItemUncheckedUpdateManyInput,
+    });
+    return count === 0 ? null : prisma.item.findUnique({ where: { id } });
+  },
+  async remove(id) {
+    // Its instances go with it, and with them whatever carried them.
+    const instances = await prisma.itemInstance.findMany({ where: { itemId: id }, select: { id: true } });
+    const ids = instances.map((one) => one.id);
+    await prisma.$transaction([
+      prisma.entityInventory.deleteMany({ where: { itemInstanceId: { in: ids } } }),
+      prisma.entityInventory.deleteMany({ where: { targetEntityType: 'item', targetEntityId: id } }),
+      prisma.itemInstance.deleteMany({ where: { itemId: id } }),
+      prisma.item.delete({ where: { id } }),
+    ]);
+  },
+  fields: (row) => fieldsOf(ITEM_COLUMNS, row),
+};
+
+// ---- item_instance (one item in the world) ---------------------------------------------------
+
+const INSTANCE_COLUMNS: Columns = {
+  item_id: plain('itemId'),
+  location_id: plain('locationId'),
+  owner_person_id: plain('ownerPersonId'),
+  quantity: plain('quantity'),
+  durability: plain('durability'),
+};
+const instanceCreate = z.object({
+  item_id: reference.default(null),
+  location_id: reference.default(null),
+  owner_person_id: reference.default(null),
+  quantity: quantity.default(1),
+  durability: z.number().nullable().default(null),
+});
+const instanceUpdate = z
+  .object({ location_id: reference, owner_person_id: reference, quantity, durability: z.number().nullable() })
+  .partial();
+type InstanceRow = Prisma.ItemInstanceGetPayload<object>;
+
+async function checkOwned(
+  ownerId: string,
+  value: unknown,
+  count: (where: { id: string; createdById: string }) => Promise<number>,
+  message: string,
+  field: string,
+): Promise<void> {
+  if (typeof value !== 'string') return;
+  if ((await count({ id: value, createdById: ownerId })) === 0) throw validationError(message, field);
+}
+
+async function checkInstanceRefs(ownerId: string, input: Record<string, unknown>): Promise<void> {
+  await checkOwned(ownerId, input.item_id, (where) => prisma.item.count({ where }), 'That item is not one of yours', 'item_id');
+  await checkPlace(ownerId, input.location_id, 'location_id');
+  await checkOwned(
+    ownerId,
+    input.owner_person_id,
+    (where) => prisma.person.count({ where }),
+    'That person is not one of yours',
+    'owner_person_id',
+  );
+}
+
+export const itemInstances: ResourceSpec<InstanceRow, z.infer<typeof instanceCreate>, z.infer<typeof instanceUpdate>> = {
+  resource: 'item_instance',
+  plural: 'item_instances',
+  modelName: 'ItemInstanceModel',
+  createSchema: instanceCreate,
+  updateSchema: instanceUpdate,
+  list: (ownerId, query) =>
+    prisma.itemInstance.findMany({
+      where: {
+        createdById: ownerId,
+        ...filters(query, [
+          ['item_id', 'itemId'],
+          ['location_id', 'locationId'],
+          ['owner_person_id', 'ownerPersonId'],
+        ]),
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
+  find: (id, ownerId) => prisma.itemInstance.findFirst({ where: { id, createdById: ownerId } }),
+  async insert(ownerId, input, stamp) {
+    await checkInstanceRefs(ownerId, input);
+    return prisma.itemInstance.create({
+      data: { createdById: ownerId, ...written(INSTANCE_COLUMNS, input, stamp) } as Prisma.ItemInstanceUncheckedCreateInput,
+    });
+  },
+  async updateIfCurrent(id, version, input, stamp, userId) {
+    const owner = await prisma.itemInstance.findUnique({ where: { id }, select: { createdById: true } });
+    if (owner !== null) await checkInstanceRefs(owner.createdById, input);
+    const { count } = await prisma.itemInstance.updateMany({
+      where: { id, updatedAt: version },
+      data: written(INSTANCE_COLUMNS, input, stamp, userId) as Prisma.ItemInstanceUncheckedUpdateManyInput,
+    });
+    return count === 0 ? null : prisma.itemInstance.findUnique({ where: { id } });
+  },
+  async remove(id) {
+    await prisma.$transaction([
+      prisma.entityInventory.deleteMany({ where: { itemInstanceId: id } }),
+      prisma.itemInstance.delete({ where: { id } }),
+    ]);
+  },
+  fields: (row) => fieldsOf(INSTANCE_COLUMNS, row),
+};
+
+// ---- entity_inventory (what an entity carries, W8) -------------------------------------------
+
+const INVENTORY_COLUMNS: Columns = {
+  target_entity_type: plain('targetEntityType'),
+  target_entity_id: plain('targetEntityId'),
+  item_instance_id: plain('itemInstanceId'),
+  quantity: plain('quantity'),
+};
+const inventoryCreate = z.object({
+  target_entity_type: z.enum(ENTITY_TYPES as [string, ...string[]]),
+  target_entity_id: z.string().min(1),
+  item_instance_id: reference.default(null),
+  quantity: quantity.default(1),
+});
+const inventoryUpdate = z.object({ quantity }).partial();
+type InventoryRow = Prisma.EntityInventoryGetPayload<object>;
+
+export const entityInventories: ResourceSpec<InventoryRow, z.infer<typeof inventoryCreate>, z.infer<typeof inventoryUpdate>> = {
+  resource: 'entity_inventory',
+  plural: 'entity_inventories',
+  modelName: 'EntityInventoryModel',
+  createSchema: inventoryCreate,
+  updateSchema: inventoryUpdate,
+  list: (ownerId, query) =>
+    prisma.entityInventory.findMany({
+      where: {
+        createdById: ownerId,
+        ...filters(query, [
+          ['target_entity_type', 'targetEntityType'],
+          ['target_entity_id', 'targetEntityId'],
+          ['item_instance_id', 'itemInstanceId'],
+        ]),
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
+  find: (id, ownerId) => prisma.entityInventory.findFirst({ where: { id, createdById: ownerId } }),
+  async insert(ownerId, input, stamp) {
+    // The carrier is polymorphic, so unchecked here as on the server (OBJECT_PLAN §7); the
+    // instance it carries is a real reference, and must be one of the owner's.
+    await checkOwned(
+      ownerId,
+      input.item_instance_id,
+      (where) => prisma.itemInstance.count({ where }),
+      'That item is not one of yours',
+      'item_instance_id',
+    );
+    return prisma.entityInventory.create({
+      data: { createdById: ownerId, ...written(INVENTORY_COLUMNS, input, stamp) } as Prisma.EntityInventoryUncheckedCreateInput,
+    });
+  },
+  async updateIfCurrent(id, version, input, stamp, userId) {
+    const { count } = await prisma.entityInventory.updateMany({
+      where: { id, updatedAt: version },
+      data: written(INVENTORY_COLUMNS, input, stamp, userId) as Prisma.EntityInventoryUncheckedUpdateManyInput,
+    });
+    return count === 0 ? null : prisma.entityInventory.findUnique({ where: { id } });
+  },
+  async remove(id) {
+    await prisma.entityInventory.delete({ where: { id } });
+  },
+  fields: (row) => fieldsOf(INVENTORY_COLUMNS, row),
 };

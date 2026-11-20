@@ -14,6 +14,10 @@ export default defineConfig({
     // A runner job sets VITEST_MAX_WORKERS to its granted cores (standards page Gates).
     globals: true,
     exclude: ['**/node_modules/**', '.next/**', 'e2e/**', '**/*.stories.{ts,tsx}'],
+    // Inline the framework, so this app's module mocks (next/navigation in setup.ts) also reach the
+    // compiled framework code that imports them (standards page Testing).
+    // A RegExp is tested against the module's full path, so it matches the folder, not the name.
+    server: { deps: { inline: ['zephyrex', /\/node_modules\/@zephyrex\//] } },
   },
   resolve: {
     alias: {
