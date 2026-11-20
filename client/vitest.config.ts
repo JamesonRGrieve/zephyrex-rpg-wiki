@@ -7,9 +7,9 @@ export default defineConfig({
     environment: 'jsdom',
     // The framework's jsdom stand-ins and toast reset first, then this app's mocks.
     setupFiles: ['zephyrex/testing/setup', 'src/__tests__/setup.ts'],
-    // Forks, Vitest's default: on a loaded runner (58133, load ~50) a threads worker loading jsdom and
-    // the framework took longer to start than Vitest's fixed 60 s worker timeout, and no test ran;
-    // under forks the same file passed (2026-11-20).
+    // Forks, Vitest's default. Neither pool beats load: on 58133 at load ~50-70, on two niced cores,
+    // threads and then forks workers loading jsdom and the framework each missed Vitest's fixed 60 s
+    // start timeout and no test ran (2026-11-20). That is load: re-run on a quieter runner.
     pool: 'forks',
     // A runner job sets VITEST_MAX_WORKERS to its granted cores (standards page Gates).
     globals: true,
