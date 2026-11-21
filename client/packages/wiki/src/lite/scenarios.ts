@@ -11,7 +11,7 @@
  * transaction does it.
  */
 import type { Prisma } from '@prisma/client';
-import { apiErrorResponse, localOwner, notFound, parseBody, readJsonObject, STATUS, toDto } from '@zephyrex/lite';
+import { apiErrorResponse, localOwner, notFound, parseBody, readJsonObject, toDto } from '@zephyrex/lite';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -150,14 +150,58 @@ export async function instantiateCampaign(
 
 const start = z.object({ name: z.string().trim().min(1).nullish() });
 
-/** POST /v1/campaign/{id}/instantiate {"instantiate": {name?}} → 201 {campaign, id_map}. */
+/** A start, as the server's campaign_start rows: lite's copy is one quick transaction, so a start
+ * is done (or failed) before it's answered; kept in this process for GET /v1/campaign_start/{id}. */
+export interface CampaignStartRow {
+  id: string;
+  scenario_id: string;
+  campaign_id: string | null;
+  name: string | null;
+  state: 'running' | 'done' | 'failed';
+  done: number;
+  total: number;
+  step: string;
+  id_map: string | null;
+  error: string | null;
+}
+/** The server's START_STEPS count (rpg_core), so both editions report the same total. */
+const START_STEPS = 13;
+const starts = new Map<string, { ownerId: string; row: CampaignStartRow }>();
+
+/** POST /v1/campaign/{id}/instantiate {"instantiate": {name?}} → 202 {start}, as the server answers
+ * (there, the copy runs on in the background); GET /v1/campaign_start/{id} has the result. */
 export async function campaignInstantiatePost(request: NextRequest, context: Context): Promise<NextResponse> {
   try {
     const owner = localOwner(request);
     const id = (await context.params).id ?? '';
     const input = parseBody(start, await readJsonObject(request), 'instantiate');
     const { campaign, idMap } = await instantiateCampaign(owner.id, id, input.name ?? null);
-    return NextResponse.json({ campaign: toDto(campaigns, campaign), id_map: idMap }, { status: STATUS.CREATED });
+    const row: CampaignStartRow = {
+      id: crypto.randomUUID(),
+      scenario_id: id,
+      campaign_id: toDto(campaigns, campaign).id as string,
+      name: input.name ?? null,
+      state: 'done',
+      done: START_STEPS,
+      total: START_STEPS,
+      step: 'done',
+      id_map: JSON.stringify(idMap),
+      error: null,
+    };
+    starts.set(row.id, { ownerId: owner.id, row });
+    return NextResponse.json({ start: row }, { status: 202 });
+  } catch (error) {
+    return apiErrorResponse(error);
+  }
+}
+
+/** GET /v1/campaign_start/{id}: one's own start. */
+export async function campaignStartGet(request: NextRequest, context: Context): Promise<NextResponse> {
+  try {
+    const owner = localOwner(request);
+    const held = starts.get((await context.params).id ?? '');
+    if (held === undefined || held.ownerId !== owner.id) throw notFound('CampaignStartModel');
+    return NextResponse.json({ campaign_start: held.row });
   } catch (error) {
     return apiErrorResponse(error);
   }

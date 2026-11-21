@@ -421,7 +421,7 @@ them (rpg-ai `docs/DESIGN.md`, *Play-test rulings*, has the AI side). Each holds
   archetypes from templates, and a hand-off to VTT's RAW builder and back. (Planned; after the
   importers.)
 - **Batched importers.** Imports and copies write a record type at a time through plural creates
-  (server-framework a5121fa8 runs each entity's hooks), never one request per entity.
+  (server-framework a5121fa8 runs each entity's hooks; at most 100 a create), never one request per entity.
 
 ## Editions
 

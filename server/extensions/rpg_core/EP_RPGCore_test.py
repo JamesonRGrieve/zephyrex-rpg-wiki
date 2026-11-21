@@ -6,7 +6,7 @@ person's records invisible to another."""
 
 import json
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, Optional
 
 import pytest
 from fastapi.testclient import TestClient
@@ -962,6 +962,40 @@ class TestPictureLinks:
         assert server.get(f"/v1/world_entity?ids={ilsa['id']}", headers=_headers(person)).json()["world_entities"][0]["picture"] is None
 
 
+
+_STEPS_SEEN: list[tuple[float, str]] = []
+
+
+def _start(server: TestClient, user: Any, scenario_id: str, name: Optional[str] = None) -> dict[str, Any]:
+    """POST …/instantiate (202, a start), then its GET until it ends; the finished start. Each step
+    seen, with when, goes on _STEPS_SEEN (what a slow start spent its time on)."""
+    import time
+
+    accepted = server.post(f"/v1/campaign/{scenario_id}/instantiate", json={"instantiate": {"name": name} if name else {}}, headers=_headers(user))
+    assert accepted.status_code == 202, accepted.text
+    start = accepted.json()["start"]
+    # Running in the background, or (START_IN_BACKGROUND off) already ended.
+    assert start["scenario_id"] == scenario_id and start["state"] in ("running", "done", "failed"), start
+    began = time.monotonic()
+    deadline = began + 60
+    _STEPS_SEEN.clear()
+    while start["state"] == "running":
+        if not _STEPS_SEEN or _STEPS_SEEN[-1][1] != start["step"]:
+            _STEPS_SEEN.append((round(time.monotonic() - began, 1), str(start["step"])))
+        assert time.monotonic() < deadline, start
+        time.sleep(0.5)  # as the client polls (POLL_MS)
+        polled = server.get(f"/v1/campaign_start/{start['id']}", headers=_headers(user))
+        assert polled.status_code == 200, polled.text
+        start = polled.json()["campaign_start"]
+    return start
+
+
+def _started(server: TestClient, user: Any, start: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str]]:
+    """A done start's playthrough and id map."""
+    assert start["state"] == "done", start
+    campaign = server.get(f"/v1/campaign/{start['campaign_id']}", headers=_headers(user)).json()["campaign"]
+    return campaign, json.loads(start["id_map"])
+
 def _rows(body: dict[str, Any]) -> list[dict[str, Any]]:
     """A list answer's rows (its one list, whatever the resource's plural)."""
     return next(value for value in body.values() if isinstance(value, list))
@@ -989,10 +1023,7 @@ class TestCopyOnStart:
         _create(server, person, "entity_taxon", taxon_id=tag["id"], target_entity_type="person", target_entity_id=mira["id"])
         _create(server, person, "person", name="Mould", kind="npc", campaign_id=scenario["id"], is_template=True)
 
-        response = server.post(f"/v1/campaign/{scenario['id']}/instantiate", json={"instantiate": {"name": "The Flicker, run 1"}}, headers=_headers(person))
-        assert response.status_code == 201, response.text
-        started = response.json()
-        run, ids = started["campaign"], started["id_map"]
+        run, ids = _started(server, person, _start(server, person, scenario["id"], "The Flicker, run 1"))
         assert (run["name"], run["scenario_id"], run["is_scenario"], run["provenance"], run["setting_id"]) == ("The Flicker, run 1", scenario["id"], False, "official", setting["id"])
         assert ids[scenario["id"]] == run["id"] and canon["id"] not in ids
         copies = {
@@ -1028,7 +1059,7 @@ class TestCopyOnStart:
 
 class TestStartingWithPictures:
     """Prod, 2026-11-21: a scenario whose records have pictures failed every start (attachments refuse
-    plural creates), leaving a half-copied campaign. Pictures are attached one at a time, and a
+    plural creates then), leaving a half-copied campaign. Pictures are copied in one plural create, and a
     start that fails partway is undone."""
 
     @pytest.mark.usefixtures("memory_store")
@@ -1046,13 +1077,27 @@ class TestStartingWithPictures:
             )
             assert attached.status_code in (200, 201), attached.text
 
-        response = server.post(f"/v1/campaign/{scenario['id']}/instantiate", json={"instantiate": {"name": "Run 1"}}, headers=_headers(person))
-        assert response.status_code == 201, response.text
-        ids = response.json()["id_map"]
+        rank = server.post(
+            "/v1/record_metadata",
+            json={"record_metadata": {"target_entity_type": "person", "target_entity_id": captain["id"], "key": "Rank", "value": "Captain", "value_type": "text", "is_private": True}},
+            headers=_headers(person),
+        )
+        assert rank.status_code == 201, rank.text
+        first_start = _start(server, person, scenario["id"], "Run 1")
+        first, ids = _started(server, person, first_start)
         pictures = server.get(
             "/v1/attachment/of", params={"target_entity_type": "person", "target_entity_id": ids[captain["id"]], "role": "primary_image"}, headers=_headers(person)
         ).json()["attachments"]
         assert len(pictures) == 1
+
+        properties = server.get(
+            "/v1/record_metadata/of", params={"target_entity_type": "person", "target_entity_id": ids[captain["id"]]}, headers=_headers(person)
+        ).json()["metadata"]
+        assert [(row["key"], row["value"], row["is_private"]) for row in properties] == [("Rank", "Captain", True)]
+
+        # A start is its starter's alone.
+        other = create_user(server)
+        assert server.get(f"/v1/campaign_start/{first_start['id']}", headers=_headers(other)).status_code == 404
 
         # A start failing after the copies are made takes them all back.
         from zephyrex.extensions.rpg_core import Scenarios  # type: ignore[import-not-found]
@@ -1062,12 +1107,45 @@ class TestStartingWithPictures:
 
         monkeypatch.setattr(Scenarios, "finish", broken)
         before = {row["id"] for row in server.get("/v1/campaign", headers=_headers(person)).json()["campaigns"]}
-        failed = server.post(f"/v1/campaign/{scenario['id']}/instantiate", json={"instantiate": {"name": "Run 2"}}, headers=_headers(person))
-        assert failed.status_code == 500
+        failed = _start(server, person, scenario["id"], "Run 2")
+        assert (failed["state"], failed["error"]) == ("failed", "the second pass failed")
         after = {row["id"] for row in server.get("/v1/campaign", headers=_headers(person)).json()["campaigns"]}
         assert after == before
         people = [row for row in _rows(server.get("/v1/person", params={"limit": 500}, headers=_headers(person)).json()) if row["name"] == "Captain Vell"]
-        assert sorted(row["campaign_id"] for row in people) == sorted([scenario["id"], response.json()["campaign"]["id"]])
+        assert sorted(row["campaign_id"] for row in people) == sorted([scenario["id"], first["id"]])
+
+
+class TestStartingFast:
+    """Zephyrex RPG, 2026-11-21: Voidship (224 records) took 45 s to start. A start is a handful of
+    plural creates, so a scenario of 120 records, each with a property and a picture, starts in a
+    few seconds."""
+
+    @pytest.mark.usefixtures("memory_store")
+    def test_a_large_scenario_starts_in_seconds(self, server: TestClient, person: Any) -> None:
+        import time
+
+        scenario = _create(server, person, "campaign", name="Big Ship", is_scenario=True)
+        asset = server.post("/v1/asset/upload", params={"name": "face.png"}, content=b"\x89PNG face", headers={**_headers(person), "Content-Type": "image/png"}).json()["asset"]
+        crew: list[dict[str, Any]] = []
+        # 120 people: more than one plural create (at most 100), so the start's creates chunk too.
+        for first in (0, 60):
+            made = server.post(
+                "/v1/person",
+                json={"persons": [{"name": f"Crew {number}", "kind": "npc", "campaign_id": scenario["id"]} for number in range(first, first + 60)]},
+                headers=_headers(person),
+            )
+            assert made.status_code in (200, 201), made.text
+            crew.extend(next(value for value in made.json().values() if isinstance(value, list)))
+        for one in crew:
+            server.post("/v1/record_metadata", json={"record_metadata": {"target_entity_type": "person", "target_entity_id": one["id"], "key": "Vault path", "value": f"Crew/{one['name']}.md", "is_private": True}}, headers=_headers(person))
+            server.post("/v1/attachment", json={"attachment": {"asset_id": asset["id"], "target_entity_type": "person", "target_entity_id": one["id"], "role": "primary_image"}}, headers=_headers(person))
+
+        started = time.monotonic()
+        _run, ids = _started(server, person, _start(server, person, scenario["id"]))
+        took = time.monotonic() - started
+        assert len(ids) >= 121
+        # About 8 s on the runner; 45 s for 224 records before (one write per property and picture).
+        assert took < 15, f"the start took {took:.1f} s: {_STEPS_SEEN}"
 
 
 class TestWhereTheyAre:

@@ -15,6 +15,10 @@ class HttpClient(Protocol):
     def request(self, method: str, url: str, **kwargs: Any) -> Any: ...
 
 
+# The most records one plural create takes (server-framework's MAX_BATCH_SIZE).
+BATCH = 100
+
+
 class ApiError(Exception):
     """The wiki refused a request: its status and its reason."""
 
@@ -80,7 +84,10 @@ class Api:
         if not rows:
             return []
         plural = self.plural(resource)
-        made: list[dict[str, Any]] = self._call("POST", f"/v1/{resource}", (200, 201), json={plural: rows}).json()[plural]
+        made: list[dict[str, Any]] = []
+        # A plural create takes at most BATCH records (the framework's MAX_BATCH_SIZE).
+        for start in range(0, len(rows), BATCH):
+            made.extend(self._call("POST", f"/v1/{resource}", (200, 201), json={plural: rows[start : start + BATCH]}).json()[plural])
         return made
 
     def update(self, resource: str, record_id: str, **fields: Any) -> dict[str, Any]:

@@ -88,23 +88,28 @@ def fields_of(manager: Any, row: Any, copying: Copying) -> tuple[dict[str, Any],
     return fields, later
 
 
-def copy_rows(manager: Any, rows: list[Any], copying: Copying, fixed: Optional[dict[str, Any]] = None, one_at_a_time: bool = False) -> list[Any]:
+# The most entities one plural create takes (server-framework's MAX_BATCH_SIZE).
+BATCH = 100
+
+
+def create_all(manager: Any, entities: list[dict[str, Any]]) -> list[Any]:
+    """Every entity made, in plural creates of at most BATCH each, in the order given."""
+    made: list[Any] = []
+    for start in range(0, len(entities), BATCH):
+        created = manager.create(entities=entities[start : start + BATCH])
+        made.extend(created if isinstance(created, list) else [created])
+    return made
+
+
+def copy_rows(manager: Any, rows: list[Any], copying: Copying, fixed: Optional[dict[str, Any]] = None) -> list[Any]:
     """The rows' copies, in one plural create (each runs the manager's hooks, as one create does, since
-    server-framework a5121fa8); each source id now names its copy. ``one_at_a_time`` for a manager
-    that refuses plural creates (attachments: "Attach one asset at a time")."""
+    server-framework a5121fa8; attachments too since a9ef4366); each source id now names its copy."""
     if not rows:
         return []
     prepared = [fields_of(manager, row, copying) for row in rows]
     entities = [{**fields, **(fixed or {})} for fields, _later in prepared]
-    made: list[Any] = []
-    if one_at_a_time:
-        for one in entities:
-            made.append(manager.create(**one))
-            copying.made.append((manager, str(made[-1].id)))
-    else:
-        created = manager.create(entities=entities)
-        made = created if isinstance(created, list) else [created]
-        copying.made.extend((manager, str(copy.id)) for copy in made)
+    made = create_all(manager, entities)
+    copying.made.extend((manager, str(copy.id)) for copy in made)
     for row, copy, (_fields, later) in zip(rows, made, prepared):
         copying.id_map[str(row.id)] = str(copy.id)
         if later:

@@ -254,6 +254,81 @@ class CampaignStartEnvelope(PlainModel):
     instantiate: CampaignStart
 
 
+class CampaignStartModel(ApplicationModel.Optional, UpdateMixinModel.Optional, metaclass=ModelMeta):
+    """A scenario being started in the background (operator, 2026-11-21: "make it async with the
+    progress bar and auto load it when it's done"): its state, its progress through START_STEPS,
+    and, when done, the playthrough and its id map; when failed, why (nothing is left behind)."""
+
+    Manager: ClassVar[Type["CampaignStartManager"]] = None
+    table_comment: ClassVar[str] = "A scenario being started in the background: state, progress, and the playthrough."
+
+    scenario_id: Optional[str] = Field(None, description="FK → campaigns.id; the scenario being started")
+    campaign_id: Optional[str] = Field(None, description="FK → campaigns.id; the playthrough, once made")
+    name: Optional[str] = Field(None, description="The playthrough's name as asked for")
+    state: Optional[str] = Field(None, description="running, done or failed")
+    done: Optional[int] = Field(None, description="Steps finished")
+    total: Optional[int] = Field(None, description="Steps in all")
+    step: Optional[str] = Field(None, description="The step under way (copying people, …)")
+    id_map: Optional[str] = Field(None, description="When done: each copied id → its copy's, as JSON text")
+    error: Optional[str] = Field(None, description="When failed: why")
+
+    class Create(BaseModel):
+        scenario_id: str = Field(...)
+        name: Optional[str] = None
+        state: Optional[str] = None
+        done: Optional[int] = None
+        total: Optional[int] = None
+        step: Optional[str] = None
+
+    class Update(BaseModel):
+        campaign_id: Optional[str] = None
+        state: Optional[str] = None
+        done: Optional[int] = None
+        step: Optional[str] = None
+        id_map: Optional[str] = None
+        error: Optional[str] = None
+
+    class Search(ApplicationModel.Search):
+        pass
+
+
+class CampaignStartAccepted(PlainModel):
+    start: dict[str, Any] = Field(..., description="The start: id, scenario_id, state running, done 0, total")
+
+
+class CampaignStartOne(PlainModel):
+    campaign_start: dict[str, Any] = Field(..., description="The start: state, done, total, step; campaign_id and id_map when done; error when failed")
+
+
+class CampaignStartManager(AbstractBLLManager, RouterMixin):
+    """GET /v1/campaign_start/{id}: one's own start, as the copy runs; its list. Made only by POST
+    /v1/campaign/{id}/instantiate."""
+
+    _model = CampaignStartModel
+    routes_to_register: ClassVar[list[RouteType] | None] = [RouteType.LIST]
+
+    @custom_route(
+        method="GET",
+        path="/{id}",
+        output_model=CampaignStartOne,
+        authentication_type="jwt",
+        expose_in=(ExposeIn.REST,),
+        openapi_tags=("Campaigns",),
+        summary="A start's progress, to the one who started it",
+    )
+    def progress_route(self, id: str) -> CampaignStartOne:
+        # Polled while the copy runs in this process: one row by id, read as SYSTEM and checked
+        # against its starter, so a poll costs little beside the copy (a permission-filtered read
+        # each half second slowed a 120-record start from 8 s to 50 s on the runner).
+        row = CampaignStartManager(requester_id=env("SYSTEM_ID"), model_registry=self.model_registry).get(id=id)
+        if str(getattr(row, "created_by_user_id", "") or "") != str(self.requester.id):
+            raise HTTPException(status_code=404, detail="CampaignStartModel not found")
+        return CampaignStartOne(campaign_start=row.model_dump(mode="json"))
+
+
+CampaignStartModel.Manager = CampaignStartManager
+
+
 class CampaignStarted(PlainModel):
     campaign: dict[str, Any] = Field(..., description="The new campaign, a playthrough of the scenario")
     id_map: dict[str, str] = Field(..., description="Each copied record's id (and the scenario's) → its copy's")
@@ -282,16 +357,16 @@ class CampaignManager(AbstractBLLManager, RouterMixin):
         method="POST",
         path="/{id}/instantiate",
         input_model=CampaignStartEnvelope,
-        output_model=CampaignStarted,
+        output_model=CampaignStartAccepted,
         authentication_type="jwt",
-        status_code=201,
+        status_code=202,
         expose_in=(ExposeIn.REST,),
         openapi_tags=("Campaigns",),
-        summary="Start a scenario: a new campaign with its own copy of every record and relation",
+        summary="Start a scenario in the background: a new campaign with its own copy of every record and relation (GET /v1/campaign_start/{id} for progress)",
     )
-    def instantiate_route(self, id: str, instantiate: CampaignStart) -> CampaignStarted:
+    def instantiate_route(self, id: str, instantiate: CampaignStart) -> CampaignStartAccepted:
         start = CampaignStart.model_validate(instantiate)
-        return instantiate_campaign(self.model_registry, str(self.requester.id), id, start.name)
+        return start_campaign(self.model_registry, str(self.requester.id), id, start.name)
 
     @custom_route(
         method="GET",
@@ -1881,7 +1956,9 @@ def _scenario_links() -> list[tuple[Any, tuple[str, ...]]]:
     ]
 
 
-def instantiate_campaign(model_registry: Any, requester_id: str, source_campaign_id: str, name: Optional[str] = None) -> CampaignStarted:
+def instantiate_campaign(
+    model_registry: Any, requester_id: str, source_campaign_id: str, name: Optional[str] = None, progress: Optional[Any] = None
+) -> CampaignStarted:
     """A playthrough of a scenario: a new campaign (its scenario_id the source's, its provenance the
     source's) with the requester's own copy of every record the scenario holds and every link
     between them, references turned to the copies (Scenarios.py). The setting's canon stays shared;
@@ -1892,7 +1969,7 @@ def instantiate_campaign(model_registry: Any, requester_id: str, source_campaign
     source = campaigns.get(id=source_campaign_id)
     copying = Copying()
     try:
-        made = _instantiate(model_registry, requester_id, campaigns, source, copying, name)
+        made = _instantiate(model_registry, requester_id, campaigns, source, copying, name, progress or (lambda *_args: None))
     except BaseException:
         # All or nothing: a start that fails partway leaves no half-copied campaign.
         undo(copying)
@@ -1900,8 +1977,27 @@ def instantiate_campaign(model_registry: Any, requester_id: str, source_campaign
     return CampaignStarted(campaign=_manager(model_registry, requester_id, CampaignManager).get(id=str(made.id)).model_dump(mode="json"), id_map=copying.id_map)
 
 
-def _instantiate(model_registry: Any, requester_id: str, campaigns: Any, source: Any, copying: Any, name: Optional[str]) -> Any:
-    """instantiate_campaign's copy, each thing it makes recorded on ``copying`` (for undo)."""
+# A start's steps, in order, as its progress names them (each record kind, then the rest).
+START_STEPS = (
+    "copying tags",
+    "copying statuses",
+    "copying places",
+    "copying organisations",
+    "copying people",
+    "copying items",
+    "copying journals",
+    "copying hooks",
+    "copying relationships and links",
+    "copying what they carry",
+    "copying properties",
+    "copying pictures",
+    "finishing",
+)
+
+
+def _instantiate(model_registry: Any, requester_id: str, campaigns: Any, source: Any, copying: Any, name: Optional[str], progress: Any) -> Any:
+    """instantiate_campaign's copy, each thing it makes recorded on ``copying`` (for undo).
+    ``progress(step, done, campaign_id)`` is told each step as it starts (START_STEPS)."""
     from zephyrex.extensions.rpg_core.Scenarios import copy_rows, finish, touching  # type: ignore[import-not-found]
 
     source_campaign_id = str(source.id)
@@ -1922,8 +2018,11 @@ def _instantiate(model_registry: Any, requester_id: str, campaigns: Any, source:
     )
     copying.id_map[str(source.id)] = str(made.id)
     copying.made.append((campaigns, str(made.id)))
-    for manager, rows in gathered:
+    for done, (manager, rows) in enumerate(gathered):
+        progress(START_STEPS[done], done, str(made.id))
         copy_rows(manager, rows, copying)
+    step = len(gathered)
+    progress(START_STEPS[step], step, str(made.id))
     record_ids = [one for one in copying.id_map if one != str(source.id)]
     for manager_class, anchors in _scenario_links():
         manager = _manager(model_registry, requester_id, manager_class)
@@ -1931,10 +2030,64 @@ def _instantiate(model_registry: Any, requester_id: str, campaigns: Any, source:
         rows = touching(manager, anchors, list(copying.id_map))
         copying.pending.update(str(row.id) for row in rows)
         copy_rows(manager, rows, copying)
+    progress(START_STEPS[step + 1], step + 1, str(made.id))
     _copy_carried(model_registry, requester_id, record_ids, copying, copy_rows, touching)
-    _copy_record_extras(model_registry, requester_id, record_ids, copying)
+    _copy_record_extras(model_registry, requester_id, record_ids, copying, lambda offset: progress(START_STEPS[step + 2 + offset], step + 2 + offset, str(made.id)))
+    progress(START_STEPS[step + 4], step + 4, str(made.id))
     finish(copying)
     return made
+
+
+# Whether a start's copy runs in a background thread. Off for now: on the runner, with SQLite, a
+# copy in a thread waited on write locks while its progress was polled (a 120-record start: 8 s
+# inline, 50 s in a thread, stalls of 14 to 31 s even in its first step). On when that is solved
+# with Zephyrex Server (the copy's own process, a framework task runner, or the lock found).
+START_IN_BACKGROUND = False
+
+
+def start_campaign(model_registry: Any, requester_id: str, source_campaign_id: str, name: Optional[str] = None) -> CampaignStartAccepted:
+    """instantiate_campaign in the background, under the requester: answered at once with the
+    start (state running), its row updated at each step (and published to the scenario's room), and
+    done with the playthrough and its id map, or failed with why (the copy undone)."""
+    import contextvars
+    import json
+    import threading
+
+    # The scenario must be the requester's to read before anything starts (404 otherwise).
+    _manager(model_registry, requester_id, CampaignManager).get(id=source_campaign_id)
+    starts = _manager(model_registry, requester_id, CampaignStartManager)
+    row = starts.create(scenario_id=source_campaign_id, name=name, state="running", done=0, total=len(START_STEPS), step=START_STEPS[0])
+    start_id = str(row.id)
+
+    def report(step: str, done: int, campaign_id: str) -> None:
+        _manager(model_registry, requester_id, CampaignStartManager).update(id=start_id, step=step, done=done, campaign_id=campaign_id)
+
+    def run() -> None:
+        try:
+            started = instantiate_campaign(model_registry, requester_id, source_campaign_id, name, progress=report)
+        except Exception as error:  # noqa: BLE001 - the start's row says why; the copy was undone
+            detail = getattr(error, "detail", None) or str(error) or type(error).__name__
+            _manager(model_registry, requester_id, CampaignStartManager).update(id=start_id, state="failed", error=str(detail))
+            return
+        _manager(model_registry, requester_id, CampaignStartManager).update(
+            id=start_id,
+            state="done",
+            done=len(START_STEPS),
+            step="done",
+            campaign_id=str(started.campaign["id"]),
+            id_map=json.dumps(started.id_map),
+        )
+
+    if not START_IN_BACKGROUND:
+        # For now the copy runs before the answer (about 8 s for 120 records with their properties
+        # and pictures); the start comes back done, as lite's does, in the same shapes.
+        run()
+        return CampaignStartAccepted(start=_manager(model_registry, requester_id, CampaignStartManager).get(id=start_id).model_dump(mode="json"))
+    # Under the request's own context (its user, tenant and read-replica state), as the copy would
+    # run in the request itself; a bare thread starts without them.
+    context = contextvars.copy_context()
+    threading.Thread(target=context.run, args=(run,), name=f"campaign-start-{start_id}", daemon=True).start()
+    return CampaignStartAccepted(start=row.model_dump(mode="json"))
 
 
 def _copy_carried(model_registry: Any, requester_id: str, record_ids: list[str], copying: Any, copy_rows: Any, touching: Any) -> None:
@@ -1949,40 +2102,45 @@ def _copy_carried(model_registry: Any, requester_id: str, record_ids: list[str],
     copy_rows(holdings, held, copying)
 
 
-def _copy_record_extras(model_registry: Any, requester_id: str, record_ids: list[str], copying: Any) -> None:
-    """Each copied record's properties and pictures (the same uploaded assets, attached again)."""
+def _copy_record_extras(model_registry: Any, requester_id: str, record_ids: list[str], copying: Any, at: Any = lambda _offset: None) -> None:
+    """Each copied record's properties and pictures (the same uploaded assets, attached again), one
+    plural create each. Properties are stored as SYSTEM, as RecordMetadataManager.add_route stores
+    them; its checks hold by construction (the requester made the records just now, and each copy's
+    keys are its source's, so unique and within the limit), so the rows go in one create."""
+    from zephyrex.extensions.rpg_core.Scenarios import copy_rows, create_all, touching  # type: ignore[import-not-found]
     from zephyrex.logic.AbstractLogicManager.models import FieldComparison
 
     loaded = model_registry.loaded_extension_names()
+    at(0)
     if "metadata" in loaded and record_ids:
-        from zephyrex.extensions.metadata.BLL_Metadata import (  # type: ignore[import-not-found]
-            MetadataManager,
-            RecordMetadataManager,
-            RecordMetadataWrite,
-        )
+        from zephyrex.extensions.metadata.BLL_Metadata import MetadataManager  # type: ignore[import-not-found]
 
         rows = MetadataManager(requester_id=env("SYSTEM_ID"), model_registry=model_registry)
-        writer = RecordMetadataManager(requester_id=requester_id, model_registry=model_registry)
-        for row in rows.list(filters=[FieldComparison(rows.Model, "target_entity_id", "in", record_ids)]) or []:
-            writer.add_route(
-                RecordMetadataWrite(
-                    target_entity_type=row.target_entity_type,
-                    target_entity_id=copying.id_map[str(row.target_entity_id)],
-                    key=row.key,
-                    value=row.value,
-                    value_type=row.value_type,
-                    ordinal=row.ordinal,
-                    is_private=row.is_private,
-                )
+        held = rows.list(filters=[FieldComparison(rows.Model, "target_entity_id", "in", record_ids)]) or []
+        if held:
+            made = create_all(
+                rows,
+                [
+                    {
+                        "target_entity_type": row.target_entity_type,
+                        "target_entity_id": copying.id_map[str(row.target_entity_id)],
+                        "key": row.key,
+                        "value": row.value,
+                        "value_type": row.value_type,
+                        "ordinal": row.ordinal,
+                        "is_private": row.is_private,
+                    }
+                    for row in held
+                ],
             )
+            copying.made.extend((rows, str(one.id)) for one in made)
+    at(1)
     if "attachments" in loaded and record_ids:
         from zephyrex.extensions.attachments.BLL_Attachments import AttachmentManager  # type: ignore[import-not-found]
 
         links = _manager(model_registry, requester_id, AttachmentManager)
-        from zephyrex.extensions.rpg_core.Scenarios import copy_rows, touching  # type: ignore[import-not-found]
-
-        # Attachments refuse plural creates: each picture attached on its own.
-        copy_rows(links, touching(links, ("target_entity_id",), record_ids), copying, one_at_a_time=True)
+        # One plural create (server-framework a9ef4366 checks each and writes all or none).
+        copy_rows(links, touching(links, ("target_entity_id",), record_ids), copying)
 
 
 # ---------------------------------------------------------------------------
@@ -1992,3 +2150,5 @@ def _copy_record_extras(model_registry: Any, requester_id: str, record_ids: list
 # ---------------------------------------------------------------------------
 
 room_of(CampaignManager, lambda campaign: ("campaign", campaign.id))
+# A start's progress reaches the scenario's room (polling GET /v1/campaign_start/{id} is the fallback).
+room_of(CampaignStartManager, lambda start: ("campaign", start.scenario_id))

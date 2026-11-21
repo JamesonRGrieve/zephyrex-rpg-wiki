@@ -334,9 +334,14 @@ test.describe.serial('visual audit', () => {
     const placed = (await (await request.get(`/api/v1/world_entity?ids=${seeded.person},${seeded.location}`)).json()) as { world_entities: { location_id: string | null; parent_id: string | null }[] };
     expect(placed.world_entities.map((entity) => [entity.location_id, entity.parent_id !== null])).toEqual([[seeded.location, false], [null, true]]);
     // Copy on start: a playthrough of the scenario, every record its own copy, references turned to the copies.
+    // It answers 202 with a start; GET /v1/campaign_start/{id} has the playthrough (lite's is done at once).
     const started = await request.post(`/api/v1/campaign/${seeded.world}/instantiate`, { data: { instantiate: { name: 'The Salt Coast, run 1' } } });
-    expect(started.status(), await started.text()).toBe(201);
-    const run = (await started.json()) as { campaign: { id: string; scenario_id: string; is_scenario: boolean }; id_map: Record<string, string> };
+    expect(started.status(), await started.text()).toBe(202);
+    const { start } = (await started.json()) as { start: { id: string; state: string } };
+    const report = (await (await request.get(`/api/v1/campaign_start/${start.id}`)).json()) as { campaign_start: { state: string; campaign_id: string; id_map: string } };
+    expect(report.campaign_start.state).toBe('done');
+    const campaign = ((await (await request.get(`/api/v1/campaign/${report.campaign_start.campaign_id}`)).json()) as { campaign: { id: string; scenario_id: string; is_scenario: boolean } }).campaign;
+    const run = { campaign, id_map: JSON.parse(report.campaign_start.id_map) as Record<string, string> };
     expect([run.campaign.scenario_id, run.campaign.is_scenario, run.id_map[seeded.world]]).toEqual([seeded.world, false, run.campaign.id]);
     const copiedMira = (await (await request.get(`/api/v1/person/${run.id_map[seeded.person]}`)).json()) as { person: { name: string; campaign_id: string; location_id: string } };
     expect(copiedMira.person).toMatchObject({ name: 'Mira of the Lantern', campaign_id: run.campaign.id, location_id: run.id_map[seeded.location] });

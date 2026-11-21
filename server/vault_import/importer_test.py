@@ -164,3 +164,13 @@ def test_dh_campaign_types_read_as_the_contracts(server: TestClient, tmp_path: P
     assert kinds["hook"] == {"Find the Cell": "side_quest"}
     assert kinds["journal"]["GM Notes"] == "note"
     assert kinds["location"] == {"The Pale Wake": "vessel"}
+
+
+def test_a_plural_create_over_the_batch_limit_goes_in_chunks(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The framework takes at most 100 records a plural create; a vault's 430 people go in chunks."""
+    from vault_import import api as api_module
+
+    monkeypatch.setattr(api_module, "BATCH", 3)
+    campaign = api.create("campaign", name="Chunked")
+    made = api.create_many("person", [{"name": f"Crew {number}", "kind": "npc", "campaign_id": campaign["id"]} for number in range(7)])
+    assert [row["name"] for row in made] == [f"Crew {number}" for number in range(7)]
