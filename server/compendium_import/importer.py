@@ -21,7 +21,7 @@ from vault_import.markdown import to_plate
 COMPENDIUM_SOURCE = "Compendium source"
 OFFICIAL = "official"
 EDITION_LABELS = {"2024": "SRD 5.2.1 (2024)", "2014": "SRD 5.1 (2014)"}
-ENTITIES = ("journal", "item", "person")
+ENTITIES = ("journal", "item", "location", "person")
 
 
 @dataclass
@@ -38,6 +38,7 @@ class Merged:
     keywords: list[str] = field(default_factory=list)
     stats: dict[str, str] = field(default_factory=dict)  # property key → JSON
     paths: list[str] = field(default_factory=list)
+    picture: Optional[str] = None
 
     def markdown(self) -> str:
         first, *rest = self.texts or [("", "")]
@@ -57,12 +58,17 @@ class Merged:
         }
         if self.keywords:
             values["keywords"] = self.keywords[:50]
+        if self.picture:
+            values["picture_url"] = self.picture
         return values
 
 
-def merge(planned: list[tuple[Document, dnd5e.Planned]]) -> list[Merged]:
-    """One record per type and name, the 2024 text first."""
-    ordered = sorted(planned, key=lambda pair: 0 if pair[1].edition == "2024" else 1)
+def merge(planned: list[tuple[Document, dnd5e.Planned]], order: list[str], labels: dict[str, str]) -> list[Merged]:
+    """One record per type and name, the text of the edition (or line) first in ``order`` first,
+    each other one beneath under its label."""
+    rank = {edition: index for index, edition in enumerate(order)}
+    ordered = sorted(planned, key=lambda pair: rank.get(pair[1].edition, len(order)))
+    EDITION_LABELS = labels
     merged: dict[tuple[str, str], Merged] = {}
     for document, one in ordered:
         key = (one.entity, one.name.casefold())
@@ -82,14 +88,42 @@ def merge(planned: list[tuple[Document, dnd5e.Planned]]) -> list[Merged]:
         if stat is not None and stat[0] not in record.stats:
             record.stats[stat[0]] = stat[1]
         record.paths.append(document.path)
+        if record.picture is None and one.picture:
+            record.picture = one.picture
     return list(merged.values())
 
 
+@dataclass
+class System:
+    """What an import needs to know of a game system: how a document becomes a record, the order of
+    its editions or lines (the first's text leads), their labels, and any attribution journal."""
+
+    plan: Callable[[Document], tuple[Optional[dnd5e.Planned], Optional[str]]]
+    order: list[str]
+    labels: dict[str, str]
+    attribution: Optional[Merged] = None
+
+
+DND5E = System(
+    dnd5e.plan,
+    ["2024", "2014"],
+    EDITION_LABELS,
+    Merged("journal", "lore", dnd5e.ATTRIBUTION_NAME, texts=[("", dnd5e.ATTRIBUTION)], sources=[dnd5e.SRD_51, dnd5e.SRD_521], keywords=["licence", "attribution"]),
+)
+
+
+def wh40k_system() -> System:
+    from compendium_import import wh40k
+
+    return System(wh40k.plan, wh40k.ORDER, wh40k.LABELS)
+
+
 class CompendiumImporter:
-    def __init__(self, api: Api, setting_slug: str, dry_run: bool = False) -> None:
+    def __init__(self, api: Api, setting_slug: str, dry_run: bool = False, system: Optional[System] = None) -> None:
         self.api = api
         self.setting_slug = setting_slug
         self.dry_run = dry_run
+        self.system = system or DND5E
         self.report = Report()
         self._taxa: dict[str, str] = {}
 
@@ -99,16 +133,17 @@ class CompendiumImporter:
             raise ValueError(f"No setting has the slug {self.setting_slug!r}")
         return str(found[0]["id"])
 
-    def run(self, documents: list[Document], plan: Callable[[Document], tuple[Optional[dnd5e.Planned], Optional[str]]] = dnd5e.plan) -> Report:
+    def run(self, documents: list[Document]) -> Report:
         planned: list[tuple[Document, dnd5e.Planned]] = []
         for document in documents:
-            one, why = plan(document)
+            one, why = self.system.plan(document)
             if one is None:
                 self.report.skipped.append((document.path, why or "not imported"))
             else:
                 planned.append((document, one))
-        records = merge(planned)
-        records.append(Merged("journal", "lore", dnd5e.ATTRIBUTION_NAME, texts=[("", dnd5e.ATTRIBUTION)], sources=[dnd5e.SRD_51, dnd5e.SRD_521], keywords=["licence", "attribution"]))
+        records = merge(planned, self.system.order, self.system.labels)
+        if self.system.attribution is not None:
+            records.append(self.system.attribution)
         setting_id = self._setting()
         for entity in ENTITIES:
             self._import(entity, [one for one in records if one.entity == entity], setting_id)

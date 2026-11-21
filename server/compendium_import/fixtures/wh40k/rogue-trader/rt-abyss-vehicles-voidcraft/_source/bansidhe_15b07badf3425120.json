@@ -1,0 +1,83 @@
+{
+  "name": "Bansidhe",
+  "type": "rt-voidcraft",
+  "img": "systems/wh40k-rpg/packs/images/bestiary/rt/bansidhe.webp",
+  "system": {
+    "size": 10,
+    "crew": {
+      "population": 100,
+      "crewRating": 30,
+      "morale": {
+        "max": 100,
+        "value": 100
+      }
+    },
+    "speed": 5,
+    "manoeuvrability": 5,
+    "detection": 10,
+    "armour": 20,
+    "space": {
+      "total": 0,
+      "used": 0
+    },
+    "shipPoints": {
+      "spent": 0,
+      "budget": 0
+    },
+    "weaponCapacity": {
+      "prow": 0,
+      "dorsal": 0,
+      "port": 0,
+      "starboard": 0,
+      "keel": 0
+    },
+    "notes": {
+      "rt": ""
+    },
+    "source": {
+      "rt": {
+        "provenance": "raw",
+        "book": "RT: Edge of the Abyss",
+        "page": "112"
+      }
+    },
+    "description": {
+      "rt": {
+        "value": "<p>Placeholder text for Bansidhe (rt).</p>"
+      }
+    },
+    "gameSystem": "rt",
+    "hullClass": "Starship",
+    "hullIntegrity": {
+      "max": 70,
+      "value": 70
+    },
+    "turretRating": 2,
+    "voidShields": 0,
+    "locomotion": "voidship",
+    "gameSystems": [
+      "rt"
+    ],
+    "type": "vehicle"
+  },
+  "effects": [],
+  "items": [],
+  "flags": {},
+  "_id": "15b07badf3425120",
+  "prototypeToken": {
+    "texture": {
+      "src": "systems/wh40k-rpg/packs/images/bestiary/rt/bansidhe.webp"
+    },
+    "ring": {
+      "enabled": true
+    },
+    "flags": {
+      "wh40k-rpg": {
+        "tokenFrame": {
+          "cx": 0.5,
+          "cy": 0.5
+        }
+      }
+    }
+  }
+}

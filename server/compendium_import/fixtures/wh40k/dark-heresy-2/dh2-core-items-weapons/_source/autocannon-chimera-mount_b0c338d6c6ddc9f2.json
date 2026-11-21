@@ -1,0 +1,120 @@
+{
+  "name": "Autocannon (Chimera Mount)",
+  "type": "weapon",
+  "img": "https://cdn.jsdelivr.net/gh/game-icons/icons@master/skoll/machine-gun.svg",
+  "system": {
+    "identifier": "autocannon-chimera-mount",
+    "variantOf": "Compendium.wh40k-rpg.dh2-core-items-weapons.Item.l7M8n9O0p1Q2r3S4",
+    "class": "heavy",
+    "type": "solid-projectile",
+    "twoHanded": true,
+    "melee": false,
+    "attack": {
+      "type": "ranged",
+      "characteristic": "ballisticSkill",
+      "modifier": 0,
+      "range": {
+        "value": 300,
+        "units": "m",
+        "special": ""
+      },
+      "rateOfFire": {
+        "single": true,
+        "semi": 3,
+        "full": 0
+      }
+    },
+    "damage": {
+      "formula": "3d10",
+      "type": "impact",
+      "bonus": 8,
+      "penetration": 6
+    },
+    "special": [
+      "reliable"
+    ],
+    "clip": {
+      "max": 40,
+      "value": 40,
+      "type": "shell"
+    },
+    "reload": "2-full",
+    "weight": 40,
+    "availability": "very-rare",
+    "craftsmanship": "common",
+    "quantity": 1,
+    "cost": {
+      "dh1": {
+        "throneGelt": null
+      },
+      "dh2": {
+        "influence": null,
+        "homebrew": {
+          "requisition": null,
+          "throneGelt": null
+        }
+      },
+      "rt": {
+        "profitFactor": null,
+        "homebrew": {
+          "throneGelt": null
+        }
+      },
+      "dw": {
+        "requisition": null,
+        "homebrew": {
+          "throneGelt": null
+        }
+      },
+      "bc": {
+        "infamy": null,
+        "homebrew": {
+          "throneGelt": null
+        }
+      },
+      "ow": {
+        "logistics": null,
+        "homebrew": {
+          "throneGelt": null
+        }
+      }
+    },
+    "description": {
+      "dh2": {
+        "value": "<p>Placeholder text for Autocannon (Chimera Mount) (dh2).</p>",
+        "chat": "",
+        "summary": ""
+      }
+    },
+    "modifications": [],
+    "notes": {
+      "dh2": "<p>Placeholder text for Autocannon (Chimera Mount) (dh2).</p>"
+    },
+    "source": {
+      "dh2": {
+        "provenance": "raw",
+        "book": "DH2: Core Rulebook",
+        "page": "191"
+      }
+    },
+    "requiredTraining": {
+      "dh2": ""
+    },
+    "gameSystems": [
+      "dh2"
+    ],
+    "state": {
+      "equipped": false,
+      "stowed": false,
+      "container": ""
+    },
+    "cue": {
+      "preset": "solid",
+      "sounds": []
+    }
+  },
+  "effects": [],
+  "flags": {},
+  "_id": "b0c338d6c6ddc9f2",
+  "items": []
+}

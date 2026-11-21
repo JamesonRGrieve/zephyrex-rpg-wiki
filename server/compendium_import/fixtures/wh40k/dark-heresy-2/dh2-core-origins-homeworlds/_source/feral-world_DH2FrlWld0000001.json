@@ -1,0 +1,163 @@
+{
+  "name": "Feral World",
+  "type": "originPath",
+  "img": "https://cdn.jsdelivr.net/gh/game-icons/icons@master/lorc/interstellar-path.svg",
+  "system": {
+    "identifier": "feral-world",
+    "step": "homeWorld",
+    "stepIndex": 1,
+    "description": {
+      "dh2": {
+        "value": "<p>Placeholder text for Feral World (dh2).</p>"
+      },
+      "dh1": {
+        "value": "<p>Placeholder text for Feral World (dh1).</p>"
+      }
+    },
+    "requirements": {
+      "text": "Origin Path: Homeworld",
+      "previousSteps": [],
+      "excludedSteps": []
+    },
+    "grants": {
+      "dh2": {
+        "woundsFormula": "9+1d5",
+        "fateFormula": "2",
+        "fateThreshold": 2,
+        "blessedByEmperor": false,
+        "skills": [],
+        "talents": [],
+        "traits": [],
+        "aptitudes": [
+          "Toughness"
+        ],
+        "equipment": [],
+        "specialAbilities": [
+          {
+            "name": "The Old Ways",
+            "description": "Placeholder text."
+          }
+        ],
+        "choices": []
+      },
+      "dh1": {
+        "woundsFormula": "9+1d5",
+        "fateFormula": "(1-4|=1),(5-8|=2),(9-10|=2)",
+        "fateThreshold": 0,
+        "blessedByEmperor": false,
+        "skills": [
+          {
+            "name": "Speak Language",
+            "specialization": "Tribal Dialect",
+            "level": "trained"
+          }
+        ],
+        "talents": [],
+        "traits": [],
+        "aptitudes": [],
+        "equipment": [],
+        "specialAbilities": [
+          {
+            "name": "Iron Stomach",
+            "description": "Placeholder text."
+          },
+          {
+            "name": "Primitive",
+            "description": "Placeholder text."
+          },
+          {
+            "name": "Rite of Passage",
+            "description": "Placeholder text."
+          },
+          {
+            "name": "Wilderness Savvy",
+            "description": "Placeholder text."
+          }
+        ],
+        "choices": []
+      }
+    },
+    "modifiers": {
+      "dh2": {
+        "characteristics": {
+          "strength": 5,
+          "toughness": 5,
+          "influence": -5
+        },
+        "skills": {},
+        "combat": {},
+        "resources": {
+          "wounds": 0,
+          "fate": 0,
+          "insanity": 0,
+          "corruption": 0
+        },
+        "other": [
+          {
+            "name": "Influence",
+            "value": -5
+          }
+        ],
+        "situational": {
+          "characteristics": [],
+          "skills": [],
+          "combat": []
+        }
+      },
+      "dh1": {
+        "characteristics": {
+          "strength": 5,
+          "toughness": 5,
+          "willpower": -5,
+          "fellowship": -5
+        },
+        "skills": {},
+        "combat": {},
+        "resources": {
+          "wounds": 0,
+          "fate": 0,
+          "insanity": 0,
+          "corruption": 0
+        },
+        "other": [],
+        "situational": {
+          "characteristics": [],
+          "skills": [],
+          "combat": []
+        }
+      }
+    },
+    "effectText": "",
+    "notes": {
+      "dh2": "<p>Placeholder text for Feral World (dh2).</p>",
+      "dh1": "<p>Placeholder text for Feral World (dh1).</p>"
+    },
+    "selectedChoices": {},
+    "activeModifiers": [],
+    "positions": [],
+    "gameSystem": "dh2",
+    "homebrew": {
+      "throneGelt": "1d10"
+    },
+    "gameSystems": [
+      "dh2",
+      "dh1"
+    ],
+    "source": {
+      "dh2": {
+        "provenance": "raw",
+        "book": "DH2: Core Rulebook",
+        "page": "31"
+      },
+      "dh1": {
+        "provenance": "raw",
+        "book": "DH: Core Rulebook",
+        "page": "14"
+      }
+    }
+  },
+  "effects": [],
+  "flags": {},
+  "_id": "DH2FrlWld0000001",
+  "items": []
+}

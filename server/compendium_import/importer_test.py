@@ -84,3 +84,36 @@ def test_a_dry_run_writes_nothing(server: TestClient) -> None:
     assert report.created == ["journal Alarm", f"journal {dnd5e.ATTRIBUTION_NAME}"]
     [setting] = [one for one in api.list("setting") if one.get("slug") == "dnd"]
     assert "Alarm" not in _canon(api, "journal", setting["id"])
+
+
+def test_the_40k_packs_import_raw_only_merged_across_lines(server: TestClient) -> None:
+    from compendium_import import wh40k
+    from compendium_import.importer import wh40k_system
+
+    user = create_user(server)
+    api = Api(server, {"Authorization": f"Bearer {user.jwt}"})
+    documents = wh40k.read_lines(Path(__file__).parent / "fixtures" / "wh40k")
+    report = CompendiumImporter(api, "warhammer-40000", system=wh40k_system()).run(documents)
+    assert report.refused == [], report.refused
+    # A homebrew-only condition stays out: only the printed books come in.
+    assert [why for _path, why in report.skipped] == ["no printed-book (raw) source"]
+    assert sorted(report.created) == sorted(
+        [
+            "journal Resistance",
+            "journal Feral World",
+            "item Autocannon (Chimera Mount)",
+            "location Bansidhe",
+            "person Adeptus Arbites Arbitrator",
+            "person Chimera Armoured Transport",
+        ]
+    )
+    [setting] = [one for one in api.list("setting") if one.get("slug") == "warhammer-40000"]
+    resistance = _canon(api, "journal", setting["id"])["Resistance"]
+    # DH2's text first, Dark Heresy's beneath; every printed book named.
+    assert "DH2: Core Rulebook, p. 131" in resistance["source"] and "DH: Core Rulebook, p. 122" in resistance["source"]
+    assert "Dark Heresy" in resistance["entry"]
+    assert _canon(api, "location", setting["id"])["Bansidhe"]["kind"] == "vessel"
+    chimera = _canon(api, "person", setting["id"])["Chimera Armoured Transport"]
+    assert (chimera["kind"], chimera["picture_url"]) == ("vehicle", "https://static.wikia.nocookie.net/warhammer40k/images/0/06/Chimera01.png")
+    again = CompendiumImporter(api, "warhammer-40000", system=wh40k_system()).run(wh40k.read_lines(Path(__file__).parent / "fixtures" / "wh40k"))
+    assert (again.created, again.updated) == ([], [])

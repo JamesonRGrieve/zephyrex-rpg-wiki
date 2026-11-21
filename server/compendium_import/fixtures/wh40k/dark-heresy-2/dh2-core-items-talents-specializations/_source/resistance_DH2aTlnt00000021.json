@@ -1,0 +1,94 @@
+{
+  "name": "Resistance",
+  "type": "talent",
+  "img": "https://cdn.jsdelivr.net/gh/game-icons/icons@master/lorc/turtle-shell.svg",
+  "system": {
+    "identifier": "resistance",
+    "category": {
+      "dh2": "general",
+      "bc": "general"
+    },
+    "source": {
+      "dh2": {
+        "provenance": "raw",
+        "book": "DH2: Core Rulebook",
+        "page": "131"
+      },
+      "bc": {
+        "provenance": "raw",
+        "book": "BC: Core Rulebook",
+        "page": "76"
+      }
+    },
+    "description": {
+      "dh2": "<p>Placeholder text for Resistance (dh2).</p>",
+      "bc": "<p>Placeholder text for Resistance (bc).</p>"
+    },
+    "tier": 1,
+    "benefit": "<p>Placeholder text for Resistance.</p>",
+    "aptitudes": [
+      "Toughness",
+      "Defence"
+    ],
+    "prerequisites": {
+      "text": "None",
+      "characteristics": {},
+      "skills": {},
+      "talents": []
+    },
+    "cost": 0,
+    "isPassive": true,
+    "stackable": true,
+    "rank": 1,
+    "specialization": "",
+    "variantOf": "",
+    "notes": {
+      "dh2": "<p>Placeholder text for Resistance (dh2).</p>",
+      "bc": "<p>Placeholder text for Resistance (bc).</p>"
+    },
+    "rollConfig": {
+      "characteristic": "",
+      "skill": "",
+      "modifier": 0,
+      "description": ""
+    },
+    "modifiers": {
+      "characteristics": {},
+      "skills": {},
+      "combat": {
+        "attack": 0,
+        "damage": 0,
+        "penetration": 0,
+        "defense": 0,
+        "initiative": 0,
+        "speed": 0
+      },
+      "resources": {
+        "wounds": 0,
+        "fate": 0,
+        "insanity": 0,
+        "corruption": 0
+      },
+      "other": [],
+      "situational": {
+        "characteristics": [],
+        "skills": [],
+        "combat": []
+      }
+    },
+    "grants": {
+      "skills": [],
+      "talents": [],
+      "traits": [],
+      "specialAbilities": []
+    },
+    "gameSystems": [
+      "dh2",
+      "bc"
+    ]
+  },
+  "effects": [],
+  "flags": {},
+  "_id": "DH2aTlnt00000021",
+  "items": []
+}

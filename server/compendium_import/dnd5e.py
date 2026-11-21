@@ -59,6 +59,8 @@ class Planned:
     category: Optional[str] = None
     keywords: list[str] = field(default_factory=list)
     stats: Optional[dict[str, Any]] = None
+    # A real picture of it, by link (picture_url), where the pack gives one.
+    picture: Optional[str] = None
 
 
 def _description(document: Document) -> str:

@@ -1,0 +1,76 @@
+{
+  "name": "Frightened",
+  "type": "condition",
+  "img": "icons/svg/terror.svg",
+  "system": {
+    "identifier": "frightened",
+    "nature": "harmful",
+    "effect": {
+      "rt": "<p>Placeholder text for Frightened (rt).</p>",
+      "dh2": "<p>Placeholder text for Frightened (dh2).</p>"
+    },
+    "removal": "Placeholder text.",
+    "stackable": false,
+    "stacks": 1,
+    "appliesTo": "self",
+    "duration": {
+      "rt": {
+        "value": 0,
+        "units": "permanent"
+      },
+      "dh2": {
+        "value": 0,
+        "units": "permanent"
+      }
+    },
+    "description": {
+      "rt": {
+        "value": "<p>Placeholder text for Frightened (rt).</p>"
+      },
+      "dh2": {
+        "value": "<p>Placeholder text for Frightened (dh2).</p>"
+      }
+    },
+    "modifiers": {
+      "characteristics": {},
+      "skills": {},
+      "combat": {}
+    },
+    "notes": {
+      "rt": "",
+      "dh2": ""
+    },
+    "gameSystems": [
+      "rt"
+    ],
+    "source": {
+      "rt": {
+        "provenance": "homebrew"
+      },
+      "dh2": {
+        "provenance": "homebrew",
+        "derivedFrom": "rt"
+      }
+    },
+    "visual": {
+      "preset": "frightened",
+      "tint": "",
+      "filter": "",
+      "overlay": "",
+      "intensity": {
+        "perStack": 0,
+        "max": 1
+      },
+      "sounds": []
+    }
+  },
+  "effects": [],
+  "flags": {
+    "rt": {
+      "generated": true,
+      "version": "2.0"
+    }
+  },
+  "_id": "UDxEcj4kUmlJcIbB",
+  "items": []
+}

@@ -1,0 +1,75 @@
+{
+  "name": "Chimera Armoured Transport",
+  "type": "dh2-terracraft",
+  "img": "https://static.wikia.nocookie.net/warhammer40k/images/0/06/Chimera01.png",
+  "system": {
+    "vehicleClass": "ground",
+    "size": 7,
+    "sizeDescriptor": "Massive",
+    "footprint": {
+      "length": 6.9,
+      "width": 5.7
+    },
+    "faction": "",
+    "subfaction": "",
+    "type": "vehicle",
+    "threatLevel": 30,
+    "armour": {
+      "front": {
+        "value": 30,
+        "descriptor": ""
+      },
+      "side": {
+        "value": 22,
+        "descriptor": ""
+      },
+      "rear": {
+        "value": 16,
+        "descriptor": ""
+      }
+    },
+    "speed": {
+      "cruising": 70,
+      "tactical": 15,
+      "notes": ""
+    },
+    "crew": {
+      "required": 3,
+      "notes": "Placeholder text."
+    },
+    "passengers": 12,
+    "manoeuverability": 0,
+    "carryingCapacity": 0,
+    "integrity": {
+      "max": 35,
+      "value": 35,
+      "critical": 0
+    },
+    "weapons": "Placeholder text.",
+    "specialRules": "<p>Placeholder text for Chimera Armoured Transport.</p>",
+    "traitsText": "<p>Placeholder text for Chimera Armoured Transport.</p>",
+    "availability": "extremely-rare",
+    "source": {
+      "dh2": {
+        "provenance": "raw",
+        "book": "DH2: Core Rulebook",
+        "page": "191",
+        "errata": true
+      }
+    },
+    "gameSystems": [
+      "dh2"
+    ],
+    "gameSystem": "dh2",
+    "locomotion": "tracked"
+  },
+  "effects": [],
+  "items": [],
+  "flags": {},
+  "_id": "a6b4DgPtJNWYE0f2",
+  "prototypeToken": {
+    "texture": {
+      "src": "https://static.wikia.nocookie.net/warhammer40k/images/0/06/Chimera01.png"
+    }
+  }
+}

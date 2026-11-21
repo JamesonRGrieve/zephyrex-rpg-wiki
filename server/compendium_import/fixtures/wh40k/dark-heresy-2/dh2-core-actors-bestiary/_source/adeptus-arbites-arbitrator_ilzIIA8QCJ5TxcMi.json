@@ -1,0 +1,131 @@
+{
+  "name": "Adeptus Arbites Arbitrator",
+  "type": "dh2-npc",
+  "img": "icons/svg/mystery-man.svg",
+  "system": {
+    "characteristics": {
+      "ws": 44,
+      "bs": 34,
+      "s": 33,
+      "t": 48,
+      "ag": 31,
+      "int": 30,
+      "per": 38,
+      "wp": 33,
+      "fel": 28
+    },
+    "tier": "elite",
+    "threatLevel": 8,
+    "wounds": {
+      "max": 13,
+      "value": 13,
+      "critical": 0
+    },
+    "size": 4,
+    "move": "3/6/9/18",
+    "armourPoints": "H5 AR5 AL5 B5 LR5 LL5",
+    "skills": "Placeholder text.",
+    "training": "",
+    "weapons": {
+      "mode": "embedded",
+      "simple": []
+    },
+    "description": {
+      "dh2": {
+        "value": "<p>Placeholder text for Adeptus Arbites Arbitrator (dh2).</p>"
+      }
+    },
+    "gameSystem": "dh2",
+    "gameSystems": [
+      "dh2"
+    ],
+    "source": {
+      "dh2": {
+        "provenance": "raw",
+        "book": "DH2: Core Rulebook",
+        "page": "384"
+      }
+    },
+    "trainedSkills": {
+      "athletics": {
+        "name": "Athletics",
+        "characteristic": "strength",
+        "advance": 1,
+        "trained": true,
+        "plus10": false,
+        "plus20": false,
+        "plus30": false,
+        "bonus": 0
+      },
+      "awareness": {
+        "name": "Awareness",
+        "characteristic": "perception",
+        "advance": 2,
+        "trained": true,
+        "plus10": true,
+        "plus20": false,
+        "plus30": false,
+        "bonus": 0
+      },
+      "commonLore": {
+        "name": "Common Lore (Underworld)",
+        "characteristic": "intelligence",
+        "advance": 3,
+        "trained": true,
+        "plus10": true,
+        "plus20": true,
+        "plus30": false,
+        "bonus": 0
+      },
+      "dodge": {
+        "name": "Dodge",
+        "characteristic": "agility",
+        "advance": 1,
+        "trained": true,
+        "plus10": false,
+        "plus20": false,
+        "plus30": false,
+        "bonus": 0
+      },
+      "inquiry": {
+        "name": "Inquiry",
+        "characteristic": "fellowship",
+        "advance": 2,
+        "trained": true,
+        "plus10": true,
+        "plus20": false,
+        "plus30": false,
+        "bonus": 0
+      },
+      "interrogation": {
+        "name": "Interrogation",
+        "characteristic": "willpower",
+        "advance": 2,
+        "trained": true,
+        "plus10": true,
+        "plus20": false,
+        "plus30": false,
+        "bonus": 0
+      },
+      "intimidate": {
+        "name": "Intimidate",
+        "characteristic": "strength",
+        "advance": 2,
+        "trained": true,
+        "plus10": true,
+        "plus20": false,
+        "plus30": false,
+        "bonus": 0
+      }
+    }
+  },
+  "effects": [],
+  "flags": {},
+  "_id": "ilzIIA8QCJ5TxcMi",
+  "items": [],
+  "prototypeToken": {
+    "texture": {
+      "src": "icons/svg/mystery-man.svg"
+    }
+  }
+}

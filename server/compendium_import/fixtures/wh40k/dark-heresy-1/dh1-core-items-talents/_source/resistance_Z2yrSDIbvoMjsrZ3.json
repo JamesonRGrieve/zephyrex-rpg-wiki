@@ -1,0 +1,76 @@
+{
+  "name": "Resistance",
+  "type": "talent",
+  "img": "https://cdn.jsdelivr.net/gh/game-icons/icons@master/delapouite/star-medal.svg",
+  "system": {
+    "identifier": "resistance",
+    "category": {
+      "dh1": "general"
+    },
+    "source": {
+      "dh1": {
+        "provenance": "raw",
+        "book": "DH: Core Rulebook",
+        "page": "122"
+      }
+    },
+    "description": {
+      "dh1": {
+        "value": "<p>Placeholder text for Resistance (dh1).</p>"
+      }
+    },
+    "tier": 1,
+    "benefit": "<p>Placeholder text for Resistance.</p>",
+    "aptitudes": [],
+    "prerequisites": {
+      "text": "—",
+      "characteristics": {},
+      "skills": [],
+      "talents": []
+    },
+    "cost": 100,
+    "isPassive": true,
+    "stackable": true,
+    "rank": 1,
+    "specialization": "",
+    "notes": {
+      "dh1": ""
+    },
+    "rollConfig": {
+      "characteristic": "",
+      "skill": "",
+      "modifier": 0,
+      "description": ""
+    },
+    "modifiers": {
+      "characteristics": {},
+      "skills": {},
+      "combat": {},
+      "resources": {
+        "wounds": 0,
+        "fate": 0,
+        "insanity": 0,
+        "corruption": 0
+      },
+      "other": [],
+      "situational": {
+        "characteristics": [],
+        "skills": [],
+        "combat": []
+      }
+    },
+    "grants": {
+      "skills": [],
+      "talents": [],
+      "traits": [],
+      "specialAbilities": []
+    },
+    "gameSystems": [
+      "dh1"
+    ]
+  },
+  "effects": [],
+  "flags": {},
+  "_id": "Z2yrSDIbvoMjsrZ3",
+  "items": []
+}
