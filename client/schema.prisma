@@ -57,6 +57,7 @@ model Location {
   /// With no campaign: the setting's canon (S6).
   settingId   String?
   canonLevel  String?
+  isTemplate  Boolean?
   /// The person it belongs to: their equipment slots and body parts (what they wear sits there).
   associatedPersonId String?
   createdAt    DateTime @default(now())
@@ -85,6 +86,7 @@ model Person {
   /// With no campaign: the setting's canon (S6).
   settingId   String?
   canonLevel  String?
+  isTemplate  Boolean?
   locationId   String?
   gender       String?
   birthDate    DateTime?
@@ -114,6 +116,7 @@ model Faction {
   /// With no campaign: the setting's canon (S6).
   settingId   String?
   canonLevel  String?
+  isTemplate  Boolean?
   createdAt    DateTime @default(now())
   updatedAt    DateTime
   updatedById  String?
@@ -142,6 +145,7 @@ model Item {
   /// With no campaign: the setting's canon (S6).
   settingId   String?
   canonLevel  String?
+  isTemplate  Boolean?
   createdAt    DateTime @default(now())
   updatedAt    DateTime
   updatedById  String?
@@ -204,6 +208,7 @@ model Journal {
   /// With no campaign: the setting's canon (S6).
   settingId     String?
   canonLevel    String?
+  isTemplate    Boolean?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime
   updatedById    String?
@@ -255,6 +260,7 @@ model Hook {
   /// With no campaign: the setting's canon (S6).
   settingId     String?
   canonLevel    String?
+  isTemplate    Boolean?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime
   updatedById    String?
@@ -456,4 +462,42 @@ model RelationInfluence {
 
   @@index([relationshipId])
   @@index([hookId])
+}
+
+/// A record's own key/value (S4b; the framework's record_metadata): one row per key on a record,
+/// read by whoever sees the record, private rows by its editors.
+model RecordMetadata {
+  id               String   @id @default(uuid())
+  createdById      String
+  targetEntityType String
+  targetEntityId   String
+  key              String
+  value            String?
+  valueType        String?
+  ordinal          Int      @default(0)
+  isPrivate        Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime
+  updatedById      String?
+
+  @@unique([targetEntityType, targetEntityId, key])
+  @@index([targetEntityId])
+}
+
+/// A property kit (S4b, world_properties): keys with types and defaults (JSON text), applied to a
+/// record's properties; scoped to a campaign or setting as rpg_core scopes it.
+model PropertyKit {
+  id          String   @id @default(uuid())
+  createdById String
+  name        String
+  description String   @default("")
+  properties  String   @default("[]")
+  campaignId  String?
+  settingId   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+  updatedById String?
+  deletedAt   DateTime?
+
+  @@index([createdById])
 }

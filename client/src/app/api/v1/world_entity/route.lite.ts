@@ -77,7 +77,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const after = afterText === null || afterText === '' ? null : readCursor(afterText);
     if (afterText !== null && afterText !== '' && after === null) throw validationError('after is not a cursor', 'after');
 
-    const changed = since === null ? {} : { updatedAt: { gte: since } };
+    // A template (S4b) is copied into campaigns, never a world fact: as the server, it never syncs.
+    const changed = { OR: [{ isTemplate: null }, { isTemplate: false }], ...(since === null ? {} : { updatedAt: { gte: since } }) };
     // The campaign's own records, and (asked for, or alone) its setting's canon: no campaign.
     const scopes: object[] = [
       ...(campaignId === null ? [] : [{ createdById: owner.id, campaignId, ...changed }]),

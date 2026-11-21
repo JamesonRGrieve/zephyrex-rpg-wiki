@@ -68,6 +68,7 @@ export async function writeSessionReport(ownerId: string, report: SessionReportI
       // A report is the campaign's own record; its setting comes with the campaign (S6).
       setting_id: null,
       canon_level: null,
+      is_template: null,
     },
     new Date(),
   );

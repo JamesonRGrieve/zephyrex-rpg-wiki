@@ -32,6 +32,7 @@ import { EntryError, parseEntry } from '~/lib/entry';
 import { wouldCloseCycle } from '~/lib/hookGraph';
 import { checkedRequirement, leavesOf, RequirementError } from '~/lib/requirements';
 import { prisma } from '~/lib/prisma';
+import { checkedKit, KitError } from '~/lib/properties';
 import { freeSlug, isSlug, SLUG_RULE, slugify } from '~/lib/slug';
 
 const name = z.string().trim().min(1, 'A name is required').max(LIMITS.name_characters);
@@ -97,6 +98,13 @@ function checkWorldStays(current: string | null | undefined, wanted: unknown): v
 }
 
 const canonLevel = kindOf(CANON_LEVELS);
+
+/** S4b, as the server's rpg_core: a record is a template or not from its creation (making one is a copy). */
+function checkTemplateStays(current: boolean | null, wanted: boolean | null | undefined): void {
+  if (wanted === undefined || wanted === null) return;
+  if (wanted !== Boolean(current))
+    throw validationError('A record is a template or not from its creation: copy it instead', 'is_template');
+}
 
 /**
  * S6, as the server's rpg_core refuses: a record's setting is one of the owner's, fixed once set,
@@ -323,6 +331,7 @@ const LOCATION_COLUMNS: Columns = {
   campaign_id: plain('campaignId'),
   setting_id: plain('settingId'),
   canon_level: plain('canonLevel'),
+  is_template: plain('isTemplate'),
   associated_person_id: plain('associatedPersonId'),
 };
 const locationFields = {
@@ -334,6 +343,7 @@ const locationFields = {
   campaign_id: reference,
   setting_id: reference,
   canon_level: canonLevel,
+  is_template: z.boolean().nullable(),
   associated_person_id: reference,
 };
 const locationCreate = z.object({
@@ -345,6 +355,7 @@ const locationCreate = z.object({
   campaign_id: reference.default(null),
   setting_id: reference.default(null),
   canon_level: canonLevel.default(null),
+  is_template: z.boolean().nullable().default(null),
   associated_person_id: reference.default(null),
 });
 const locationUpdate = z.object(locationFields).partial();
@@ -402,9 +413,10 @@ export const locations: ResourceSpec<LocationRow, z.infer<typeof locationCreate>
     });
   },
   async updateIfCurrent(id, version, input, stamp, userId) {
-    const owner = await prisma.location.findUnique({ where: { id }, select: { createdById: true, campaignId: true, settingId: true } });
+    const owner = await prisma.location.findUnique({ where: { id }, select: { createdById: true, campaignId: true, settingId: true, isTemplate: true } });
     checkWorldStays(owner?.campaignId, input.campaign_id);
     if (owner !== null) await checkSetting(owner.createdById, input, owner);
+    checkTemplateStays(owner?.isTemplate ?? null, input.is_template);
     if (owner !== null) {
       await checkWorld(owner.createdById, input.campaign_id);
       await checkPlace(owner.createdById, input.parent_id, 'parent_id');
@@ -441,6 +453,7 @@ const PERSON_COLUMNS: Columns = {
   campaign_id: plain('campaignId'),
   setting_id: plain('settingId'),
   canon_level: plain('canonLevel'),
+  is_template: plain('isTemplate'),
   location_id: plain('locationId'),
   gender: plain('gender'),
 };
@@ -452,6 +465,7 @@ const personFields = {
   campaign_id: reference,
   setting_id: reference,
   canon_level: canonLevel,
+  is_template: z.boolean().nullable(),
   location_id: reference,
   gender: z.string().max(LIMITS.name_characters).nullable(),
 };
@@ -463,6 +477,7 @@ const personCreate = z.object({
   campaign_id: reference.default(null),
   setting_id: reference.default(null),
   canon_level: canonLevel.default(null),
+  is_template: z.boolean().nullable().default(null),
   location_id: reference.default(null),
   gender: personFields.gender.default(null),
 });
@@ -500,9 +515,10 @@ export const people: ResourceSpec<PersonRow, z.infer<typeof personCreate>, z.inf
     });
   },
   async updateIfCurrent(id, version, input, stamp, userId) {
-    const owner = await prisma.person.findUnique({ where: { id }, select: { createdById: true, campaignId: true, settingId: true } });
+    const owner = await prisma.person.findUnique({ where: { id }, select: { createdById: true, campaignId: true, settingId: true, isTemplate: true } });
     checkWorldStays(owner?.campaignId, input.campaign_id);
     if (owner !== null) await checkSetting(owner.createdById, input, owner);
+    checkTemplateStays(owner?.isTemplate ?? null, input.is_template);
     if (owner !== null) {
       await checkWorld(owner.createdById, input.campaign_id);
       await checkPlace(owner.createdById, input.location_id, 'location_id');
@@ -541,6 +557,7 @@ const FACTION_COLUMNS: Columns = {
   campaign_id: plain('campaignId'),
   setting_id: plain('settingId'),
   canon_level: plain('canonLevel'),
+  is_template: plain('isTemplate'),
 };
 const factionCreate = z.object({
   name,
@@ -551,9 +568,10 @@ const factionCreate = z.object({
   campaign_id: reference.default(null),
   setting_id: reference.default(null),
   canon_level: canonLevel.default(null),
+  is_template: z.boolean().nullable().default(null),
 });
 const factionUpdate = z
-  .object({ name, description: z.string(), entry, kind: kindOf(FACTION_KINDS), parent_id: reference, campaign_id: reference, setting_id: reference, canon_level: canonLevel })
+  .object({ name, description: z.string(), entry, kind: kindOf(FACTION_KINDS), parent_id: reference, campaign_id: reference, setting_id: reference, canon_level: canonLevel, is_template: z.boolean().nullable() })
   .partial();
 type FactionRow = Prisma.FactionGetPayload<object>;
 
@@ -594,9 +612,10 @@ export const factions: ResourceSpec<FactionRow, z.infer<typeof factionCreate>, z
     });
   },
   async updateIfCurrent(id, version, input, stamp, userId) {
-    const owner = await prisma.faction.findUnique({ where: { id }, select: { createdById: true, campaignId: true, settingId: true } });
+    const owner = await prisma.faction.findUnique({ where: { id }, select: { createdById: true, campaignId: true, settingId: true, isTemplate: true } });
     checkWorldStays(owner?.campaignId, input.campaign_id);
     if (owner !== null) await checkSetting(owner.createdById, input, owner);
+    checkTemplateStays(owner?.isTemplate ?? null, input.is_template);
     if (owner !== null) {
       await checkWorld(owner.createdById, input.campaign_id);
       await checkFaction(owner.createdById, input.parent_id);
@@ -637,6 +656,7 @@ const ITEM_COLUMNS: Columns = {
   campaign_id: plain('campaignId'),
   setting_id: plain('settingId'),
   canon_level: plain('canonLevel'),
+  is_template: plain('isTemplate'),
 };
 const itemCreate = z.object({
   name,
@@ -649,6 +669,7 @@ const itemCreate = z.object({
   campaign_id: reference.default(null),
   setting_id: reference.default(null),
   canon_level: canonLevel.default(null),
+  is_template: z.boolean().nullable().default(null),
 });
 const itemUpdate = z
   .object({
@@ -662,6 +683,7 @@ const itemUpdate = z
     campaign_id: reference,
     setting_id: reference,
     canon_level: canonLevel,
+    is_template: z.boolean().nullable(),
   })
   .partial();
 type ItemRow = Prisma.ItemGetPayload<object>;
@@ -695,9 +717,10 @@ export const items: ResourceSpec<ItemRow, z.infer<typeof itemCreate>, z.infer<ty
     });
   },
   async updateIfCurrent(id, version, input, stamp, userId) {
-    const owner = await prisma.item.findUnique({ where: { id }, select: { createdById: true, campaignId: true, settingId: true } });
+    const owner = await prisma.item.findUnique({ where: { id }, select: { createdById: true, campaignId: true, settingId: true, isTemplate: true } });
     checkWorldStays(owner?.campaignId, input.campaign_id);
     if (owner !== null) await checkSetting(owner.createdById, input, owner);
+    checkTemplateStays(owner?.isTemplate ?? null, input.is_template);
     if (owner !== null) await checkWorld(owner.createdById, input.campaign_id);
     const { count } = await prisma.item.updateMany({
       where: { id, updatedAt: version },
@@ -883,6 +906,7 @@ const JOURNAL_COLUMNS: Columns = {
   campaign_id: plain('campaignId'),
   setting_id: plain('settingId'),
   canon_level: plain('canonLevel'),
+  is_template: plain('isTemplate'),
 };
 const sessionNumber = z.number().int().min(1, 'A session number is a whole number of one or more').nullable();
 const moment = z.coerce.date().nullable();
@@ -898,6 +922,7 @@ const journalCreate = z.object({
   campaign_id: reference.default(null),
   setting_id: reference.default(null),
   canon_level: canonLevel.default(null),
+  is_template: z.boolean().nullable().default(null),
 });
 const journalUpdate = z
   .object({
@@ -912,6 +937,7 @@ const journalUpdate = z
     campaign_id: reference,
     setting_id: reference,
     canon_level: canonLevel,
+    is_template: z.boolean().nullable(),
   })
   .partial();
 type JournalRow = Prisma.JournalGetPayload<object>;
@@ -959,9 +985,10 @@ export const journals: ResourceSpec<JournalRow, z.infer<typeof journalCreate>, z
     });
   },
   async updateIfCurrent(id, version, input, stamp, userId) {
-    const owner = await prisma.journal.findUnique({ where: { id }, select: { createdById: true, campaignId: true, settingId: true } });
+    const owner = await prisma.journal.findUnique({ where: { id }, select: { createdById: true, campaignId: true, settingId: true, isTemplate: true } });
     checkWorldStays(owner?.campaignId, input.campaign_id);
     if (owner !== null) await checkSetting(owner.createdById, input, owner);
+    checkTemplateStays(owner?.isTemplate ?? null, input.is_template);
     if (owner !== null) await checkJournalRefs(owner.createdById, input);
     const { count } = await prisma.journal.updateMany({
       where: { id, updatedAt: version },
@@ -1038,6 +1065,76 @@ export const entityPosts: ResourceSpec<PostRow, z.infer<typeof postCreate>, z.in
   fields: (row) => fieldsOf(POST_COLUMNS, row),
 };
 
+// ---- property_kit (S4b, world_properties: keys with types and defaults, applied to records) ----
+
+const KIT_COLUMNS: Columns = {
+  name: plain('name'),
+  description: plain('description'),
+  properties: plain('properties'),
+  campaign_id: plain('campaignId'),
+  setting_id: plain('settingId'),
+};
+/** A kit's properties arrive as JSON (a string or the list) and are kept as JSON text, as the server. */
+const kitProperties = z.unknown().transform((value, context) => {
+  try {
+    return JSON.stringify(checkedKit(typeof value === 'string' ? JSON.parse(value) : value));
+  } catch (error) {
+    context.addIssue({ code: 'custom', message: error instanceof KitError || error instanceof SyntaxError ? error.message : String(error) });
+    return z.NEVER;
+  }
+});
+const kitCreate = z.object({
+  name,
+  description: z.string().default(''),
+  properties: kitProperties.default('[]'),
+  campaign_id: reference.default(null),
+  setting_id: reference.default(null),
+});
+const kitUpdate = z.object({ name, description: z.string(), properties: kitProperties, campaign_id: reference, setting_id: reference }).partial();
+type KitRow = Prisma.PropertyKitGetPayload<object>;
+
+export const propertyKits: ResourceSpec<KitRow, z.infer<typeof kitCreate>, z.infer<typeof kitUpdate>> = {
+  resource: 'property_kit',
+  plural: 'property_kits',
+  modelName: 'PropertyKitModel',
+  createSchema: kitCreate,
+  updateSchema: kitUpdate,
+  list: (ownerId, query) =>
+    prisma.propertyKit.findMany({
+      where: {
+        createdById: ownerId,
+        deletedAt: null,
+        ...filters(query, [
+          ['campaign_id', 'campaignId'],
+          ['setting_id', 'settingId'],
+        ]),
+      },
+      orderBy: { name: 'asc' },
+    }),
+  find: (id, ownerId) => prisma.propertyKit.findFirst({ where: { id, createdById: ownerId, deletedAt: null } }),
+  async insert(ownerId, input, stamp) {
+    await checkWorld(ownerId, input.campaign_id);
+    await checkSetting(ownerId, input, null);
+    return prisma.propertyKit.create({
+      data: { createdById: ownerId, ...written(KIT_COLUMNS, input, stamp) } as Prisma.PropertyKitUncheckedCreateInput,
+    });
+  },
+  async updateIfCurrent(id, version, input, stamp, userId) {
+    const owner = await prisma.propertyKit.findUnique({ where: { id }, select: { createdById: true, campaignId: true, settingId: true } });
+    checkWorldStays(owner?.campaignId, input.campaign_id);
+    if (owner !== null) await checkSetting(owner.createdById, input, owner);
+    const { count } = await prisma.propertyKit.updateMany({
+      where: { id, updatedAt: version },
+      data: written(KIT_COLUMNS, input, stamp, userId) as Prisma.PropertyKitUncheckedUpdateManyInput,
+    });
+    return count === 0 ? null : prisma.propertyKit.findUnique({ where: { id } });
+  },
+  async remove(id) {
+    await prisma.propertyKit.update({ where: { id }, data: tombstone() });
+  },
+  fields: (row) => fieldsOf(KIT_COLUMNS, row),
+};
+
 // ---- hook (the plot-hook DAG and who is on each hook) ----------------------------------------
 
 const HOOK_COLUMNS: Columns = {
@@ -1054,6 +1151,7 @@ const HOOK_COLUMNS: Columns = {
   campaign_id: plain('campaignId'),
   setting_id: plain('settingId'),
   canon_level: plain('canonLevel'),
+  is_template: plain('isTemplate'),
 };
 const hookCreate = z.object({
   name,
@@ -1069,6 +1167,7 @@ const hookCreate = z.object({
   campaign_id: reference.default(null),
   setting_id: reference.default(null),
   canon_level: canonLevel.default(null),
+  is_template: z.boolean().nullable().default(null),
 });
 const hookUpdate = z
   .object({
@@ -1085,6 +1184,7 @@ const hookUpdate = z
     campaign_id: reference,
     setting_id: reference,
     canon_level: canonLevel,
+    is_template: z.boolean().nullable(),
   })
   .partial();
 type HookRow = Prisma.HookGetPayload<object>;
@@ -1178,9 +1278,10 @@ export const hooks: ResourceSpec<HookRow, z.infer<typeof hookCreate>, z.infer<ty
     return row;
   },
   async updateIfCurrent(id, version, input, stamp, userId) {
-    const owner = await prisma.hook.findUnique({ where: { id }, select: { createdById: true, campaignId: true, settingId: true } });
+    const owner = await prisma.hook.findUnique({ where: { id }, select: { createdById: true, campaignId: true, settingId: true, isTemplate: true } });
     checkWorldStays(owner?.campaignId, input.campaign_id);
     if (owner !== null) await checkSetting(owner.createdById, input, owner);
+    checkTemplateStays(owner?.isTemplate ?? null, input.is_template);
     if (owner !== null) await checkHookRefs(owner.createdById, input);
     const changesRequirement = 'requires' in input;
     const requires = changesRequirement ? requirementText(input.requires) : null;

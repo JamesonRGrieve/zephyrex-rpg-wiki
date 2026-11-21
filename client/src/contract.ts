@@ -22,5 +22,9 @@ export const DISPOSITION_TARGETS = contract.disposition_targets as readonly stri
 export const CANON_LEVELS = contract.canon_levels as readonly string[];
 export const POST_POSITIONS = contract.post_positions as readonly string[];
 export const SETTING_SLUG = contract.setting_slug;
+/** How a property's value reads (S4b; the framework's record_metadata value types). */
+export const PROPERTY_VALUE_TYPES = contract.property_value_types as readonly string[];
+/** What a file is to a record (S2c): the first is its own picture. */
+export const ATTACHMENT_ROLES = contract.attachment_roles as readonly string[];
 /** The settings every wiki has (S6b): the system's, so everyone reads them and nobody else changes them. */
 export const SEED_SETTINGS = contract.seed_settings as readonly { slug: string; name: string }[];

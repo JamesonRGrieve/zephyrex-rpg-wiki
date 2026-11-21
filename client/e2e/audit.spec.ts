@@ -265,6 +265,23 @@ test.describe.serial('visual audit', () => {
     expect(clash.status(), await clash.text()).toBe(409);
     const numbered = await request.post('/api/v1/setting', { data: { setting: { name: 'Fallout' } } });
     expect(((await numbered.json()) as { setting: { slug: string } }).setting.slug).toBe('fallout-2');
+    // S4b: a kit's keys are checked and kept as JSON text; a template never syncs.
+    const kit = await request.post('/api/v1/property_kit', {
+      data: { property_kit: { name: 'City', campaign_id: seeded.world, properties: [{ key: 'Population' }, { key: 'Garrison', value_type: 'number', default: 3 }] } },
+    });
+    expect(kit.status(), await kit.text()).toBe(201);
+    expect(JSON.parse(((await kit.json()) as { property_kit: { properties: string } }).property_kit.properties)).toEqual([
+      { key: 'Population', value_type: 'text', default: null, is_private: false, ordinal: 0 },
+      { key: 'Garrison', value_type: 'number', default: '3', is_private: false, ordinal: 1 },
+    ]);
+    const twice = await request.post('/api/v1/property_kit', { data: { property_kit: { name: 'Bad', properties: [{ key: 'A' }, { key: 'A' }] } } });
+    expect(twice.status(), await twice.text()).toBe(422);
+    const template = await request.post('/api/v1/location', {
+      data: { location: { name: 'Shrine (template)', kind: 'building', campaign_id: seeded.world, is_template: true } },
+    });
+    expect(template.status(), await template.text()).toBe(201);
+    const synced = (await (await request.get(`/api/v1/world_entity?campaign_id=${seeded.world}`)).json()) as { world_entities: { name: string }[] };
+    expect(synced.world_entities.map((entity) => entity.name)).not.toContain('Shrine (template)');
     const pages = worldPages(seeded);
     const page = await browser.newPage({ baseURL: String(testInfo.project.use.baseURL) });
     await expectSeedShows(page, seeded);
