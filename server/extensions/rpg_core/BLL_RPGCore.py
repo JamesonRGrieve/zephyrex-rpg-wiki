@@ -159,8 +159,6 @@ def _slug_fixed(context: HookContext) -> None:
     """S6b: a setting's slug is the one given (409 when another setting holds it) or its name's
     (numbered past any taken), and is fixed once set."""
     if context.method_name == "create":
-        if context.kwargs.get("entities") is not None:
-            raise HTTPException(status_code=422, detail="Create one setting at a time")
         given = checked_slug(context.kwarg("slug", default=None))
         if given is not None:
             if _slug_taken(context.manager, given):
@@ -276,8 +274,6 @@ def _provenance_holds(context: HookContext) -> None:
     not given; on update, against what it holds (homebrew has no source, so making one homebrew
     clears its source)."""
     if context.method_name == "create":
-        if context.kwargs.get("entities") is not None:
-            return
         given = {"provenance": context.kwarg("provenance", default=None), "source": context.kwarg("source", default=None)}
     elif context.method_name == "update":
         # None is "not given": the provenance can't be emptied, and "" clears the source.
@@ -1095,6 +1091,10 @@ class WorldEntity(PlainModel):
     source: Optional[str] = None
     # For the GM and narrator only (its private "GM only" property is true): never a player's prompt.
     gm_only: bool = False
+    # Where a person is (a scenario's starting position, then play's), and a place's (or an
+    # organisation's) parent in its tree: who's present in a scene is who's at its place or inside it.
+    location_id: Optional[str] = None
+    parent_id: Optional[str] = None
 
 
 class WorldEntitiesPage(PlainModel):
@@ -1157,6 +1157,8 @@ def _entity(kind: str, record: Any, changed_at: datetime, deleted: bool) -> Worl
         setting_id=getattr(record, "setting_id", None),
         canon=campaign is None and getattr(record, "setting_id", None) is not None,
         canon_level=getattr(record, "canon_level", None),
+        location_id=getattr(record, "location_id", None) if kind == "person" else None,
+        parent_id=getattr(record, "parent_id", None) if kind in ("location", "faction") else None,
         provenance=getattr(record, "provenance", None) or HOMEBREW,
         source=getattr(record, "source", None),
     )

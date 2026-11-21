@@ -9,7 +9,7 @@ dispositions, tags and statuses on a record, item instances and what carries the
 properties and pictures). Each copy's fields are its source's, with every value that names a copied
 record (a reference, or an id inside JSON text: an entry's mentions, a hook's requirement) turned to
 that record's copy. A value naming anything else (the setting's canon, an uploaded asset) stays: the
-setting's canon is shared and never copied. Creates go a record type at a time; a
+setting's canon is shared and never copied. Creates go a record type at a time (plural creates); a
 reference to a record not yet copied is filled in a second pass. Templates stay with the scenario.
 """
 
@@ -87,16 +87,13 @@ def fields_of(manager: Any, row: Any, copying: Copying) -> tuple[dict[str, Any],
 
 
 def copy_rows(manager: Any, rows: list[Any], copying: Copying, fixed: Optional[dict[str, Any]] = None) -> list[Any]:
-    """The rows' copies; each source id now names its copy.
-
-    One create a row: the framework's plural create (``entities=``) runs a manager's BEFORE hooks once
-    for the whole list, where they see no fields, so every per-record check (a relation's one
-    endpoint a side, a provenance, a world that stays) would refuse or pass blind. Reported to
-    server-framework; this becomes one plural create a type once its hooks run per entity."""
+    """The rows' copies, in one plural create (each runs the manager's hooks, as one create does, since
+    server-framework a5121fa8); each source id now names its copy."""
     if not rows:
         return []
     prepared = [fields_of(manager, row, copying) for row in rows]
-    made = [manager.create(**fields, **(fixed or {})) for fields, _later in prepared]
+    made = manager.create(entities=[{**fields, **(fixed or {})} for fields, _later in prepared])
+    made = made if isinstance(made, list) else [made]
     for row, copy, (_fields, later) in zip(rows, made, prepared):
         copying.id_map[str(row.id)] = str(copy.id)
         if later:

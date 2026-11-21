@@ -14,6 +14,9 @@ export type WorldEntityKind = (typeof WORLD_ENTITY_KINDS)[number];
 
 export interface EntityRow {
   id: string;
+  /** A person's place; a place's or an organisation's parent (other kinds have neither). */
+  locationId?: string | null;
+  parentId?: string | null;
   name: string;
   description: string | null;
   updatedAt: Date;
@@ -59,6 +62,10 @@ export interface WorldEntity {
   source: string | null;
   /** For the GM and narrator only (its private "GM only" property is true): never a player's prompt. */
   gm_only: boolean;
+  /** Where a person is (a scenario's starting position, then play's): who's present in a scene. */
+  location_id: string | null;
+  /** A place's (or an organisation's) parent in its tree. */
+  parent_id: string | null;
 }
 
 export const DEFAULT_LIMIT = 100;
@@ -98,6 +105,8 @@ export function entityOf(kind: WorldEntityKind, row: EntityRow): WorldEntity {
     source: row.source,
     // Set from the record's properties by the route, a page at a time.
     gm_only: false,
+    location_id: kind === 'person' ? (row.locationId ?? null) : null,
+    parent_id: kind === 'location' || kind === 'faction' ? (row.parentId ?? null) : null,
   };
 }
 

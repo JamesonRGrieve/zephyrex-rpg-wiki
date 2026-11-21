@@ -327,7 +327,7 @@ class TestWorldEntities:
         assert by_name["Harbour"] | {"updated_at": None} == {
             "id": harbour["id"], "kind": "location", "name": "Harbour", "aliases": [], "summary": "A port city.",
             "picture": None, "updated_at": None, "deleted": False, "setting_id": None, "canon": False, "canon_level": None,
-            "keywords": [], "voice": None, "lore": None, "provenance": "homebrew", "source": None, "gm_only": False,
+            "keywords": [], "voice": None, "lore": None, "provenance": "homebrew", "source": None, "gm_only": False, "location_id": None, "parent_id": None,
         }
         assert page["next"] is None
 
@@ -1024,3 +1024,16 @@ class TestCopyOnStart:
         assert [row["id"] for row in runs] == [run["id"]]
         # Someone who can't see the scenario can't start it.
         assert server.post(f"/v1/campaign/{scenario['id']}/instantiate", json={"instantiate": {}}, headers=_headers(other)).status_code == 404
+
+
+class TestWhereTheyAre:
+    """Parity: who's present in a scene is who's at its place or inside it."""
+
+    def test_a_persons_place_and_a_places_parent_reach_the_sync(self, server: TestClient, person: Any) -> None:
+        campaign = _create(server, person, "campaign", name="Present")
+        shrine = _create(server, person, "location", name="The Engine Shrine", kind="building", campaign_id=campaign["id"])
+        crypt = _create(server, person, "location", name="Crypt", kind="room", campaign_id=campaign["id"], parent_id=shrine["id"])
+        calloway = _create(server, person, "person", name="Calloway", kind="npc", campaign_id=campaign["id"], location_id=crypt["id"])
+        synced = {row["name"]: row for row in server.get(f"/v1/world_entity?ids={calloway['id']},{crypt['id']},{shrine['id']}", headers=_headers(person)).json()["world_entities"]}
+        assert (synced["Calloway"]["location_id"], synced["Crypt"]["parent_id"], synced["The Engine Shrine"]["parent_id"]) == (crypt["id"], shrine["id"], None)
+        assert (synced["Calloway"]["parent_id"], synced["Crypt"]["location_id"]) == (None, None)

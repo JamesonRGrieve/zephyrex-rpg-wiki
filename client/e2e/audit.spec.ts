@@ -301,6 +301,9 @@ test.describe.serial('visual audit', () => {
     // Parity: a record kept to the GM says so, and only it.
     const secrets = (await (await request.get(`/api/v1/world_entity?ids=${seeded.journal},${seeded.person}`)).json()) as { world_entities: { gm_only: boolean }[] };
     expect(secrets.world_entities.map((entity) => entity.gm_only)).toEqual([true, false]);
+    // Parity: where a person is and a place's parent, so a scene knows who's present.
+    const placed = (await (await request.get(`/api/v1/world_entity?ids=${seeded.person},${seeded.location}`)).json()) as { world_entities: { location_id: string | null; parent_id: string | null }[] };
+    expect(placed.world_entities.map((entity) => [entity.location_id, entity.parent_id !== null])).toEqual([[seeded.location, false], [null, true]]);
     // Copy on start: a playthrough of the scenario, every record its own copy, references turned to the copies.
     const started = await request.post(`/api/v1/campaign/${seeded.world}/instantiate`, { data: { instantiate: { name: 'The Salt Coast, run 1' } } });
     expect(started.status(), await started.text()).toBe(201);

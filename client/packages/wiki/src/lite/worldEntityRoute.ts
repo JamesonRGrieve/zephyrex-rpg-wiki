@@ -43,11 +43,11 @@ const SELECT = {
 function rowsOf(kind: WorldEntityKind, where: object): Promise<EntityRow[]> {
   switch (kind) {
     case 'location':
-      return prisma.location.findMany({ where, select: SELECT });
+      return prisma.location.findMany({ where, select: { ...SELECT, parentId: true } });
     case 'person':
-      return prisma.person.findMany({ where, select: { ...SELECT, voice: true } });
+      return prisma.person.findMany({ where, select: { ...SELECT, voice: true, locationId: true } });
     case 'faction':
-      return prisma.faction.findMany({ where, select: SELECT });
+      return prisma.faction.findMany({ where, select: { ...SELECT, parentId: true } });
     case 'item':
       return prisma.item.findMany({ where, select: SELECT });
     case 'journal':

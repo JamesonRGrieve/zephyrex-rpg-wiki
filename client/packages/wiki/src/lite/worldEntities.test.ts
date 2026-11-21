@@ -42,6 +42,8 @@ describe('entityOf', () => {
       provenance: 'homebrew',
       source: null,
       gm_only: false,
+      location_id: null,
+      parent_id: null,
     });
     expect(entityOf('item', row('i1', '2026-11-20T13:00:00Z', '2026-11-20T13:00:00Z')).deleted).toBe(true);
   });
