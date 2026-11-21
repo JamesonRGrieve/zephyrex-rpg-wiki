@@ -1026,6 +1026,50 @@ class TestCopyOnStart:
         assert server.post(f"/v1/campaign/{scenario['id']}/instantiate", json={"instantiate": {}}, headers=_headers(other)).status_code == 404
 
 
+class TestStartingWithPictures:
+    """Prod, 2026-11-21: a scenario whose records have pictures failed every start (attachments refuse
+    plural creates), leaving a half-copied campaign. Pictures are attached one at a time, and a
+    start that fails partway is undone."""
+
+    @pytest.mark.usefixtures("memory_store")
+    def test_a_scenario_with_pictures_starts_and_a_failed_start_leaves_nothing(self, server: TestClient, person: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+        scenario = _create(server, person, "campaign", name="Voidship", is_scenario=True)
+        captain = _create(server, person, "person", name="Captain Vell", kind="npc", campaign_id=scenario["id"])
+        bridge = _create(server, person, "location", name="Bridge", kind="room", campaign_id=scenario["id"])
+        for kind, record in (("person", captain), ("location", bridge)):
+            asset = server.post("/v1/asset/upload", params={"name": f"{record['name']}.png"}, content=b"\x89PNG picture", headers={**_headers(person), "Content-Type": "image/png"})
+            assert asset.status_code in (200, 201), asset.text
+            attached = server.post(
+                "/v1/attachment",
+                json={"attachment": {"asset_id": asset.json()["asset"]["id"], "target_entity_type": kind, "target_entity_id": record["id"], "role": "primary_image"}},
+                headers=_headers(person),
+            )
+            assert attached.status_code in (200, 201), attached.text
+
+        response = server.post(f"/v1/campaign/{scenario['id']}/instantiate", json={"instantiate": {"name": "Run 1"}}, headers=_headers(person))
+        assert response.status_code == 201, response.text
+        ids = response.json()["id_map"]
+        pictures = server.get(
+            "/v1/attachment/of", params={"target_entity_type": "person", "target_entity_id": ids[captain["id"]], "role": "primary_image"}, headers=_headers(person)
+        ).json()["attachments"]
+        assert len(pictures) == 1
+
+        # A start failing after the copies are made takes them all back.
+        from zephyrex.extensions.rpg_core import Scenarios  # type: ignore[import-not-found]
+
+        def broken(copying: Any) -> None:
+            raise RuntimeError("the second pass failed")
+
+        monkeypatch.setattr(Scenarios, "finish", broken)
+        before = {row["id"] for row in server.get("/v1/campaign", headers=_headers(person)).json()["campaigns"]}
+        failed = server.post(f"/v1/campaign/{scenario['id']}/instantiate", json={"instantiate": {"name": "Run 2"}}, headers=_headers(person))
+        assert failed.status_code == 500
+        after = {row["id"] for row in server.get("/v1/campaign", headers=_headers(person)).json()["campaigns"]}
+        assert after == before
+        people = [row for row in _rows(server.get("/v1/person", params={"limit": 500}, headers=_headers(person)).json()) if row["name"] == "Captain Vell"]
+        assert sorted(row["campaign_id"] for row in people) == sorted([scenario["id"], response.json()["campaign"]["id"]])
+
+
 class TestWhereTheyAre:
     """Parity: who's present in a scene is who's at its place or inside it."""
 

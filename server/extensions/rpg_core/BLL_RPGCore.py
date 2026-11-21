@@ -1886,11 +1886,25 @@ def instantiate_campaign(model_registry: Any, requester_id: str, source_campaign
     source's) with the requester's own copy of every record the scenario holds and every link
     between them, references turned to the copies (Scenarios.py). The setting's canon stays shared;
     templates stay with the scenario. Returns the campaign and the id map, source → copy."""
-    from zephyrex.extensions.rpg_core.Scenarios import Copying, copy_rows, finish, touching  # type: ignore[import-not-found]
+    from zephyrex.extensions.rpg_core.Scenarios import Copying, undo  # type: ignore[import-not-found]
 
     campaigns = _manager(model_registry, requester_id, CampaignManager)
     source = campaigns.get(id=source_campaign_id)
     copying = Copying()
+    try:
+        made = _instantiate(model_registry, requester_id, campaigns, source, copying, name)
+    except BaseException:
+        # All or nothing: a start that fails partway leaves no half-copied campaign.
+        undo(copying)
+        raise
+    return CampaignStarted(campaign=_manager(model_registry, requester_id, CampaignManager).get(id=str(made.id)).model_dump(mode="json"), id_map=copying.id_map)
+
+
+def _instantiate(model_registry: Any, requester_id: str, campaigns: Any, source: Any, copying: Any, name: Optional[str]) -> Any:
+    """instantiate_campaign's copy, each thing it makes recorded on ``copying`` (for undo)."""
+    from zephyrex.extensions.rpg_core.Scenarios import copy_rows, finish, touching  # type: ignore[import-not-found]
+
+    source_campaign_id = str(source.id)
     gathered: list[tuple[Any, list[Any]]] = []
     for manager_class in _SCENARIO_RECORDS:
         manager = _manager(model_registry, requester_id, manager_class)
@@ -1907,6 +1921,7 @@ def instantiate_campaign(model_registry: Any, requester_id: str, source_campaign
         scenario_id=str(source.id),
     )
     copying.id_map[str(source.id)] = str(made.id)
+    copying.made.append((campaigns, str(made.id)))
     for manager, rows in gathered:
         copy_rows(manager, rows, copying)
     record_ids = [one for one in copying.id_map if one != str(source.id)]
@@ -1919,7 +1934,7 @@ def instantiate_campaign(model_registry: Any, requester_id: str, source_campaign
     _copy_carried(model_registry, requester_id, record_ids, copying, copy_rows, touching)
     _copy_record_extras(model_registry, requester_id, record_ids, copying)
     finish(copying)
-    return CampaignStarted(campaign=_manager(model_registry, requester_id, CampaignManager).get(id=str(made.id)).model_dump(mode="json"), id_map=copying.id_map)
+    return made
 
 
 def _copy_carried(model_registry: Any, requester_id: str, record_ids: list[str], copying: Any, copy_rows: Any, touching: Any) -> None:
@@ -1966,7 +1981,8 @@ def _copy_record_extras(model_registry: Any, requester_id: str, record_ids: list
         links = _manager(model_registry, requester_id, AttachmentManager)
         from zephyrex.extensions.rpg_core.Scenarios import copy_rows, touching  # type: ignore[import-not-found]
 
-        copy_rows(links, touching(links, ("target_entity_id",), record_ids), copying)
+        # Attachments refuse plural creates: each picture attached on its own.
+        copy_rows(links, touching(links, ("target_entity_id",), record_ids), copying, one_at_a_time=True)
 
 
 # ---------------------------------------------------------------------------

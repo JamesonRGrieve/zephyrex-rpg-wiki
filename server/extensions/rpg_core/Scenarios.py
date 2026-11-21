@@ -32,6 +32,8 @@ class Copying:
     pending: set[str] = field(default_factory=set)
     # (manager, source row, copy id, the fields left for the second pass)
     deferred: list[tuple[Any, Any, str, list[str]]] = field(default_factory=list)
+    # Everything made so far, in order (manager, id), so a failed start can be undone.
+    made: list[tuple[Any, str]] = field(default_factory=list)
 
 
 def _walk(value: Any, copying: Copying) -> Any:
@@ -86,14 +88,23 @@ def fields_of(manager: Any, row: Any, copying: Copying) -> tuple[dict[str, Any],
     return fields, later
 
 
-def copy_rows(manager: Any, rows: list[Any], copying: Copying, fixed: Optional[dict[str, Any]] = None) -> list[Any]:
+def copy_rows(manager: Any, rows: list[Any], copying: Copying, fixed: Optional[dict[str, Any]] = None, one_at_a_time: bool = False) -> list[Any]:
     """The rows' copies, in one plural create (each runs the manager's hooks, as one create does, since
-    server-framework a5121fa8); each source id now names its copy."""
+    server-framework a5121fa8); each source id now names its copy. ``one_at_a_time`` for a manager
+    that refuses plural creates (attachments: "Attach one asset at a time")."""
     if not rows:
         return []
     prepared = [fields_of(manager, row, copying) for row in rows]
-    made = manager.create(entities=[{**fields, **(fixed or {})} for fields, _later in prepared])
-    made = made if isinstance(made, list) else [made]
+    entities = [{**fields, **(fixed or {})} for fields, _later in prepared]
+    made: list[Any] = []
+    if one_at_a_time:
+        for one in entities:
+            made.append(manager.create(**one))
+            copying.made.append((manager, str(made[-1].id)))
+    else:
+        created = manager.create(entities=entities)
+        made = created if isinstance(created, list) else [created]
+        copying.made.extend((manager, str(copy.id)) for copy in made)
     for row, copy, (_fields, later) in zip(rows, made, prepared):
         copying.id_map[str(row.id)] = str(copy.id)
         if later:
@@ -109,6 +120,16 @@ def finish(copying: Copying) -> None:
         changes = {name: value for name, value in changes.items() if value is not _LATER}
         if changes:
             manager.update(id=copy_id, **changes)
+
+
+def undo(copying: Copying) -> None:
+    """A failed start taken back: everything it made deleted, newest first (the campaign last), so
+    no half-copied playthrough is left behind. A delete that fails is passed over: the rest go."""
+    for manager, made_id in reversed(copying.made):
+        try:
+            manager.delete(id=made_id)
+        except Exception:  # noqa: BLE001 - best effort: the start's own error is the one to report
+            continue
 
 
 def touching(manager: Any, anchors: tuple[str, ...], ids: list[str]) -> list[Any]:
