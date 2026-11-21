@@ -38,7 +38,12 @@ from zephyrex.extensions.wiki_shared.Records import (  # type: ignore[import-not
 from zephyrex.extensions.wiki_shared.Contract import ATTACHMENT_ROLES, CANON_LEVELS, ENTITY_TYPES, LIMITS  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Report import report_entry  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Summary import summary  # type: ignore[import-not-found]
-from zephyrex.extensions.world_inventory.BLL_WorldInventory import ItemManager, ItemModel  # type: ignore[import-not-found]
+from zephyrex.extensions.world_inventory.BLL_WorldInventory import (  # type: ignore[import-not-found]
+    EntityInventoryManager,
+    ItemInstanceManager,
+    ItemManager,
+    ItemModel,
+)
 from zephyrex.extensions.world_narrative.BLL_WorldNarrative import (  # type: ignore[import-not-found]
     HookDependencyManager,
     HookManager,
@@ -1085,13 +1090,16 @@ class TemplateCopy(PlainModel):
     name: str
     properties: int = Field(..., description="How many of its properties were copied")
     taxons: int = Field(..., description="How many of its tags and categories were copied")
+    items: int = Field(0, description="How many of the item instances it carries were copied")
 
 
 def instantiate(model_registry: Any, requester_id: str, use: TemplateUse) -> TemplateCopy:
-    """A new record from ``use.template_id``: its fields and entry, its properties (record_metadata)
-    and its taxa, in the given campaign or setting under S6's rules. Anyone who can view a template
-    copies it; the copy is the caller's. ``as_template`` copies any record one can view into a new
-    template instead (Save as template), since a record never becomes one in place."""
+    """A new record from ``use.template_id``: its fields and entry, its properties (record_metadata),
+    its taxa and what it carries (each item instance made anew, carried by the copy, and owned by the
+    copy where the template owned it), in the given campaign or setting under S6's rules. Anyone who
+    can view a template copies it; the copy is the caller's. ``as_template`` copies any record one
+    can view into a new template instead (Save as template), since a record never becomes one in
+    place."""
     if use.kind not in MANAGER_OF_TYPE:
         raise HTTPException(status_code=422, detail=f"A template is one of: {', '.join(MANAGER_OF_TYPE)}")
     records = _manager(model_registry, requester_id, MANAGER_OF_TYPE[use.kind])
@@ -1129,7 +1137,29 @@ def instantiate(model_registry: Any, requester_id: str, use: TemplateUse) -> Tem
     tags = links.list(target_entity_type=use.kind, target_entity_id=str(source.id)) or []
     for tag in tags:
         links.create(taxon_id=tag.taxon_id, target_entity_type=use.kind, target_entity_id=str(made.id))
-    return TemplateCopy(kind=use.kind, id=str(made.id), name=str(made.name or ""), properties=copied_properties, taxons=len(tags))
+    carried = _copy_inventory(model_registry, requester_id, use.kind, str(source.id), str(made.id))
+    return TemplateCopy(
+        kind=use.kind, id=str(made.id), name=str(made.name or ""), properties=copied_properties, taxons=len(tags), items=carried
+    )
+
+
+def _copy_inventory(model_registry: Any, requester_id: str, kind: str, source_id: str, copy_id: str) -> int:
+    """What the template carries, carried by the copy: each item instance made anew (the same item,
+    quantity and durability), owned by the copy where the template owned it."""
+    holdings = _manager(model_registry, requester_id, EntityInventoryManager)
+    instances = _manager(model_registry, requester_id, ItemInstanceManager)
+    carried = holdings.list(target_entity_type=kind, target_entity_id=source_id) or []
+    for holding in carried:
+        original = instances.get(id=holding.item_instance_id)
+        owner = original.owner_person_id
+        fresh = instances.create(
+            item_id=original.item_id,
+            owner_person_id=copy_id if owner == source_id else owner,
+            quantity=original.quantity,
+            durability=original.durability,
+        )
+        holdings.create(item_instance_id=str(fresh.id), target_entity_type=kind, target_entity_id=copy_id, quantity=holding.quantity)
+    return len(carried)
 
 
 class TemplateManager(AbstractBLLManager[Any], RouterMixin):

@@ -757,6 +757,9 @@ class TestPropertiesKitsTemplates:
         template = _create(server, person, "person", name="Arbites Enforcer", kind="npc", is_template=True, entry=ENTRY)
         assert self._property(server, person, "person", template, key="Wounds", value="12", value_type="number").status_code == 201
         tag = _create(server, person, "taxon", name="Adeptus Arbites", kind="tag")
+        shotgun = _create(server, person, "item", name="Combat shotgun", kind="weapon", is_template=True)
+        gear = _create(server, person, "item_instance", item_id=shotgun["id"], owner_person_id=template["id"], durability=0.9)
+        _create(server, person, "entity_inventory", item_instance_id=gear["id"], target_entity_type="person", target_entity_id=template["id"])
         _create(server, person, "entity_taxon", taxon_id=tag["id"], target_entity_type="person", target_entity_id=template["id"])
         made = server.post(
             "/v1/template/instantiate",
@@ -764,7 +767,19 @@ class TestPropertiesKitsTemplates:
             headers=_headers(person),
         )
         assert made.status_code == 201, made.text
-        assert {key: made.json()[key] for key in ("kind", "name", "properties", "taxons")} == {"kind": "person", "name": "Proctor Vance", "properties": 1, "taxons": 1}
+        assert {key: made.json()[key] for key in ("kind", "name", "properties", "taxons", "items")} == {
+            "kind": "person",
+            "name": "Proctor Vance",
+            "properties": 1,
+            "taxons": 1,
+            "items": 1,
+        }
+        # The copy carries its own shotgun, of the template's kind of shotgun, and owns it.
+        held = server.get("/v1/entity_inventory", params={"target_entity_type": "person", "target_entity_id": made.json()["id"]}, headers=_headers(person))
+        [holding] = held.json()["entity_inventories"]
+        assert (holding["quantity"], holding["item_instance_id"] != gear["id"]) == (1, True)
+        mine = server.get(f"/v1/item_instance/{holding['item_instance_id']}", headers=_headers(person)).json()["item_instance"]
+        assert (mine["item_id"], mine["owner_person_id"], mine["durability"]) == (shotgun["id"], made.json()["id"], 0.9)
         copy = server.get(f"/v1/person/{made.json()['id']}", headers=_headers(person)).json()["person"]
         assert (copy["campaign_id"], copy["kind"], copy["is_template"], copy["description"]) == (campaign["id"], "npc", None, template["description"])
         assert [row["key"] for row in self._properties(server, person, "person", copy).json()["metadata"]] == ["Wounds"]
