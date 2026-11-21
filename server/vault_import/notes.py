@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A vault's notes: each Markdown file with frontmatter naming an ``entity_type``."""
 
+import glob
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -13,6 +14,8 @@ ENTITY_TYPES = ("person", "location", "faction", "item", "journal", "hook")
 LINK = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]+))?\]\]")
 FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n?", re.S)
 SKIPPED_DIRS = {"Templates"}
+# A record's picture sits beside its note under the same name (Characters/Ilsa Marrow.jpg).
+PICTURE_TYPES = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
 
 
 @dataclass
@@ -21,6 +24,8 @@ class Note:
     meta: dict[str, Any]
     body: str
     problems: list[str] = field(default_factory=list)
+    # The same-name image beside the note, if there is one (its full path).
+    picture: Optional[Path] = None
 
     @property
     def entity_type(self) -> str:
@@ -56,7 +61,15 @@ def read_note(root: Path, path: Path) -> Optional[Note]:
         return note
     if not isinstance(meta, dict) or not meta.get("entity_type"):
         return None
-    return Note(str(path.relative_to(root)), meta, text[found.end():])
+    return Note(str(path.relative_to(root)), meta, text[found.end():], picture=picture_beside(path))
+
+
+def picture_beside(path: Path) -> Optional[Path]:
+    """The image beside a note with its name (jpg, jpeg, png or webp, any letter case), or none."""
+    for sibling in sorted(path.parent.glob(f"{glob.escape(path.stem)}.*")):
+        if sibling.stem == path.stem and sibling.suffix.lower() in PICTURE_TYPES and sibling.is_file():
+            return sibling
+    return None
 
 
 def read_vault(root: Path) -> list[Note]:

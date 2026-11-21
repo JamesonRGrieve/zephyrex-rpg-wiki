@@ -3,7 +3,6 @@
 
 import json
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -19,23 +18,8 @@ from rpg_wiki_app import create
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
-@pytest.fixture(autouse=True)
-def store(monkeypatch: pytest.MonkeyPatch) -> dict[str, bytes]:
-    """The cloud extension's storage, kept in memory (its own tests cover its providers)."""
-    from zephyrex.extensions.cloud.EXT_Cloud import EXT_Cloud
-
-    files: dict[str, bytes] = {}
-
-    async def upload_file(cls: Any, path: str, content: bytes, provider: Any = None) -> dict[str, Any]:
-        files[path] = content
-        return {"provider": "memory", "path": path}
-
-    async def download_file(cls: Any, provider: str, path: str) -> bytes:
-        return files[path]
-
-    monkeypatch.setattr(EXT_Cloud, "upload_file", classmethod(upload_file))
-    monkeypatch.setattr(EXT_Cloud, "download_file", classmethod(download_file))
-    return files
+# Its PNG card's picture is uploaded.
+pytestmark = pytest.mark.usefixtures("memory_store")
 
 
 def test_cards_and_world_info_import_and_a_second_run_changes_nothing(tmp_path: Path) -> None:

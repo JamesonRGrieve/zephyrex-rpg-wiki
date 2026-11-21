@@ -6,6 +6,7 @@ resolve to the local ``./extensions/`` directory.
 """
 
 import os
+from typing import Any
 import tempfile
 import sys
 from pathlib import Path
@@ -43,3 +44,23 @@ def _reset_rate_limit_counts_between_tests() -> None:
     from zephyrex.lib.InboundSecurity import reset_rate_limit_counts
 
     reset_rate_limit_counts()
+
+
+@pytest.fixture
+def memory_store(monkeypatch: pytest.MonkeyPatch) -> dict[str, bytes]:
+    """The cloud extension's storage, kept in memory (its own tests cover its providers): for tests
+    that upload pictures (rpg_core's pictures, both importers)."""
+    from zephyrex.extensions.cloud.EXT_Cloud import EXT_Cloud
+
+    files: dict[str, bytes] = {}
+
+    async def upload_file(cls: Any, path: str, content: bytes, provider: Any = None) -> dict[str, Any]:
+        files[path] = content
+        return {"provider": "memory", "path": path}
+
+    async def download_file(cls: Any, provider: str, path: str) -> bytes:
+        return files[path]
+
+    monkeypatch.setattr(EXT_Cloud, "upload_file", classmethod(upload_file))
+    monkeypatch.setattr(EXT_Cloud, "download_file", classmethod(download_file))
+    return files

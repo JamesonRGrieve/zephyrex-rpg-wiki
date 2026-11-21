@@ -10,6 +10,9 @@ from fastapi.testclient import TestClient
 from zephyrex.testing.factories import create_user
 
 from rpg_wiki_app import create
+
+# The fixture vault's Holst.png is uploaded as his picture.
+pytestmark = pytest.mark.usefixtures("memory_store")
 from vault_import.api import Api
 from vault_import.importer import Importer
 from vault_import.notes import read_vault
@@ -33,7 +36,7 @@ def _one(api: Api, kind: str, campaign: str, name: str) -> dict[str, Any]:
     return found
 
 
-def test_the_vault_imports_with_its_links_and_a_second_run_changes_nothing(api: Api) -> None:
+def test_the_vault_imports_with_its_links_and_a_second_run_changes_nothing(server: TestClient, api: Api) -> None:
     first = Importer(api, setting_slug="dnd").run(read_vault(FIXTURE))
     assert first.refused == [], first.refused
     assert len(first.created) == 13, first.created  # the campaign and twelve records
@@ -56,6 +59,10 @@ def test_the_vault_imports_with_its_links_and_a_second_run_changes_nothing(api: 
     assert (mention["target_entity_id"], mention["children"]) == (stable["id"], [{"text": "stable"}])
 
     holst, dingus = _one(api, "person", world, "Holst"), _one(api, "person", world, "Dingus")
+    # A same-name image beside a note is the record's picture, as world_entities returns it.
+    synced = {entity["name"]: entity for entity in server.get(f"/v1/world_entity?campaign_id={world}", headers=api.headers).json()["world_entities"]}
+    assert synced["Holst"]["picture"] is not None and synced["Holst"]["picture"].startswith("/v1/asset/")
+    assert synced["Dingus"]["picture"] is None
     assert holst["location_id"] == stable["id"]
     assert (json.loads(holst["keywords"]), json.loads(holst["voice"])["first_message"]) == (["stablemaster"], "Stalls are full.")
     properties = {row["key"]: row for row in api.properties("person", holst["id"])}

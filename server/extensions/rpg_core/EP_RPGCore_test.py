@@ -649,22 +649,8 @@ class TestPictures:
     attachments, on cloud storage), read wherever the record is."""
 
     @pytest.fixture(autouse=True)
-    def store(self, monkeypatch: pytest.MonkeyPatch) -> dict[str, bytes]:
-        """The cloud extension's storage, kept in memory (its own tests cover its providers)."""
-        from zephyrex.extensions.cloud.EXT_Cloud import EXT_Cloud
-
-        files: dict[str, bytes] = {}
-
-        async def upload_file(cls: Any, path: str, content: bytes, provider: Any = None) -> dict[str, Any]:
-            files[path] = content
-            return {"provider": "memory", "path": path}
-
-        async def download_file(cls: Any, provider: str, path: str) -> bytes:
-            return files[path]
-
-        monkeypatch.setattr(EXT_Cloud, "upload_file", classmethod(upload_file))
-        monkeypatch.setattr(EXT_Cloud, "download_file", classmethod(download_file))
-        return files
+    def store(self, memory_store: dict[str, bytes]) -> dict[str, bytes]:
+        return memory_store
 
     @staticmethod
     def _upload(server: TestClient, user: Any, name: str) -> dict[str, Any]:

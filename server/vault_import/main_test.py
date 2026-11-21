@@ -14,6 +14,10 @@ from vault_import.api import Api
 FIXTURE = Path(__file__).parent / "fixtures" / "vault"
 
 
+# The fixture vault's Holst.png is uploaded as his picture.
+pytestmark = pytest.mark.usefixtures("memory_store")
+
+
 def test_in_process_it_imports_as_the_owner_and_again_changes_nothing(capsys: pytest.CaptureFixture[str]) -> None:
     server = TestClient(create())
     owner = create_user(server)

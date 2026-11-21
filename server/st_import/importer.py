@@ -36,7 +36,6 @@ class StImporter(Importer):
         super().__init__(api, setting_slug=setting_slug, dry_run=dry_run)
         self.campaign_name = campaign
         self.setting_wide = setting_wide
-        self._attachments: Optional[bool] = None
 
     def _the_scope(self) -> dict[str, Optional[str]]:
         if self.setting_wide:
@@ -69,19 +68,10 @@ class StImporter(Importer):
             placed.record = self.api.update(placed.kind, str(placed.record["id"]), **changed)
         return bool(changed)
 
-    def _picture(self, card: Card, record_id: str) -> bool:
-        if card.avatar is None or self.dry_run or record_id.startswith("(new"):
+    def _card_picture(self, card: Card, record_id: str) -> bool:
+        if card.avatar is None:
             return False
-        if self._attachments is None:
-            self._attachments = "attachments" in self.api.extensions()
-        if not self._attachments:
-            self.report.skipped.append((card.path, "its picture: this back end doesn't serve attachments yet"))
-            return False
-        if self.api.attachments("person", record_id, "primary_image"):
-            return False
-        asset = self.api.upload(f"{card.name}.png", "image/png", card.avatar)
-        self.api.attach(str(asset["id"]), "person", record_id, "primary_image")
-        return True
+        return self._picture("person", record_id, f"{card.name}.png", "image/png", card.avatar, card.path)
 
     def card(self, card: Card) -> None:
         scope = self._the_scope()
@@ -113,7 +103,7 @@ class StImporter(Importer):
                     self.api.create("entity_taxon", taxon_id=taxon, target_entity_type="person", target_entity_id=record_id)
                     tagged.add(taxon)
                     changed = True
-        changed |= self._picture(card, record_id)
+        changed |= self._card_picture(card, record_id)
         if not made:
             (self.report.updated if changed else self.report.unchanged).append(f"person {card.name}")
         for entry in book_entries(card):

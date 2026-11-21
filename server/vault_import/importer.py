@@ -31,7 +31,7 @@ from zephyrex.extensions.wiki_shared.Contract import (  # type: ignore[import-no
 from zephyrex.extensions.wiki_shared.Names import names, voice  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Provenance import HOMEBREW, provenance  # type: ignore[import-not-found]
 from vault_import.markdown import to_plate
-from vault_import.notes import ENTITY_TYPES, Note, link_name
+from vault_import.notes import ENTITY_TYPES, PICTURE_TYPES, Note, link_name
 
 VAULT_PATH = "vault_path"
 # Frontmatter kept as a record's properties: key in the vault → (property key, value type).
@@ -156,6 +156,8 @@ class Importer:
         self._provenance: dict[str, dict[str, Any]] = {}
         self._campaign_rows: dict[str, dict[str, Any]] = {}
         self._touched: set[str] = set()
+        # Whether the back end serves attachments (asked once, when a first picture comes).
+        self._attachments: Optional[bool] = None
 
     # ---- scope -----------------------------------------------------------------------------
 
@@ -186,6 +188,23 @@ class Importer:
                 self._campaign_rows[name] = made
             self.report.created.append(f"campaign {name}")
         return self.campaigns[name]
+
+    def _picture(self, kind: str, record_id: str, name: str, content_type: str, content: bytes, source: str) -> bool:
+        """A record's picture (its primary_image, which world_entities returns), uploaded and attached
+        when it has none; True when it was. Skipped and reported where the back end serves no
+        attachments."""
+        if self.dry_run or record_id.startswith("(new"):
+            return False
+        if self._attachments is None:
+            self._attachments = "attachments" in self.api.extensions()
+        if not self._attachments:
+            self.report.skipped.append((source, "its picture: this back end doesn't serve attachments"))
+            return False
+        if self.api.attachments(kind, record_id, "primary_image"):
+            return False
+        asset = self.api.upload(name, content_type, content)
+        self.api.attach(str(asset["id"]), kind, record_id, "primary_image")
+        return True
 
     def _provenance_of(self, name: str) -> dict[str, Any]:
         return self._provenance.get(name) or provenance({})
@@ -574,6 +593,10 @@ class Importer:
                 if fields and not self.dry_run and not str(one.record["id"]).startswith("(new"):
                     one.record = self.api.update(one.kind, str(one.record["id"]), **fields)
                 linked = self._links(one, resolve)
+                picture = one.note.picture
+                if picture is not None:
+                    content_type = PICTURE_TYPES[picture.suffix.lower()]
+                    linked |= self._picture(one.kind, str(one.record["id"]), picture.name, content_type, picture.read_bytes(), one.note.path)
                 if label not in newly and label in created:
                     (self.report.updated if (fields or linked) else self.report.unchanged).append(label)
             except ApiError as error:
