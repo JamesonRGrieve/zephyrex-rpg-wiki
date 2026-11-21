@@ -16,9 +16,9 @@ from fastapi.testclient import TestClient
 from rpg_wiki_app import create
 
 INJECTED = {
-    "persons": {"kind", "campaign_id", "user_id", "location_id", "entry", "setting_id", "canon_level", "is_template", "aliases", "keywords", "voice", "lore", "provenance", "source", "picture_url"},
+    "persons": {"kind", "campaign_id", "user_id", "location_id", "entry", "setting_id", "canon_level", "is_template", "aliases", "keywords", "voice", "lore", "provenance", "source", "picture_url", "routine", "motivations"},
     "property_kits": {"campaign_id", "setting_id"},
-    "campaigns": {"setting_id", "provenance", "source", "is_scenario", "scenario_id"},
+    "campaigns": {"setting_id", "provenance", "source", "is_scenario", "scenario_id", "clock_minutes"},
     "locations": {"campaign_id", "setting_id", "canon_level", "is_template", "aliases", "keywords", "lore", "provenance", "source", "picture_url"},
     "factions": {"campaign_id", "setting_id", "canon_level", "is_template", "aliases", "keywords", "lore", "provenance", "source", "picture_url"},
     "items": {"campaign_id", "setting_id", "canon_level", "is_template", "aliases", "keywords", "lore", "provenance", "source", "picture_url"},

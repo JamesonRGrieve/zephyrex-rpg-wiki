@@ -177,6 +177,31 @@ class RPGCoreExtension(AbstractStaticExtension):
         return instantiate_campaign(model_registry, requester_id, source_campaign_id, name).model_dump(mode="json")
 
     @classmethod
+    @ability("campaign_clock")
+    def campaign_clock(cls, model_registry: Any, requester_id: str, campaign_id: str) -> dict[str, Any]:
+        """The campaign's in-world clock: {minutes, day, time} (day 1, 08:00 until advanced)."""
+        from zephyrex.extensions.rpg_core.BLL_RPGCore import campaign_clock  # type: ignore[import-not-found]
+
+        return campaign_clock(model_registry, requester_id, campaign_id).model_dump(mode="json")
+
+    @classmethod
+    @ability("advance_clock")
+    def advance_clock(cls, model_registry: Any, requester_id: str, campaign_id: str, minutes: int, reason: Optional[str] = None) -> dict[str, Any]:
+        """Its clock moved on (the campaign's GM's to do): {minutes, day, time, reason}."""
+        from zephyrex.extensions.rpg_core.BLL_RPGCore import advance_clock  # type: ignore[import-not-found]
+
+        return advance_clock(model_registry, requester_id, campaign_id, minutes, reason).model_dump(mode="json")
+
+    @classmethod
+    @ability("move_person")
+    def move_person(cls, model_registry: Any, requester_id: str, person_id: str, location_id: str, reason: Optional[str] = None) -> dict[str, Any]:
+        """A person moved by the GM, to a place in their campaign or its setting, recorded in their
+        history: {person_id, from, to, at: {minutes, day, time} | null, reason}."""
+        from zephyrex.extensions.rpg_core.BLL_RPGCore import move_person  # type: ignore[import-not-found]
+
+        return move_person(model_registry, requester_id, person_id, location_id, reason).model_dump(mode="json", by_alias=True)
+
+    @classmethod
     @ability("campaign_documents")
     def campaign_documents(cls, model_registry: Any, requester_id: str, campaign_id: str) -> dict[str, Any]:
         """Each of the campaign's records' full text, journals first: {"campaign_documents": [{id, kind,

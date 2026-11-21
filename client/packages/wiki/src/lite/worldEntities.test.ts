@@ -42,6 +42,8 @@ describe('entityOf', () => {
       provenance: 'homebrew',
       source: null,
       gm_only: false,
+      routine: null,
+      motivations: null,
       location_id: null,
       parent_id: null,
     });

@@ -41,6 +41,13 @@ from zephyrex.extensions.wiki_shared.Lore import lore_text, stored_lore  # type:
 from zephyrex.extensions.wiki_shared.Pictures import picture_url as checked_picture_url  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Provenance import HOMEBREW, checked_provenance, checked_source, provenance  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Names import names_text, stored_names, stored_voice, voice_text  # type: ignore[import-not-found]
+from zephyrex.extensions.wiki_shared.Routine import (  # type: ignore[import-not-found]
+    clock,
+    motivations_text,
+    routine_text,
+    stored_motivations,
+    stored_routine,
+)
 from zephyrex.extensions.wiki_shared.Contract import ATTACHMENT_ROLES, CANON_LEVELS, DOCUMENT_KINDS, ENTITY_TYPES, GM_ONLY_PROPERTY, LIMITS  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Documents import ordered_documents  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Report import report_entry  # type: ignore[import-not-found]
@@ -209,6 +216,7 @@ class CampaignModel(
     # Copy on start (operator, 2026-11-21): a scenario is never played; starting it makes a playthrough.
     is_scenario: Optional[bool] = Field(None, description="A scenario: play never edits it; starting it copies it (instantiate)")
     scenario_id: Optional[str] = Field(None, description="FK → campaigns.id; the scenario this campaign is a playthrough of")
+    clock_minutes: Optional[int] = Field(None, description="In-world time: minutes from day 1, 00:00; none = day 1, 08:00 (advance_clock)")
 
     class Create(BaseModel, UserModel.Reference.ID.Optional, SettingModel.Reference.ID.Optional):
         name: str = Field(...)
@@ -251,6 +259,22 @@ class CampaignStarted(PlainModel):
     id_map: dict[str, str] = Field(..., description="Each copied record's id (and the scenario's) → its copy's")
 
 
+class CampaignClock(PlainModel):
+    minutes: int = Field(..., description="In-world minutes from day 1, 00:00")
+    day: int = Field(..., description="The in-world day, from 1")
+    time: str = Field(..., description="The in-world time of day, HH:MM")
+    reason: Optional[str] = Field(None, description="Why it was advanced, when it just was")
+
+
+class ClockAdvance(PlainModel):
+    minutes: int = Field(..., description="How far to advance it, in minutes (at least 1)")
+    reason: Optional[str] = None
+
+
+class ClockAdvanceEnvelope(PlainModel):
+    clock: ClockAdvance
+
+
 class CampaignManager(AbstractBLLManager, RouterMixin):
     _model = CampaignModel
 
@@ -268,6 +292,32 @@ class CampaignManager(AbstractBLLManager, RouterMixin):
     def instantiate_route(self, id: str, instantiate: CampaignStart) -> CampaignStarted:
         start = CampaignStart.model_validate(instantiate)
         return instantiate_campaign(self.model_registry, str(self.requester.id), id, start.name)
+
+    @custom_route(
+        method="GET",
+        path="/{id}/clock",
+        output_model=CampaignClock,
+        authentication_type="jwt",
+        expose_in=(ExposeIn.REST,),
+        openapi_tags=("Campaigns",),
+        summary="The campaign's in-world clock (day 1, 08:00 until play advances it)",
+    )
+    def clock_route(self, id: str) -> CampaignClock:
+        return campaign_clock(self.model_registry, str(self.requester.id), id)
+
+    @custom_route(
+        method="POST",
+        path="/{id}/clock",
+        input_model=ClockAdvanceEnvelope,
+        output_model=CampaignClock,
+        authentication_type="jwt",
+        expose_in=(ExposeIn.REST,),
+        openapi_tags=("Campaigns",),
+        summary="Advance the campaign's in-world clock (its GM: EDIT on the campaign)",
+    )
+    def advance_route(self, id: str, clock: ClockAdvance) -> CampaignClock:
+        advance = ClockAdvance.model_validate(clock)
+        return advance_clock(self.model_registry, str(self.requester.id), id, advance.minutes, advance.reason)
 
 
 def _provenance_holds(context: HookContext) -> None:
@@ -324,6 +374,9 @@ class RPG_PersonModel(BaseModel):
     source: Optional[str] = Field(None, description="The official title, publisher and product or page; none for homebrew")
     picture_url: Optional[str] = Field(None, description="Its picture by https link (fandom, wikis…), shown before an uploaded one")
     voice: Optional[str] = Field(None, description="How the AI plays them: personality, speech, first_message, examples, as JSON text (S4c; GM-facing)")
+    # The world tick (operator, 2026-11-21): the GM side pilots each person by these as time advances.
+    routine: Optional[str] = Field(None, description="Their schedule: slots {from, to, days, location_id, activity}, as JSON text (GM-facing)")
+    motivations: Optional[str] = Field(None, description="Their goals, fears and current intent, a list as JSON text (GM-facing)")
     user_id: Optional[str] = Field(None, description="FK → users.id; the player. None = an NPC")
     location_id: Optional[str] = Field(None, description="FK → locations.id; where they are")
     entry: Optional[str] = Field(None, description="The entry: a Plate value as JSON text")
@@ -349,6 +402,10 @@ class RPG_PersonModel(BaseModel):
         _picture_url = field_validator("picture_url")(checked_picture_url)
         voice: Optional[Any] = None
         _voice = field_validator("voice")(voice_text)
+        routine: Optional[Any] = None
+        _routine = field_validator("routine")(routine_text)
+        motivations: Optional[Any] = None
+        _motivations = field_validator("motivations")(motivations_text)
         user_id: Optional[str] = None
         location_id: Optional[str] = None
         entry: Optional[Any] = None
@@ -380,6 +437,10 @@ class RPG_PersonModel(BaseModel):
         _picture_url = field_validator("picture_url")(lambda value: value if value is None else (checked_picture_url(value) or ""))
         voice: Optional[Any] = None
         _voice = field_validator("voice")(voice_text)
+        routine: Optional[Any] = None
+        _routine = field_validator("routine")(routine_text)
+        motivations: Optional[Any] = None
+        _motivations = field_validator("motivations")(motivations_text)
         user_id: Optional[str] = None
         location_id: Optional[str] = None
         entry: Optional[Any] = None
@@ -1085,6 +1146,9 @@ class WorldEntity(PlainModel):
     # S4c: what else wakes it in the AI's lorebook (beyond name and aliases), and a person's voice.
     keywords: list[str] = []
     voice: Optional[dict[str, Any]] = None
+    # A person's schedule and motivations (the GM side's world tick; gm_only as the record is).
+    routine: Optional[list[dict[str, Any]]] = None
+    motivations: Optional[list[str]] = None
     # S4d: its lorebook activation (SillyTavern World Info's fields), or none.
     lore: Optional[dict[str, Any]] = None
     # Where it came from: homebrew, official or adapted, and its source.
@@ -1149,6 +1213,8 @@ def _entity(kind: str, record: Any, changed_at: datetime, deleted: bool) -> Worl
         aliases=stored_names(getattr(record, "aliases", None)),
         keywords=stored_names(getattr(record, "keywords", None)),
         voice=stored_voice(getattr(record, "voice", None)) if kind == "person" else None,
+        routine=stored_routine(getattr(record, "routine", None)) if kind == "person" else None,
+        motivations=stored_motivations(getattr(record, "motivations", None)) if kind == "person" else None,
         lore=stored_lore(getattr(record, "lore", None)),
         summary=summary(getattr(record, "description", None)),
         # Its picture by link, as it is; else _with_pictures fills its newest upload.
@@ -1345,6 +1411,124 @@ def world_entities_by_id(model_registry: Any, requester_id: str, ids: list[str])
     order = {entity_id: index for index, entity_id in enumerate(wanted)}
     found.sort(key=lambda entity: order[entity.id])
     return WorldEntitiesPage(world_entities=_shown(model_registry, found), next=None)
+
+
+# ---------------------------------------------------------------------------
+# The world tick (operator, 2026-11-21): a campaign's clock, and people moved by its GM
+# ---------------------------------------------------------------------------
+
+MAX_CLOCK_ADVANCE: int = LIMITS["clock_advance_minutes"]
+MAX_MOVE_REASON: int = LIMITS["move_reason_characters"]
+
+
+def campaign_clock(model_registry: Any, requester_id: str, campaign_id: str) -> CampaignClock:
+    """The campaign's in-world clock, under the requester's access (a new one is day 1, 08:00)."""
+    campaign = _manager(model_registry, requester_id, CampaignManager).get(id=campaign_id)
+    return CampaignClock(**clock(getattr(campaign, "clock_minutes", None)))
+
+
+def advance_clock(model_registry: Any, requester_id: str, campaign_id: str, minutes: int, reason: Optional[str] = None) -> CampaignClock:
+    """Its clock moved on by ``minutes``: the campaign's GM's to do (EDIT on the campaign)."""
+    if isinstance(minutes, bool) or not isinstance(minutes, int) or not 1 <= minutes <= MAX_CLOCK_ADVANCE:
+        raise HTTPException(status_code=422, detail=f"The clock advances 1 to {MAX_CLOCK_ADVANCE} minutes at a time")
+    campaigns = _manager(model_registry, requester_id, CampaignManager)
+    held = clock(getattr(campaigns.get(id=campaign_id), "clock_minutes", None))["minutes"]
+    # clock_minutes isn't a client's to set: a trusted update, under the same EDIT check and hooks.
+    campaigns.update_trusted(campaign_id, clock_minutes=held + minutes)
+    return CampaignClock(**clock(held + minutes), reason=(reason or "").strip() or None)
+
+
+class PersonMoveModel(ApplicationModel.Optional, UpdateMixinModel.Optional, PersonModel.Reference.Optional, metaclass=ModelMeta):
+    """A person moved by the GM side's world tick: from where, to where, when in-world, why, and by
+    whom (its creator). The person's history of where they've been."""
+
+    Manager: ClassVar[Type["PersonMoveManager"]] = None
+    table_comment: ClassVar[str] = "A person moved by the GM: from where, to where, when in-world and why."
+
+    campaign_id: Optional[str] = Field(None, description="FK → campaigns.id; the campaign whose clock dated it")
+    from_location_id: Optional[str] = Field(None, description="FK → locations.id; where they were (none: nowhere yet)")
+    to_location_id: Optional[str] = Field(None, description="FK → locations.id; where they went")
+    at_minutes: Optional[int] = Field(None, description="The campaign's clock when they moved")
+    reason: Optional[str] = Field(None, description="Why they moved")
+
+    class Create(BaseModel, PersonModel.Reference.ID.Optional):
+        to_location_id: str = Field(...)
+        reason: Optional[str] = None
+        # Filled by _move_holds from the person and the campaign's clock, whatever a caller sends.
+        from_location_id: Optional[str] = None
+        campaign_id: Optional[str] = None
+        at_minutes: Optional[int] = None
+
+    class Update(BaseModel):
+        reason: Optional[str] = None
+
+    class Search(ApplicationModel.Search, PersonModel.Reference.ID.Search):
+        pass
+
+
+class PersonMoveManager(AbstractBLLManager, RouterMixin):
+    _model = PersonMoveModel
+
+
+PersonMoveModel.Manager = PersonMoveManager
+
+
+def _move_holds(context: HookContext) -> None:
+    """A move: to a place in the person's campaign or its setting's canon, by someone who may edit
+    the person (the GM); the person goes there, and the row keeps where from and when."""
+    if context.method_name != "create":
+        return
+    registry, requester = context.manager.model_registry, str(context.manager.requester.id)
+    person_id, to = context.kwarg("person_id", default=None), context.kwarg("to_location_id", default=None)
+    if not person_id or not to:
+        raise HTTPException(status_code=422, detail="Name the person and where they go")
+    reason = (context.kwarg("reason", default=None) or "").strip()
+    if len(reason) > MAX_MOVE_REASON:
+        raise HTTPException(status_code=422, detail=f"A move's reason has at most {MAX_MOVE_REASON} characters")
+    people = _manager(registry, requester, PersonManager)
+    person = people.get(id=person_id)
+    place = _manager(registry, requester, LocationManager).get(id=to)
+    campaign_id = getattr(person, "campaign_id", None)
+    setting_id = getattr(person, "setting_id", None)
+    if campaign_id and not setting_id:
+        setting_id = getattr(_manager(registry, requester, CampaignManager).get(id=campaign_id), "setting_id", None)
+    in_campaign = campaign_id is not None and getattr(place, "campaign_id", None) == campaign_id
+    in_canon = getattr(place, "campaign_id", None) is None and setting_id is not None and getattr(place, "setting_id", None) == setting_id
+    if not (in_campaign or in_canon):
+        raise HTTPException(status_code=422, detail="That place isn't in the person's campaign or its setting")
+    held = getattr(person, "location_id", None)
+    people.update(id=person_id, location_id=to)
+    context.kwargs.update(
+        from_location_id=held,
+        campaign_id=campaign_id,
+        at_minutes=campaign_clock(registry, requester, campaign_id).minutes if campaign_id else None,
+        reason=reason or None,
+    )
+
+
+hook_bll(PersonMoveManager, timing=HookTiming.BEFORE, priority=20)(_move_holds)
+
+
+class PersonMoved(PlainModel):
+    person_id: str
+    from_location_id: Optional[str] = Field(None, alias="from")
+    to_location_id: str = Field(..., alias="to")
+    at: Optional[CampaignClock] = Field(None, description="The campaign's clock when they moved")
+    reason: Optional[str] = None
+
+    model_config = {"populate_by_name": True}
+
+
+def move_person(model_registry: Any, requester_id: str, person_id: str, location_id: str, reason: Optional[str] = None) -> PersonMoved:
+    """The person moved to ``location_id`` (the GM's to do), recorded in their history."""
+    move = _manager(model_registry, requester_id, PersonMoveManager).create(person_id=person_id, to_location_id=location_id, reason=reason)
+    return PersonMoved(
+        person_id=person_id,
+        from_location_id=move.from_location_id,
+        to_location_id=str(move.to_location_id),
+        at=CampaignClock(**clock(move.at_minutes)) if move.at_minutes is not None else None,
+        reason=move.reason,
+    )
 
 
 # ---------------------------------------------------------------------------

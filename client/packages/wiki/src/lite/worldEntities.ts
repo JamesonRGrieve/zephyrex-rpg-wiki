@@ -6,6 +6,7 @@
  * cursor. Deleted ones are tombstones. The paging is pure, here; the lite route reads the rows.
  */
 import { type Lore, storedLore } from '../lib/lore';
+import { type Slot, storedMotivations, storedRoutine } from '../lib/routine';
 import { storedNames, storedVoice, type Voice } from '../lib/names';
 import { summary } from '../lib/summary';
 
@@ -14,6 +15,9 @@ export type WorldEntityKind = (typeof WORLD_ENTITY_KINDS)[number];
 
 export interface EntityRow {
   id: string;
+  /** A person's schedule and motivations (JSON text). */
+  routine?: string | null;
+  motivations?: string | null;
   /** A person's place; a place's or an organisation's parent (other kinds have neither). */
   locationId?: string | null;
   parentId?: string | null;
@@ -62,6 +66,9 @@ export interface WorldEntity {
   source: string | null;
   /** For the GM and narrator only (its private "GM only" property is true): never a player's prompt. */
   gm_only: boolean;
+  /** A person's schedule and motivations (the GM side's world tick); null for other kinds. */
+  routine: Slot[] | null;
+  motivations: string[] | null;
   /** Where a person is (a scenario's starting position, then play's): who's present in a scene. */
   location_id: string | null;
   /** A place's (or an organisation's) parent in its tree. */
@@ -105,6 +112,8 @@ export function entityOf(kind: WorldEntityKind, row: EntityRow): WorldEntity {
     source: row.source,
     // Set from the record's properties by the route, a page at a time.
     gm_only: false,
+    routine: kind === 'person' ? storedRoutine(row.routine) : null,
+    motivations: kind === 'person' ? storedMotivations(row.motivations) : null,
     location_id: kind === 'person' ? (row.locationId ?? null) : null,
     parent_id: kind === 'location' || kind === 'faction' ? (row.parentId ?? null) : null,
   };

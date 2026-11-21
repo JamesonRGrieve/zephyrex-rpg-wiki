@@ -327,7 +327,7 @@ class TestWorldEntities:
         assert by_name["Harbour"] | {"updated_at": None} == {
             "id": harbour["id"], "kind": "location", "name": "Harbour", "aliases": [], "summary": "A port city.",
             "picture": None, "updated_at": None, "deleted": False, "setting_id": None, "canon": False, "canon_level": None,
-            "keywords": [], "voice": None, "lore": None, "provenance": "homebrew", "source": None, "gm_only": False, "location_id": None, "parent_id": None,
+            "keywords": [], "voice": None, "routine": None, "motivations": None, "lore": None, "provenance": "homebrew", "source": None, "gm_only": False, "location_id": None, "parent_id": None,
         }
         assert page["next"] is None
 
@@ -1073,3 +1073,47 @@ class TestCampaignDocuments:
         assert [one["name"] for one in cast["world_entities"]] == ["The Truth"]
         started = loaded_ability(registry, "rpg_core", "instantiate_campaign")(registry, str(person.id), campaign["id"], "Run")
         assert started["campaign"]["scenario_id"] == campaign["id"] and truth["id"] in started["id_map"]
+
+
+class TestWorldTick:
+    """The GM side pilots people by their routine and motivations as the campaign's clock advances."""
+
+    def test_routine_motivations_clock_and_moves(self, server: TestClient, person: Any, other: Any) -> None:
+        from zephyrex.extensions.AbstractExtensionProvider import loaded_ability
+
+        setting = _create(server, person, "setting", name="Tick Setting")
+        campaign = _create(server, person, "campaign", name="Ticking", setting_id=setting["id"])
+        forge = _create(server, person, "location", name="Forge", kind="building", campaign_id=campaign["id"])
+        home = _create(server, person, "location", name="Home", kind="building", campaign_id=campaign["id"])
+        shrine = _create(server, person, "location", name="Canon shrine", kind="building", setting_id=setting["id"])
+        elsewhere = _create(server, person, "location", name="Elsewhere", kind="building", campaign_id=_create(server, person, "campaign", name="Other")["id"])
+        routine = [{"from": "18:00", "to": "06:00", "location_id": home["id"], "activity": "Sleeps"}, {"from": "08:00", "to": "17:00", "days": [4, 0], "location_id": forge["id"], "activity": "Works"}]
+        smith = _create(server, person, "person", name="Smith", kind="npc", campaign_id=campaign["id"], location_id=home["id"], routine=routine, motivations=[" Pay the debt ", "Pay the debt"])
+        [synced] = server.get(f"/v1/world_entity?ids={smith['id']}", headers=_headers(person)).json()["world_entities"]
+        assert [slot["from"] for slot in synced["routine"]] == ["08:00", "18:00"] and synced["routine"][0]["days"] == [0, 4]
+        assert synced["motivations"] == ["Pay the debt"]
+        assert server.post("/v1/person", json={"person": {"name": "Bad", "routine": [{"from": "8am", "to": "9"}]}}, headers=_headers(person)).status_code == 422
+
+        # The clock: day 1, 08:00 to start; advanced by its GM; no one else's to advance.
+        assert server.get(f"/v1/campaign/{campaign['id']}/clock", headers=_headers(person)).json() == {"minutes": 480, "day": 1, "time": "08:00", "reason": None}
+        advanced = server.post(f"/v1/campaign/{campaign['id']}/clock", json={"clock": {"minutes": 1440 + 90, "reason": "A day's travel"}}, headers=_headers(person))
+        assert advanced.status_code == 200, advanced.text
+        assert advanced.json() == {"minutes": 2010, "day": 2, "time": "09:30", "reason": "A day's travel"}
+        assert server.post(f"/v1/campaign/{campaign['id']}/clock", json={"clock": {"minutes": 0}}, headers=_headers(person)).status_code == 422
+        assert server.post(f"/v1/campaign/{campaign['id']}/clock", json={"clock": {"minutes": 5}}, headers=_headers(other)).status_code == 404
+
+        # Moves: within the campaign or its setting's canon, recorded with where from and when.
+        registry = server.app.state.model_registry  # type: ignore[attr-defined]
+        moved = loaded_ability(registry, "rpg_core", "move_person")(registry, str(person.id), smith["id"], forge["id"], "Work starts")
+        assert (moved["from"], moved["to"], moved["at"]["time"], moved["reason"]) == (home["id"], forge["id"], "09:30", "Work starts")
+        assert server.get(f"/v1/person/{smith['id']}", headers=_headers(person)).json()["person"]["location_id"] == forge["id"]
+        canon = server.post("/v1/person_move", json={"person_move": {"person_id": smith["id"], "to_location_id": shrine["id"], "reason": "Prayer"}}, headers=_headers(person))
+        assert canon.status_code == 201, canon.text
+        refused = server.post("/v1/person_move", json={"person_move": {"person_id": smith["id"], "to_location_id": elsewhere["id"]}}, headers=_headers(person))
+        assert refused.status_code == 422, refused.text
+        history = server.get(f"/v1/person_move?person_id={smith['id']}", headers=_headers(person)).json()["person_moves"]
+        assert sorted((row["from_location_id"], row["to_location_id"]) for row in history) == sorted([(home["id"], forge["id"]), (forge["id"], shrine["id"])])
+        clock_now = loaded_ability(registry, "rpg_core", "campaign_clock")(registry, str(person.id), campaign["id"])
+        assert (clock_now["day"], clock_now["time"]) == (2, "09:30")
+        later = loaded_ability(registry, "rpg_core", "advance_clock")(registry, str(person.id), campaign["id"], 30, "Prayers")
+        assert later["time"] == "10:00"

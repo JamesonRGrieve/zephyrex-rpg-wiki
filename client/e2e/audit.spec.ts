@@ -305,6 +305,16 @@ test.describe.serial('visual audit', () => {
     const bank = (await (await request.get(`/api/v1/campaign_document?campaign_id=${seeded.world}`)).json()) as { campaign_documents: { id: string; kind: string; text: string; gm_only: boolean }[] };
     expect(bank.campaign_documents[0]?.kind).toBe('journal');
     expect(bank.campaign_documents.find((one) => one.id === seeded.journal)).toMatchObject({ text: 'The party was ambushed on the rocks.', gm_only: true });
+    // The world tick: the clock starts at day 1, 08:00 and advances; the GM moves Mira, and the move is kept.
+    expect(await (await request.get(`/api/v1/campaign/${seeded.world}/clock`)).json()).toEqual({ minutes: 480, day: 1, time: '08:00', reason: null });
+    const ticked = await request.post(`/api/v1/campaign/${seeded.world}/clock`, { data: { clock: { minutes: 90, reason: 'Night watch' } } });
+    expect(await ticked.json()).toEqual({ minutes: 570, day: 1, time: '09:30', reason: 'Night watch' });
+    const coast = ((await (await request.get(`/api/v1/world_entity?ids=${seeded.location}`)).json()) as { world_entities: { parent_id: string }[] }).world_entities[0]!.parent_id;
+    const walk = await request.post('/api/v1/person_move', { data: { person_move: { person_id: seeded.person, to_location_id: coast, reason: 'Checks the cliffs' } } });
+    expect(walk.status(), await walk.text()).toBe(201);
+    expect(((await walk.json()) as { person_move: { from_location_id: string; at_minutes: number } }).person_move).toMatchObject({ from_location_id: seeded.location, at_minutes: 570 });
+    // And back, so the pages below show her where the seed put her.
+    await request.post('/api/v1/person_move', { data: { person_move: { person_id: seeded.person, to_location_id: seeded.location } } });
     // Parity: where a person is and a place's parent, so a scene knows who's present.
     const placed = (await (await request.get(`/api/v1/world_entity?ids=${seeded.person},${seeded.location}`)).json()) as { world_entities: { location_id: string | null; parent_id: string | null }[] };
     expect(placed.world_entities.map((entity) => [entity.location_id, entity.parent_id !== null])).toEqual([[seeded.location, false], [null, true]]);

@@ -40,6 +40,7 @@ import { lore } from '../lib/lore';
 import { pictureUrl } from '../lib/pictureUrl';
 import { HOMEBREW, type Provenance, ProvenanceError, provenance } from '../lib/provenance';
 import { names, voice } from '../lib/names';
+import { motivations, routine } from '../lib/routine';
 import { freeSlug, isSlug, SLUG_RULE, slugify } from '../lib/slug';
 
 const name = z.string().trim().min(1, 'A name is required').max(LIMITS.name_characters);
@@ -135,6 +136,19 @@ const voiceText = z.unknown().transform((value, context) => {
     return z.NEVER;
   }
 });
+
+/** The world tick: a JSON-text column checked by ``rule`` (a routine, motivations), as the server's. */
+const jsonText = (rule: (value: unknown) => unknown) =>
+  z.unknown().transform((value, context) => {
+    try {
+      return JSON.stringify(rule(value));
+    } catch (error) {
+      context.addIssue({ code: 'custom', message: error instanceof Error ? error.message : String(error) });
+      return z.NEVER;
+    }
+  });
+const routineText = jsonText(routine);
+const motivationsText = jsonText(motivations);
 
 /** S4b, as the server's rpg_core: a record is a template or not from its creation (making one is a copy). */
 function checkTemplateStays(current: boolean | null, wanted: boolean | null | undefined): void {
@@ -335,6 +349,8 @@ const CAMPAIGN_COLUMNS: Columns = {
   source: plain('source'),
   is_scenario: plain('isScenario'),
   scenario_id: plain('scenarioId'),
+  // Read only: advanced through /v1/campaign/{id}/clock.
+  clock_minutes: plain('clockMinutes'),
 };
 const campaignCreate = z.object({
   name,
@@ -628,6 +644,8 @@ const PERSON_COLUMNS: Columns = {
   source: plain('source'),
   picture_url: plain('pictureUrl'),
   voice: plain('voice'),
+  routine: plain('routine'),
+  motivations: plain('motivations'),
   location_id: plain('locationId'),
   gender: plain('gender'),
 };
@@ -647,6 +665,8 @@ const personFields = {
     source: z.string().nullable(),
     picture_url: pictureLink,
   voice: voiceText,
+  routine: routineText,
+  motivations: motivationsText,
   location_id: reference,
   gender: z.string().max(LIMITS.name_characters).nullable(),
 };
@@ -666,6 +686,8 @@ const personCreate = z.object({
   source: z.string().nullish(),
   picture_url: pictureLink.optional(),
   voice: voiceText.optional(),
+  routine: routineText.optional(),
+  motivations: motivationsText.optional(),
   location_id: reference.default(null),
   gender: personFields.gender.default(null),
 });

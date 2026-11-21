@@ -19,6 +19,7 @@ ENTITY_IDS_CASES_PATH = REPOSITORY_ROOT / "contract" / "entity-ids-cases.json"
 PROVENANCE_CASES_PATH = REPOSITORY_ROOT / "contract" / "provenance-cases.json"
 PICTURE_URL_CASES_PATH = REPOSITORY_ROOT / "contract" / "picture-url-cases.json"
 DOCUMENT_CASES_PATH = REPOSITORY_ROOT / "contract" / "document-cases.json"
+ROUTINE_CASES_PATH = REPOSITORY_ROOT / "contract" / "routine-cases.json"
 
 CONTRACT: dict[str, Any] = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 LIMITS: dict[str, int] = CONTRACT["limits"]
@@ -32,6 +33,8 @@ SEED_PLAY_STYLES: tuple[str, ...] = tuple(CONTRACT["seed_play_styles"])
 PLAY_STYLE = "play_style"
 # A campaign's documents, in this order (journals first).
 DOCUMENT_KINDS: tuple[str, ...] = tuple(CONTRACT["document_kinds"])
+# A new campaign's clock: minutes from day 1, 00:00 (day 1, 08:00).
+CLOCK_START_MINUTES: int = CONTRACT["clock_start_minutes"]
 LOCATION_KINDS: tuple[str, ...] = tuple(CONTRACT["location_kinds"])
 PERSON_KINDS: tuple[str, ...] = tuple(CONTRACT["person_kinds"])
 FACTION_KINDS: tuple[str, ...] = tuple(CONTRACT["faction_kinds"])

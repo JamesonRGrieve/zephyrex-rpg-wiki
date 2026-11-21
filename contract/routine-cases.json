@@ -1,0 +1,162 @@
+{
+  "$comment": "A person's routine (an ordered schedule: each slot from and to HH:MM, on days 0-6 (Monday 0) or every day (null), at a location, doing an activity; a slot may run overnight, from after to) and motivations (goals, fears, current intent: a list of text), checked alike by server/extensions/wiki_shared/Routine.py and client packages/wiki/src/lib/routine.ts. Both kept as JSON text; a campaign's clock counts minutes from day 1, 00:00 (a new one starts at contract clock_start_minutes, day 1 08:00).",
+  "routines": [
+    {
+      "name": "slots sorted by start, days sorted once, text trimmed",
+      "value": [
+        {
+          "from": "18:00",
+          "to": "06:00",
+          "days": null,
+          "location_id": "l2",
+          "activity": " Sleeps "
+        },
+        {
+          "from": "08:00",
+          "to": "17:30",
+          "days": [
+            4,
+            0,
+            0
+          ],
+          "location_id": "l1",
+          "activity": "Works the forge"
+        }
+      ],
+      "checked": [
+        {
+          "from": "08:00",
+          "to": "17:30",
+          "days": [
+            0,
+            4
+          ],
+          "location_id": "l1",
+          "activity": "Works the forge"
+        },
+        {
+          "from": "18:00",
+          "to": "06:00",
+          "days": null,
+          "location_id": "l2",
+          "activity": "Sleeps"
+        }
+      ]
+    },
+    {
+      "name": "no location, no activity",
+      "value": [
+        {
+          "from": "12:00",
+          "to": "13:00"
+        }
+      ],
+      "checked": [
+        {
+          "from": "12:00",
+          "to": "13:00",
+          "days": null,
+          "location_id": null,
+          "activity": ""
+        }
+      ]
+    }
+  ],
+  "invalid_routines": [
+    {
+      "name": "not a list",
+      "value": {
+        "from": "08:00"
+      },
+      "message": "A routine is a list of slots"
+    },
+    {
+      "name": "a bad time",
+      "value": [
+        {
+          "from": "8am",
+          "to": "17:00"
+        }
+      ],
+      "message": "A slot runs from HH:MM to HH:MM"
+    },
+    {
+      "name": "25 o'clock",
+      "value": [
+        {
+          "from": "25:00",
+          "to": "26:00"
+        }
+      ],
+      "message": "A slot runs from HH:MM to HH:MM"
+    },
+    {
+      "name": "a day out of the week",
+      "value": [
+        {
+          "from": "08:00",
+          "to": "09:00",
+          "days": [
+            7
+          ]
+        }
+      ],
+      "message": "A slot's days are 0 (Monday) to 6"
+    },
+    {
+      "name": "an unknown part",
+      "value": [
+        {
+          "from": "08:00",
+          "to": "09:00",
+          "mood": "grim"
+        }
+      ],
+      "message": "A slot is from, to, days, location_id and activity"
+    }
+  ],
+  "motivations": [
+    {
+      "name": "trimmed, each once, blanks dropped",
+      "value": [
+        " Find the map ",
+        "",
+        "Find the map",
+        "Fears the deep"
+      ],
+      "checked": [
+        "Find the map",
+        "Fears the deep"
+      ]
+    }
+  ],
+  "invalid_motivations": [
+    {
+      "name": "not a list",
+      "value": {
+        "goal": "Find the map"
+      },
+      "message": "Motivations are a list of text"
+    }
+  ],
+  "clocks": [
+    {
+      "name": "a new campaign",
+      "minutes": null,
+      "clock": {
+        "minutes": 480,
+        "day": 1,
+        "time": "08:00"
+      }
+    },
+    {
+      "name": "day 3, a quarter past nine at night",
+      "minutes": 4155,
+      "clock": {
+        "minutes": 4155,
+        "day": 3,
+        "time": "21:15"
+      }
+    }
+  ]
+}

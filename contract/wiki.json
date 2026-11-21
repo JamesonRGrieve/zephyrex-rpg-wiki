@@ -18,8 +18,15 @@
     "world_entity_ids": 100,
     "depth_prompt_depth": 999,
     "source_characters": 300,
-    "picture_url_characters": 2000
+    "picture_url_characters": 2000,
+    "routine_slots": 24,
+    "activity_characters": 200,
+    "motivations": 20,
+    "motivation_characters": 500,
+    "clock_advance_minutes": 525600,
+    "move_reason_characters": 500
   },
+  "clock_start_minutes": 480,
   "gm_only_property": "GM only",
   "document_kinds": [
     "journal",

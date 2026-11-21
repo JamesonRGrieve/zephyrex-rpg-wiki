@@ -40,6 +40,8 @@ model Campaign {
   isScenario   Boolean?
   /// The scenario this campaign is a playthrough of.
   scenarioId   String?
+  /// In-world time: minutes from day 1, 00:00; none = day 1, 08:00.
+  clockMinutes Int?
   createdAt    DateTime @default(now())
   updatedAt    DateTime
   updatedById  String?
@@ -112,6 +114,9 @@ model Person {
   pictureUrl  String?
   /// S4c: how the AI plays them (JSON text: personality, speech, first_message, examples); GM-facing.
   voice       String?
+  /// The world tick: their schedule and motivations (JSON text, GM-facing).
+  routine     String?
+  motivations String?
   locationId   String?
   gender       String?
   birthDate    DateTime?
@@ -565,4 +570,21 @@ model PropertyKit {
   deletedAt   DateTime?
 
   @@index([createdById])
+}
+
+/// A person moved by the GM side's world tick: from where, to where, when in-world and why.
+model PersonMove {
+  id             String   @id @default(uuid())
+  createdById    String
+  personId       String
+  campaignId     String?
+  fromLocationId String?
+  toLocationId   String
+  atMinutes      Int?
+  reason         String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime
+  updatedById    String?
+
+  @@index([personId])
 }

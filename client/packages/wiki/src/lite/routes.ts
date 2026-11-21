@@ -16,6 +16,7 @@ import { bindPrisma } from './db';
 import { metadataDelete, metadataOfGet, metadataPatch, metadataPost } from './recordMetadataRoutes';
 import { campaignDocumentsGet } from './campaignDocuments';
 import { campaignInstantiatePost } from './scenarios';
+import { clockGet, clockPost, personMovePost, personMovesGet } from './worldTick';
 import { sessionReportGet, sessionReportPost } from './sessionReportRoutes';
 import { worldEntityGet } from './worldEntityRoute';
 import {
@@ -63,7 +64,9 @@ function both<Row extends RecordRow, Create, Update>(spec: ResourceSpec<Row, Cre
 /** Every resource the catch-all answers, by its path. */
 const ROUTES: Record<string, Routes> = {
   // Copy on start: POST /v1/campaign/{id}/instantiate.
-  campaign: { ...both(campaigns), recordActions: { instantiate: { POST: campaignInstantiatePost } } },
+  campaign: { ...both(campaigns), recordActions: { instantiate: { POST: campaignInstantiatePost }, clock: { GET: clockGet, POST: clockPost } } },
+  // The world tick: people moved by the GM, each move kept.
+  person_move: { collection: { GET: personMovesGet, POST: personMovePost }, record: {} },
   disposition: both(dispositions),
   entity_inventory: both(entityInventories),
   entity_post: both(entityPosts),

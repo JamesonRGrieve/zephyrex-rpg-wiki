@@ -46,3 +46,5 @@ export const SEED_PLAY_STYLES = contract.seed_play_styles as readonly string[];
 export const PLAY_STYLE = 'play_style';
 /** A campaign's documents, in this order (journals first). */
 export const DOCUMENT_KINDS = contract.document_kinds as readonly string[];
+/** A new campaign's clock: minutes from day 1, 00:00 (day 1, 08:00). */
+export const CLOCK_START_MINUTES: number = contract.clock_start_minutes;
