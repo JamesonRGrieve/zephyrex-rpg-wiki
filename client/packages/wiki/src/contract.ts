@@ -39,3 +39,8 @@ export const GM_ONLY_PROPERTY = contract.gm_only_property;
 export const ATTACHMENT_ROLES = contract.attachment_roles as readonly string[];
 /** The settings every wiki has (S6b): the system's, so everyone reads them and nobody else changes them. */
 export const SEED_SETTINGS = contract.seed_settings as readonly { slug: string; name: string }[];
+/** What a taxon can tag: the record kinds and campaigns (a scenario's play-style tags). */
+export const TAGGABLE_TYPES = contract.taggable_types as readonly string[];
+/** The shared play-style tags (taxon kind play_style), everyone's to use. */
+export const SEED_PLAY_STYLES = contract.seed_play_styles as readonly string[];
+export const PLAY_STYLE = 'play_style';

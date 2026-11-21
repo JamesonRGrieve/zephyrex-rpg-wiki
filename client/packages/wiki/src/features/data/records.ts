@@ -14,6 +14,7 @@ import { useClient } from 'zephyrex';
 import { z } from 'zod';
 import {
   ENTITY_TYPES,
+  TAGGABLE_TYPES,
   FACTION_KINDS,
   HOOK_KINDS,
   ITEM_KINDS,
@@ -253,7 +254,8 @@ export const taxonSchema = z.object({
 export type Taxon = z.infer<typeof taxonSchema>;
 
 const target = { target_entity_type: z.enum(ENTITY_TYPES as [string, ...string[]]), target_entity_id: z.string() };
-export const entityTaxonSchema = z.object({ ...versioned, taxon_id: z.string(), ...target });
+// A taxon tags any record, and a campaign too (a scenario's play styles).
+export const entityTaxonSchema = z.object({ ...versioned, taxon_id: z.string(), target_entity_type: z.enum(TAGGABLE_TYPES as [string, ...string[]]), target_entity_id: z.string() });
 export type EntityTaxon = z.infer<typeof entityTaxonSchema>;
 
 export const statusSchema = z.object({

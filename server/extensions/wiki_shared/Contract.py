@@ -23,6 +23,11 @@ LIMITS: dict[str, int] = CONTRACT["limits"]
 PROVENANCES: tuple[str, ...] = tuple(CONTRACT["provenances"])
 # The private property that keeps a record to the GM (the vault's is_private: true), "true" when set.
 GM_ONLY_PROPERTY: str = CONTRACT["gm_only_property"]
+# What a taxon can tag: the record kinds and campaigns (a scenario's play-style tags).
+TAGGABLE_TYPES: tuple[str, ...] = tuple(CONTRACT["taggable_types"])
+# The shared play-style tags (taxon kind play_style), seeded as SYSTEM's: everyone's to use.
+SEED_PLAY_STYLES: tuple[str, ...] = tuple(CONTRACT["seed_play_styles"])
+PLAY_STYLE = "play_style"
 LOCATION_KINDS: tuple[str, ...] = tuple(CONTRACT["location_kinds"])
 PERSON_KINDS: tuple[str, ...] = tuple(CONTRACT["person_kinds"])
 FACTION_KINDS: tuple[str, ...] = tuple(CONTRACT["faction_kinds"])

@@ -23,6 +23,7 @@ from vault_import.api import Api, ApiError
 from zephyrex.extensions.wiki_shared.Contract import (  # type: ignore[import-not-found]
     FACTION_KINDS,
     GM_ONLY_PROPERTY,
+    PLAY_STYLE,
     HOOK_KINDS,
     ITEM_KINDS,
     JOURNAL_KINDS,
@@ -109,6 +110,11 @@ class Placed:
     record: dict[str, Any]
 
 
+def _style(name: str) -> str:
+    """A play style's name as it's matched: "Combat heavy", "combat_heavy" and "combat-heavy" alike."""
+    return "-".join(name.strip().lower().replace("_", " ").replace("-", " ").split())
+
+
 def _text(value: Any) -> Optional[str]:
     if value is None:
         return None
@@ -155,6 +161,8 @@ class Importer:
         self._aliases: dict[str, list[tuple[str, tuple[str, dict[str, Any]]]]] = {}
         # A campaign's provenance and source, from its notes' frontmatter (homebrew when none says).
         self._provenance: dict[str, dict[str, Any]] = {}
+        # A campaign's play-style tags, from its framing note's tags: (seeded ones matched, others made).
+        self._play_styles: dict[str, list[str]] = {}
         self._campaign_rows: dict[str, dict[str, Any]] = {}
         self._touched: set[str] = set()
         # Whether the back end serves attachments (asked once, when a first picture comes).
@@ -219,6 +227,12 @@ class Importer:
             word = _text(note.meta.get("kind")) or _text(note.meta.get("journal_type")) or ""
             if name is None or note.entity_type != "journal" or word.lower().replace("-", "_") != "campaign_framing":
                 continue
+            # Its tags are the campaign's play styles (the note's own kind and type words aside).
+            plain = {_style(one) for one in ("journal", word, "framing", "campaign")}
+            styles = [str(tag).strip() for tag in _list(note.meta.get("tags")) if _text(tag) and _style(str(tag)) not in plain]
+            self._play_styles.setdefault(name, []).extend(one for one in styles if one not in self._play_styles.get(name, []))
+            if "provenance" not in note.meta and "source" not in note.meta:
+                continue
             try:
                 wanted = provenance({"provenance": _text(note.meta.get("provenance")), "source": _text(note.meta.get("source"))})
             except ValueError as error:
@@ -227,6 +241,29 @@ class Importer:
             held = self._provenance.setdefault(name, wanted)
             if held != wanted:
                 self.report.refused.append((note.path, f"campaign {name!r} is already {held['provenance']} here"))
+
+    def _settle_play_styles(self) -> None:
+        """A campaign's play-style tags as its framing note gives them: a shared one (seeded) matched by
+        name, any other made as one's own; tags already on the campaign stay."""
+        wanted = {name: styles for name, styles in self._play_styles.items() if styles and name in self._campaign_rows}
+        if not wanted or self.dry_run:
+            return
+        known = {_style(str(row["name"])): str(row["id"]) for row in self.api.list("taxon", kind=PLAY_STYLE)}
+        for name, styles in sorted(wanted.items()):
+            campaign_id = str(self._campaign_rows[name]["id"])
+            held = {str(row["taxon_id"]) for row in self.api.list("entity_taxon", target_entity_type="campaign", target_entity_id=campaign_id)}
+            added = False
+            for style in styles:
+                taxon = known.get(_style(style))
+                if taxon is None:
+                    taxon = known[_style(style)] = str(self.api.create("taxon", name=style, kind=PLAY_STYLE)["id"])
+                if taxon not in held:
+                    self.api.create("entity_taxon", taxon_id=taxon, target_entity_type="campaign", target_entity_id=campaign_id)
+                    held.add(taxon)
+                    added = True
+            label = f"campaign {name}"
+            if added and label not in self.report.created and label not in self.report.updated:
+                self.report.updated.append(label)
 
     def _settle_provenance(self) -> None:
         """A campaign the import touched, made what its notes say (homebrew when none says)."""
@@ -455,7 +492,9 @@ class Importer:
         if self.dry_run or record_id.startswith("(new"):
             return changed
         tagged = {one["taxon_id"] for one in self.api.list("entity_taxon", target_entity_type=kind, target_entity_id=record_id)}
-        wanted = [(str(tag), "tag") for tag in _list(meta.get("tags")) if _text(tag) and str(tag) != kind]
+        # A framing note's tags are its campaign's play styles (_settle_play_styles), not its own.
+        framing = kind == "journal" and (_text(meta.get("kind")) or _text(meta.get("journal_type")) or "").lower().replace("-", "_") == "campaign_framing"
+        wanted = [] if framing else [(str(tag), "tag") for tag in _list(meta.get("tags")) if _text(tag) and str(tag) != kind]
         if _text(meta.get("race")):
             wanted.append((str(meta["race"]).strip(), "race"))
         for name, taxon_kind in wanted:
@@ -604,6 +643,7 @@ class Importer:
                 self.report.refused.append((one.note.path, str(error.detail)))
         try:
             self._settle_provenance()
+            self._settle_play_styles()
         except ApiError as error:
             self.report.refused.append(("(campaigns)", str(error.detail)))
         return self.report

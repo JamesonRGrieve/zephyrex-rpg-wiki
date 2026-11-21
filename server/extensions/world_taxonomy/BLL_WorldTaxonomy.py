@@ -18,7 +18,7 @@ from typing import Any, Callable, ClassVar, Optional, Type
 
 from fastapi import HTTPException
 from pydantic import Field, field_validator
-from zephyrex.extensions.wiki_shared.Contract import ENTITY_TYPES, STATUS_KINDS, TAXON_KINDS  # type: ignore[import-not-found]
+from zephyrex.extensions.wiki_shared.Contract import ENTITY_TYPES, STATUS_KINDS, TAGGABLE_TYPES, TAXON_KINDS  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Records import (  # type: ignore[import-not-found]
     checked_colour,
     checked_kind,
@@ -55,6 +55,13 @@ def _status_kind(value: Any) -> Any:
 def _entity_type(value: Any) -> Any:
     if value not in ENTITY_TYPES:
         raise ValueError(f"A target is one of: {', '.join(ENTITY_TYPES)}")
+    return value
+
+
+def _taggable_type(value: Any) -> Any:
+    """A taxon tags any record, and a campaign too (a scenario's play-style tags)."""
+    if value not in TAGGABLE_TYPES:
+        raise ValueError(f"A target is one of: {', '.join(TAGGABLE_TYPES)}")
     return value
 
 
@@ -108,7 +115,7 @@ TaxonModel.Manager = TaxonManager
 
 class EntityTaxonModel(ApplicationModel.Optional, UpdateMixinModel.Optional, TaxonModel.Reference.Optional, metaclass=ModelMeta):
     Manager: ClassVar[Type["EntityTaxonManager"]] = None
-    target_entity_type: Optional[str] = Field(None, description="contract/wiki.json entity_types")
+    target_entity_type: Optional[str] = Field(None, description="contract/wiki.json taggable_types")
     target_entity_id: Optional[str] = Field(None, description="The tagged record's id")
     table_comment: ClassVar[str] = "A taxon on a record (polymorphic); once per taxon and record."
 
@@ -116,7 +123,7 @@ class EntityTaxonModel(ApplicationModel.Optional, UpdateMixinModel.Optional, Tax
         target_entity_type: str = Field(...)
         target_entity_id: str = Field(...)
 
-        _type = field_validator("target_entity_type")(_entity_type)
+        _type = field_validator("target_entity_type")(_taggable_type)
 
     class Update(BaseModel):
         pass

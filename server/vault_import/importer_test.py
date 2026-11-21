@@ -52,6 +52,11 @@ def test_the_vault_imports_with_its_links_and_a_second_run_changes_nothing(serve
     assert (campaign["provenance"], campaign["source"]) == ("adapted", "The Lost Mine of Phandelver, Wizards of the Coast")
     framing = _one(api, "journal", campaign["id"], "The Split Antler — Framing")
     assert framing["kind"] == "campaign_framing"
+    # Its framing note's tags are the campaign's play styles: shared ones matched, the rest its own.
+    styles = {str(row["id"]): str(row["name"]) for row in api.list("taxon", kind="play_style")}
+    tagged = sorted(styles[str(row["taxon_id"])] for row in api.list("entity_taxon", target_entity_type="campaign", target_entity_id=campaign["id"]))
+    assert tagged == ["combat-heavy", "mystery", "slow burn"]
+    assert api.list("entity_taxon", target_entity_type="journal", target_entity_id=framing["id"]) == []
     world = campaign["id"]
     fens, marsh, stable = (_one(api, "location", world, name) for name in ("The Fens", "Brindlemarsh", "Brindlemarsh Stable"))
     assert (marsh["parent_id"], stable["parent_id"], json.loads(marsh["aliases"])) == (fens["id"], marsh["id"], ["The Marsh Town"])

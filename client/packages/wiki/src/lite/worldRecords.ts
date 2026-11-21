@@ -23,7 +23,10 @@ import {
   CANON_LEVELS,
   DISPOSITION_TARGETS,
   POST_POSITIONS,
+  PLAY_STYLE,
+  SEED_PLAY_STYLES,
   SEED_SETTINGS,
+  TAGGABLE_TYPES,
   STATUS_KINDS,
   TAXON_KINDS,
 } from '../contract';
@@ -212,6 +215,30 @@ async function seedSettings(): Promise<void> {
     await prisma.setting.createMany({
       data: missing.map((one) => ({ createdById: SYSTEM_OWNER_ID, name: one.name, slug: one.slug, updatedAt: new Date() })),
     });
+  }
+}
+
+let playStyleSeeding: Promise<void> | null = null;
+
+/**
+ * As the server's rpg_core 011: the contract's seed_play_styles are the system's taxons of kind
+ * play_style (no world, no setting), each once by name. Once per process.
+ */
+export async function ensureSeedPlayStyles(): Promise<void> {
+  playStyleSeeding ??= (async () => {
+    const held = new Set(
+      (await prisma.taxon.findMany({ where: { createdById: SYSTEM_OWNER_ID, kind: PLAY_STYLE }, select: { name: true } })).map((row) => row.name),
+    );
+    const missing = SEED_PLAY_STYLES.filter((name) => !held.has(name));
+    if (missing.length > 0) {
+      await prisma.taxon.createMany({ data: missing.map((name) => ({ createdById: SYSTEM_OWNER_ID, name, kind: PLAY_STYLE, updatedAt: new Date() })) });
+    }
+  })();
+  try {
+    await playStyleSeeding;
+  } catch (error) {
+    playStyleSeeding = null;
+    throw error;
   }
 }
 
@@ -1674,8 +1701,12 @@ const colour = z
   .regex(/^#[0-9a-fA-F]{6}$/, 'A colour is # and six hex digits, like #a83232')
   .nullable();
 const targetType = z.enum(ENTITY_TYPES as [string, ...string[]]);
+// A taxon tags any record, and a campaign too (a scenario's play styles).
+const taggableType = z.enum(TAGGABLE_TYPES as [string, ...string[]]);
 const taxonParent: ParentOf = async (id) => (await prisma.taxon.findUnique({ where: { id }, select: { parentId: true } }))?.parentId ?? null;
-const liveTaxon = (where: { id: string; createdById: string }) => prisma.taxon.count({ where: { ...where, deletedAt: null } });
+// One's own taxons, and the system's shared ones (the seeded play styles), as the server reads them.
+const liveTaxon = (where: { id: string; createdById: string }) =>
+  prisma.taxon.count({ where: { id: where.id, ...seenBy(where.createdById), deletedAt: null } });
 const liveStatus = (where: { id: string; createdById: string }) => prisma.status.count({ where: { ...where, deletedAt: null } });
 
 const TAXON_COLUMNS: Columns = {
@@ -1723,10 +1754,11 @@ export const taxa: ResourceSpec<TaxonRow, z.infer<typeof taxonCreate>, z.infer<t
   modelName: 'TaxonModel',
   createSchema: taxonCreate,
   updateSchema: taxonUpdate,
-  list: (ownerId, query) =>
-    prisma.taxon.findMany({
+  async list(ownerId, query) {
+    await ensureSeedPlayStyles();
+    return prisma.taxon.findMany({
       where: {
-        createdById: ownerId,
+        ...seenBy(ownerId),
         deletedAt: null,
         ...filters(query, [
           ['campaign_id', 'campaignId'],
@@ -1737,14 +1769,20 @@ export const taxa: ResourceSpec<TaxonRow, z.infer<typeof taxonCreate>, z.infer<t
         ]),
       },
       orderBy: { name: 'asc' },
-    }),
-  find: (id, ownerId) => prisma.taxon.findFirst({ where: { id, createdById: ownerId, deletedAt: null } }),
+    });
+  },
+  async find(id, ownerId) {
+    await ensureSeedPlayStyles();
+    return prisma.taxon.findFirst({ where: { id, ...seenBy(ownerId), deletedAt: null } });
+  },
   async insert(ownerId, input, stamp) {
     await checkTaxonRefs(ownerId, input);
     return prisma.taxon.create({ data: { createdById: ownerId, ...written(TAXON_COLUMNS, input, stamp) } as Prisma.TaxonUncheckedCreateInput });
   },
   async updateIfCurrent(id, version, input, stamp, userId) {
     const owner = await prisma.taxon.findUnique({ where: { id }, select: { createdById: true, campaignId: true, settingId: true } });
+    // A shared play style is everyone's to use and no one's to change (404, as the server).
+    if (owner?.createdById === SYSTEM_OWNER_ID) throw notFound('TaxonModel');
     checkWorldStays(owner?.campaignId, input.campaign_id);
     if (owner !== null) await checkSetting(owner.createdById, input, owner);
     if (owner !== null) await checkTaxonRefs(owner.createdById, input);
@@ -1756,6 +1794,7 @@ export const taxa: ResourceSpec<TaxonRow, z.infer<typeof taxonCreate>, z.infer<t
     return count === 0 ? null : prisma.taxon.findUnique({ where: { id } });
   },
   async remove(id) {
+    if ((await prisma.taxon.findUnique({ where: { id }, select: { createdById: true } }))?.createdById === SYSTEM_OWNER_ID) throw notFound('TaxonModel');
     // Taken off every record, as on the server.
     await prisma.$transaction([prisma.entityTaxon.deleteMany({ where: { taxonId: id } }), prisma.taxon.update({ where: { id }, data: tombstone() })]);
   },
@@ -1767,7 +1806,7 @@ const ENTITY_TAXON_COLUMNS: Columns = {
   target_entity_type: plain('targetEntityType'),
   target_entity_id: plain('targetEntityId'),
 };
-const entityTaxonCreate = z.object({ taxon_id: z.string().min(1), target_entity_type: targetType, target_entity_id: z.string().min(1) });
+const entityTaxonCreate = z.object({ taxon_id: z.string().min(1), target_entity_type: taggableType, target_entity_id: z.string().min(1) });
 const nothing = z.object({}).partial();
 type EntityTaxonRow = Prisma.EntityTaxonGetPayload<object>;
 

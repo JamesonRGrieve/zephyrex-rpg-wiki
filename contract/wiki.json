@@ -20,6 +20,25 @@
     "source_characters": 300
   },
   "gm_only_property": "GM only",
+  "taggable_types": [
+    "person",
+    "location",
+    "faction",
+    "item",
+    "journal",
+    "hook",
+    "campaign"
+  ],
+  "seed_play_styles": [
+    "freeform",
+    "combat-heavy",
+    "narrative",
+    "mystery",
+    "exploration",
+    "social",
+    "horror",
+    "dungeon-crawl"
+  ],
   "provenances": [
     "homebrew",
     "official",
@@ -131,7 +150,8 @@
     "language_family",
     "religion",
     "condition_type",
-    "material_type"
+    "material_type",
+    "play_style"
   ],
   "status_kinds": [
     "entity_status",

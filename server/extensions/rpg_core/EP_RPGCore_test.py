@@ -923,3 +923,22 @@ class TestGmOnly:
         assert synced == {"The Truth of the Flicker": True, "Player briefing": False}
         by_id = server.get(f"/v1/world_entity?ids={truth['id']},{public['id']}", headers=_headers(person)).json()["world_entities"]
         assert [entity["gm_only"] for entity in by_id] == [True, False]
+
+
+class TestPlayStyles:
+    """A scenario's play-style tags: the shared ones everyone uses, and anyone's own."""
+
+    def test_campaigns_take_the_shared_play_styles_and_ones_own(self, server: TestClient, person: Any, other: Any) -> None:
+        shared = server.get("/v1/taxon?kind=play_style", headers=_headers(other)).json()["taxons"]
+        assert {"freeform", "combat-heavy", "mystery", "dungeon-crawl"} <= {row["name"] for row in shared}
+        mystery = next(row for row in shared if row["name"] == "mystery")
+        campaign = _create(server, person, "campaign", name="The Flicker")
+        _create(server, person, "entity_taxon", taxon_id=mystery["id"], target_entity_type="campaign", target_entity_id=campaign["id"])
+        mine = _create(server, person, "taxon", name="slow-burn", kind="play_style")
+        _create(server, person, "entity_taxon", taxon_id=mine["id"], target_entity_type="campaign", target_entity_id=campaign["id"])
+        tagged = server.get(f"/v1/entity_taxon?target_entity_type=campaign&target_entity_id={campaign['id']}", headers=_headers(person)).json()["entity_taxons"]
+        assert {row["taxon_id"] for row in tagged} == {mystery["id"], mine["id"]}
+        # The shared ones are everyone's to use and no one's to change.
+        current = server.get(f"/v1/taxon/{mystery['id']}", headers=_headers(person))
+        changed = server.put(f"/v1/taxon/{mystery['id']}", json={"taxon": {"name": "whodunit"}}, headers=_headers(person, **{"If-Match": current.headers["ETag"]}))
+        assert changed.status_code == 404, changed.text

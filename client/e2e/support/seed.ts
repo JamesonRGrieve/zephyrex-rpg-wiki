@@ -32,6 +32,11 @@ export async function seedWorld(request: APIRequestContext): Promise<Seeded> {
   const setting = await create(request, 'setting', { name: 'The Grim Future', entry: entry('Ten thousand years of war.') });
   const world = await create(request, 'campaign', { name: 'The Salt Coast', setting_id: setting, provenance: 'adapted', source: 'Salt and Storm, Harbour Press, ch. 2' });
   await create(request, 'faction', { name: 'Adeptus Mechanicus', kind: 'religious', setting_id: setting, canon_level: 'common' });
+  // A scenario's play style: a shared one, seeded as the system's.
+  const styles = (await (await request.get('/api/v1/taxon?kind=play_style')).json()) as { taxons: { id: string; name: string }[] };
+  const mystery = styles.taxons.find((one) => one.name === 'mystery');
+  expect(mystery, 'the seeded play styles').toBeDefined();
+  await create(request, 'entity_taxon', { taxon_id: mystery!.id, target_entity_type: 'campaign', target_entity_id: world });
   const coast = await create(request, 'location', { name: 'Salt Coast', kind: 'region', campaign_id: world, entry: entry('Cliffs, coves and smugglers.') });
   const location = await create(request, 'location', {
     name: 'Port Gull',
