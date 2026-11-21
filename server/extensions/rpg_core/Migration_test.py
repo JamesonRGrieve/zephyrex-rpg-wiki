@@ -8,6 +8,7 @@ import glob
 import os
 import sqlite3
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -59,10 +60,23 @@ FOREIGN_KEYS = {
 }
 
 
+# The wiki's own extensions: each directory beside this one with a manifest (wiki_shared is a plain
+# package; rpg_log stays in the repo, unloaded).
+EXTENSIONS_ROOT = Path(__file__).parents[1]
+OWN = sorted(path.parent.name for path in EXTENSIONS_ROOT.glob("*/manifest.toml") if path.parent.name != "rpg_log")
+DECLARED: dict[str, dict[str, set[str]]] = {}
+
+
 @pytest.fixture(scope="module")
 def database() -> Iterator[sqlite3.Connection]:
-    with TestClient(create()):
+    app = create()
+    with TestClient(app):
         pass
+    # Every table and column the wiki's models declare, by owning extension.
+    for table in app.state.model_registry.database_manager.Base.metadata.sorted_tables:
+        owner = table.info.get("extension")
+        if owner in OWN:
+            DECLARED.setdefault(owner, {})[table.name] = {column.name for column in table.columns}
     name = os.environ["DATABASE_NAME"]
     files = glob.glob(os.path.join(os.environ["DATABASE_PATH"], f"{name}*.db"))
     assert files, f"no database file for {name} in {os.environ['DATABASE_PATH']}"
@@ -81,6 +95,29 @@ def test_the_injected_references_are_real_foreign_keys(database: sqlite3.Connect
     for (table, column), target in FOREIGN_KEYS.items():
         keys = {(row[3], row[2]) for row in database.execute(f"PRAGMA foreign_key_list({table})")}
         assert (column, target) in keys, (table, column, target, keys)
+
+
+def test_every_wiki_extension_ships_migrations() -> None:
+    """The framework builds tables from the models only for an extension with no migration files at
+    all (create_unmigrated_extension_tables), and soon refuses to boot outside tests when a table has
+    none: every wiki extension has its own Alembic history."""
+    missing = [name for name in OWN if not list((EXTENSIONS_ROOT / name / "migrations" / "versions").glob("*.py"))]
+    assert not missing, f"extensions without migrations: {missing}"
+
+
+def test_the_migrations_build_every_declared_table_and_column(database: sqlite3.Connection) -> None:
+    """With migrations in every extension (above), no table comes from the models: so every table
+    and column a wiki model declares (injected columns included) exists only if a migration made it."""
+    assert DECLARED, "no wiki tables found in the models' metadata"
+    gaps: list[str] = []
+    for owner, tables in sorted(DECLARED.items()):
+        for table, columns in sorted(tables.items()):
+            present = {row[1] for row in database.execute(f"PRAGMA table_info({table})")}
+            if not present:
+                gaps.append(f"{owner}: no table {table}")
+            elif columns - present:
+                gaps.append(f"{owner}: {table} lacks {sorted(columns - present)}")
+    assert not gaps, gaps
 
 
 def test_each_extension_owns_its_tables(database: sqlite3.Connection) -> None:

@@ -33,3 +33,11 @@ def test_leaves(case: dict[str, Any]) -> None:
 def test_invalid(case: dict[str, Any]) -> None:
     with pytest.raises(RequirementError):
         checked(case["requires"])
+
+
+@pytest.mark.parametrize("case", CASES["party_cases"], ids=[case["name"] for case in CASES["party_cases"]])
+def test_party_cases_are_well_formed(case: dict[str, Any]) -> None:
+    """VTT evaluates these; the wiki holds their shape, and without a party they need a check or are
+    already decided by resolved hooks."""
+    checked(case["requires"])
+    assert hook_state(case["requires"], case["resolved"], False) in ("needs_check", "available", "blocked")

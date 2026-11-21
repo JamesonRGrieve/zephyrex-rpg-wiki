@@ -265,5 +265,205 @@
       "name": "a number",
       "requires": 7
     }
+  ],
+  "party_cases_comment": "Game-system checks evaluated against the party (VTT's rpg_systems; the wiki only reports needs_check and checks these cases' shape). party is each player character's held options, {dimension: [slugs]}. A char leaf is met when any (who: any, the default) or every (who: all) party member holds, for every dimension it names, at least one of its values; otherwise unmet. Then the all/any rule above applies, with resolved hooks as before.",
+  "party_cases": [
+    {
+      "name": "one member has the skill",
+      "requires": {
+        "char": {
+          "skill": [
+            "psyniscience",
+            "forbidden-lore"
+          ]
+        }
+      },
+      "party": [
+        {
+          "skill": [
+            "tech-use"
+          ]
+        },
+        {
+          "skill": [
+            "forbidden-lore"
+          ]
+        }
+      ],
+      "resolved": [],
+      "state": "available"
+    },
+    {
+      "name": "nobody has it",
+      "requires": {
+        "char": {
+          "skill": "psyniscience"
+        }
+      },
+      "party": [
+        {
+          "skill": [
+            "tech-use"
+          ]
+        }
+      ],
+      "resolved": [],
+      "state": "blocked"
+    },
+    {
+      "name": "who all needs every member",
+      "requires": {
+        "char": {
+          "homeworld": "voidborn"
+        },
+        "who": "all"
+      },
+      "party": [
+        {
+          "homeworld": [
+            "voidborn"
+          ]
+        },
+        {
+          "homeworld": [
+            "hive-world"
+          ]
+        }
+      ],
+      "resolved": [],
+      "state": "blocked"
+    },
+    {
+      "name": "who all, everyone has it",
+      "requires": {
+        "char": {
+          "homeworld": "voidborn"
+        },
+        "who": "all"
+      },
+      "party": [
+        {
+          "homeworld": [
+            "voidborn"
+          ]
+        },
+        {
+          "homeworld": [
+            "voidborn"
+          ]
+        }
+      ],
+      "resolved": [],
+      "state": "available"
+    },
+    {
+      "name": "dimensions in one check are AND for the same member",
+      "requires": {
+        "char": {
+          "background": "adeptus-administratum",
+          "skill": "logic"
+        }
+      },
+      "party": [
+        {
+          "background": [
+            "adeptus-administratum"
+          ]
+        },
+        {
+          "skill": [
+            "logic"
+          ]
+        }
+      ],
+      "resolved": [],
+      "state": "blocked"
+    },
+    {
+      "name": "the same member holds both",
+      "requires": {
+        "char": {
+          "background": "adeptus-administratum",
+          "skill": "logic"
+        }
+      },
+      "party": [
+        {
+          "background": [
+            "adeptus-administratum"
+          ],
+          "skill": [
+            "logic",
+            "scrutiny"
+          ]
+        }
+      ],
+      "resolved": [],
+      "state": "available"
+    },
+    {
+      "name": "a hook and a check together",
+      "requires": {
+        "all": [
+          "APPROACH",
+          {
+            "any": [
+              {
+                "char": {
+                  "skill": "psyniscience"
+                }
+              },
+              "DISCOVER_NULL"
+            ]
+          }
+        ]
+      },
+      "party": [
+        {
+          "skill": [
+            "psyniscience"
+          ]
+        }
+      ],
+      "resolved": [
+        "APPROACH"
+      ],
+      "state": "available"
+    },
+    {
+      "name": "a failed check, but the other branch resolved",
+      "requires": {
+        "any": [
+          {
+            "char": {
+              "homeworld": "voidborn"
+            }
+          },
+          "DISCOVER_NULL"
+        ]
+      },
+      "party": [
+        {
+          "homeworld": [
+            "hive-world"
+          ]
+        }
+      ],
+      "resolved": [
+        "DISCOVER_NULL"
+      ],
+      "state": "available"
+    },
+    {
+      "name": "an empty party passes no check",
+      "requires": {
+        "char": {
+          "skill": "awareness"
+        }
+      },
+      "party": [],
+      "resolved": [],
+      "state": "blocked"
+    }
   ]
 }
