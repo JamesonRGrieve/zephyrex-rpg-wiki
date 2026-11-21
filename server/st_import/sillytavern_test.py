@@ -40,7 +40,16 @@ def test_an_entrys_fields_as_the_wikis_lore(case: dict[str, Any]) -> None:
 def test_a_v2_card_its_voice_and_its_own_lorebook() -> None:
     card = read_card(FIXTURES / "holst.v2.json")
     assert (card.name, card.avatar) == ("Holst", None)
-    assert voice_of(card) == {"personality": "Gruff but fair.", "speech": "", "first_message": "Stalls are full, User.", "examples": ["Holst: No credit.", "Holst: Pay first."]}
+    assert voice_of(card) == {
+        "personality": "Gruff but fair.",
+        "speech": "",
+        "first_message": "Stalls are full, User.",
+        "examples": ["Holst: No credit.", "Holst: Pay first."],
+        "system_prompt": "You are Holst, a stablemaster.",
+        "post_history_instructions": "Stay gruff.",
+        "depth_prompt": {"prompt": "Holst distrusts User.", "depth": 2, "role": "system"},
+        "talkativeness": 0.3,
+    }
     [stable] = book_entries(card)
     assert (stable.name, stable.keys) == ("Holst's Stable", ["stable", "stall"])
     assert lore_of(stable.fields)["position"] == "after_character"

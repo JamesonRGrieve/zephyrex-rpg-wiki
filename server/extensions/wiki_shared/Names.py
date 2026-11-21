@@ -5,19 +5,27 @@ contract/name-list-cases.json. Both are kept as JSON text, as an entry is.
 
 - aliases: other names the record goes by (mentions and link resolution use them too);
 - keywords: what else wakes it in the AI's lorebook (World Info keys), beyond name and aliases;
-- voice: how the AI plays a person: personality, speech, a first message and example lines.
+- voice: how the AI plays a person: personality, speech, a first message and example lines, and
+  (Parity, SillyTavern's card fields) a system prompt, post-history instructions, a depth prompt
+  (Character's Note: a prompt, a depth and a role), talkativeness (0 to 1) and across_chats.
 """
 
 import json
 from typing import Any
 
-from zephyrex.extensions.wiki_shared.Contract import LIMITS  # type: ignore[import-not-found]
+from zephyrex.extensions.wiki_shared.Contract import CONTRACT, LIMITS  # type: ignore[import-not-found]
 
 MAX_NAME = LIMITS["name_characters"]
 MAX_NAMES = LIMITS["names_per_list"]
 MAX_VOICE = LIMITS["voice_characters"]
 MAX_EXAMPLES = LIMITS["voice_examples"]
-VOICE_PARTS = ("personality", "speech", "first_message", "examples")
+VOICE_PARTS: tuple[str, ...] = tuple(CONTRACT["voice_parts"])
+VOICE_DEFAULTS: dict[str, Any] = CONTRACT["voice_defaults"]
+DEPTH_ROLES: tuple[str, ...] = tuple(CONTRACT["depth_prompt_roles"])
+MAX_DEPTH = LIMITS["depth_prompt_depth"]
+TEXT_PARTS = ("personality", "speech", "first_message", "system_prompt", "post_history_instructions")
+PARTS_RULE = f"A voice's parts are {', '.join(VOICE_PARTS)}"
+DEPTH_RULE = f"A voice's depth_prompt is a prompt, a depth from 0 to {MAX_DEPTH} and a role ({', '.join(DEPTH_ROLES)})"
 
 
 def _loaded(value: Any) -> Any:
@@ -44,13 +52,34 @@ def names(value: Any) -> list[str]:
     return kept
 
 
+def _number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _depth_prompt(value: Any) -> Any:
+    """A Character's Note: none, or its prompt (none when empty), depth and role."""
+    if value is None:
+        return None
+    if not isinstance(value, dict) or any(key not in ("prompt", "depth", "role") for key in value):
+        raise ValueError(DEPTH_RULE)
+    prompt = value.get("prompt") or ""
+    depth = value.get("depth", VOICE_DEFAULTS["depth_prompt_depth"])
+    role = value.get("role") or VOICE_DEFAULTS["depth_prompt_role"]
+    if not isinstance(prompt, str) or len(prompt) > MAX_VOICE or not isinstance(depth, int) or isinstance(depth, bool):
+        raise ValueError(DEPTH_RULE)
+    if not 0 <= depth <= MAX_DEPTH or role not in DEPTH_ROLES:
+        raise ValueError(DEPTH_RULE)
+    return {"prompt": prompt.strip(), "depth": depth, "role": role} if prompt.strip() else None
+
+
 def voice(value: Any) -> dict[str, Any]:
-    """A person's AI voice, every part present (empty when not given) and trimmed, each example once."""
+    """A person's AI voice, every part present (empty or its default when not given) and trimmed,
+    each example once."""
     value = _loaded(value)
     if not isinstance(value, dict) or any(key not in VOICE_PARTS for key in value):
-        raise ValueError("A voice is personality, speech, first_message and examples")
+        raise ValueError(PARTS_RULE)
     checked: dict[str, Any] = {}
-    for part in VOICE_PARTS[:3]:
+    for part in TEXT_PARTS:
         text = value.get(part) or ""
         if not isinstance(text, str):
             raise ValueError(f"A voice's {part} is text")
@@ -64,7 +93,16 @@ def voice(value: Any) -> dict[str, Any]:
     if len(kept) > MAX_EXAMPLES or any(len(one) > MAX_VOICE for one in kept):
         raise ValueError(f"A voice has at most {MAX_EXAMPLES} examples of at most {MAX_VOICE} characters")
     checked["examples"] = kept
-    return checked
+    checked["depth_prompt"] = _depth_prompt(value.get("depth_prompt"))
+    talkativeness = value.get("talkativeness", VOICE_DEFAULTS["talkativeness"])
+    if not _number(talkativeness) or not 0 <= talkativeness <= 1:
+        raise ValueError("A voice's talkativeness is from 0 to 1")
+    checked["talkativeness"] = talkativeness
+    across = value.get("across_chats", VOICE_DEFAULTS["across_chats"])
+    if not isinstance(across, bool):
+        raise ValueError("A voice's across_chats is yes or no")
+    checked["across_chats"] = across
+    return {part: checked[part] for part in VOICE_PARTS}
 
 
 def names_text(value: Any) -> Any:
@@ -87,9 +125,9 @@ def stored_names(text: Any) -> list[str]:
 
 
 def stored_voice(text: Any) -> Any:
-    """A stored voice read back; none when there is none or it is unreadable."""
+    """A stored voice read back with every part (one stored before a part existed gets its default);
+    none when there is none or it is unreadable."""
     try:
-        loaded = json.loads(text) if text else None
-    except json.JSONDecodeError:
+        return voice(text) if text else None
+    except (json.JSONDecodeError, ValueError):
         return None
-    return loaded if isinstance(loaded, dict) else None

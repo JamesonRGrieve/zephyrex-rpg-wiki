@@ -34,6 +34,7 @@ describe('stored values', () => {
     expect(storedNames('["A","B"]')).toEqual(['A', 'B']);
     expect(storedNames('{oops')).toEqual([]);
     expect(storedVoice(null)).toBeNull();
-    expect(storedVoice('{"personality":"Kind"}')).toEqual({ personality: 'Kind', speech: '', first_message: '', examples: [] });
+    // A voice stored before the Parity parts existed reads back with their defaults.
+    expect(storedVoice('{"personality":"Kind"}')).toEqual({ ...voice({}), personality: 'Kind' });
   });
 });

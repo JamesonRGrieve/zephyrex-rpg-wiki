@@ -1,29 +1,212 @@
 {
-  "$comment": "S4c: a record's aliases and keywords (lists of names, kept as JSON text) and a person's AI voice, checked the same way by both back ends: server/extensions/wiki_shared/Names_test.py and client/src/lib/names.test.ts.",
+  "$comment": "S4c: a record's aliases and keywords (lists of names, kept as JSON text) and a person's AI voice (Parity: SillyTavern's system prompt, post-history instructions, depth prompt, talkativeness and across_chats too), checked the same way by both back ends: server/extensions/wiki_shared/Names_test.py and client/src/lib/names.test.ts.",
   "lists": [
-    { "name": "trimmed, blanks dropped, each once (case aside), in order", "value": ["  The Marsh Town ", "", "the marsh town", "Stilts"], "checked": ["The Marsh Town", "Stilts"] },
-    { "name": "a JSON string reads as the list", "value": "[\"Holst\", \"Old Holst\"]", "checked": ["Holst", "Old Holst"] },
-    { "name": "empty", "value": [], "checked": [] }
+    {
+      "name": "trimmed, blanks dropped, each once (case aside), in order",
+      "value": [
+        "  The Marsh Town ",
+        "",
+        "the marsh town",
+        "Stilts"
+      ],
+      "checked": [
+        "The Marsh Town",
+        "Stilts"
+      ]
+    },
+    {
+      "name": "a JSON string reads as the list",
+      "value": "[\"Holst\", \"Old Holst\"]",
+      "checked": [
+        "Holst",
+        "Old Holst"
+      ]
+    },
+    {
+      "name": "empty",
+      "value": [],
+      "checked": []
+    }
   ],
   "invalid_lists": [
-    { "name": "not a list", "value": { "a": 1 }, "message": "A list of names is a list of text" },
-    { "name": "a number in it", "value": ["a", 3], "message": "A list of names is a list of text" }
+    {
+      "name": "not a list",
+      "value": {
+        "a": 1
+      },
+      "message": "A list of names is a list of text"
+    },
+    {
+      "name": "a number in it",
+      "value": [
+        "a",
+        3
+      ],
+      "message": "A list of names is a list of text"
+    }
   ],
   "voices": [
     {
       "name": "every part, trimmed",
-      "value": { "personality": " Gruff ", "speech": "Short words.", "first_message": "What?", "examples": [" Holst: No. ", ""] },
-      "checked": { "personality": "Gruff", "speech": "Short words.", "first_message": "What?", "examples": ["Holst: No."] }
+      "value": {
+        "personality": " Gruff ",
+        "speech": "Short words.",
+        "first_message": "What?",
+        "examples": [
+          " Holst: No. ",
+          ""
+        ]
+      },
+      "checked": {
+        "personality": "Gruff",
+        "speech": "Short words.",
+        "first_message": "What?",
+        "examples": [
+          "Holst: No."
+        ],
+        "system_prompt": "",
+        "post_history_instructions": "",
+        "depth_prompt": null,
+        "talkativeness": 0.5,
+        "across_chats": false
+      }
     },
     {
       "name": "parts left out are empty, each example once",
-      "value": { "personality": "Kind", "examples": ["Hi.", " Hi. "] },
-      "checked": { "personality": "Kind", "speech": "", "first_message": "", "examples": ["Hi."] }
+      "value": {
+        "personality": "Kind",
+        "examples": [
+          "Hi.",
+          " Hi. "
+        ]
+      },
+      "checked": {
+        "personality": "Kind",
+        "speech": "",
+        "first_message": "",
+        "examples": [
+          "Hi."
+        ],
+        "system_prompt": "",
+        "post_history_instructions": "",
+        "depth_prompt": null,
+        "talkativeness": 0.5,
+        "across_chats": false
+      }
+    },
+    {
+      "name": "SillyTavern's card parts, trimmed, the depth prompt's defaults filled",
+      "value": {
+        "personality": "Gruff",
+        "system_prompt": " You are Holst. ",
+        "post_history_instructions": "Stay in character.",
+        "depth_prompt": {
+          "prompt": " Holst distrusts strangers. "
+        },
+        "talkativeness": 0.2,
+        "across_chats": true
+      },
+      "checked": {
+        "personality": "Gruff",
+        "speech": "",
+        "first_message": "",
+        "examples": [],
+        "system_prompt": "You are Holst.",
+        "post_history_instructions": "Stay in character.",
+        "depth_prompt": {
+          "prompt": "Holst distrusts strangers.",
+          "depth": 4,
+          "role": "system"
+        },
+        "talkativeness": 0.2,
+        "across_chats": true
+      }
+    },
+    {
+      "name": "an empty depth prompt is none; whole talkativeness",
+      "value": {
+        "depth_prompt": {
+          "prompt": "  ",
+          "depth": 2,
+          "role": "user"
+        },
+        "talkativeness": 1
+      },
+      "checked": {
+        "personality": "",
+        "speech": "",
+        "first_message": "",
+        "examples": [],
+        "system_prompt": "",
+        "post_history_instructions": "",
+        "depth_prompt": null,
+        "talkativeness": 1,
+        "across_chats": false
+      }
     }
   ],
   "invalid_voices": [
-    { "name": "not an object", "value": ["Kind"], "message": "A voice is personality, speech, first_message and examples" },
-    { "name": "an unknown part", "value": { "mood": "sad" }, "message": "A voice is personality, speech, first_message and examples" },
-    { "name": "examples not a list", "value": { "examples": "Hi" }, "message": "A voice's examples are a list of text" }
+    {
+      "name": "not an object",
+      "value": [
+        "Kind"
+      ],
+      "message": "A voice's parts are personality, speech, first_message, examples, system_prompt, post_history_instructions, depth_prompt, talkativeness, across_chats"
+    },
+    {
+      "name": "an unknown part",
+      "value": {
+        "mood": "sad"
+      },
+      "message": "A voice's parts are personality, speech, first_message, examples, system_prompt, post_history_instructions, depth_prompt, talkativeness, across_chats"
+    },
+    {
+      "name": "examples not a list",
+      "value": {
+        "examples": "Hi"
+      },
+      "message": "A voice's examples are a list of text"
+    },
+    {
+      "name": "a depth prompt's unknown role",
+      "value": {
+        "depth_prompt": {
+          "prompt": "x",
+          "role": "narrator"
+        }
+      },
+      "message": "A voice's depth_prompt is a prompt, a depth from 0 to 999 and a role (system, user, assistant)"
+    },
+    {
+      "name": "a depth prompt too deep",
+      "value": {
+        "depth_prompt": {
+          "prompt": "x",
+          "depth": 1000
+        }
+      },
+      "message": "A voice's depth_prompt is a prompt, a depth from 0 to 999 and a role (system, user, assistant)"
+    },
+    {
+      "name": "talkativeness past 1",
+      "value": {
+        "talkativeness": 1.5
+      },
+      "message": "A voice's talkativeness is from 0 to 1"
+    },
+    {
+      "name": "talkativeness as yes",
+      "value": {
+        "talkativeness": true
+      },
+      "message": "A voice's talkativeness is from 0 to 1"
+    },
+    {
+      "name": "across_chats as text",
+      "value": {
+        "across_chats": "yes"
+      },
+      "message": "A voice's across_chats is yes or no"
+    }
   ]
 }

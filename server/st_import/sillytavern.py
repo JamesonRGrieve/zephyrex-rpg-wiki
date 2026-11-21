@@ -163,18 +163,41 @@ def lore_of(fields: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _talkativeness(value: Any) -> Any:
+    """A card's talkativeness (SillyTavern writes it as text or a number); unreadable reads as none."""
+    try:
+        return None if value is None or value == "" or isinstance(value, bool) else float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def voice_of(card: Card) -> dict[str, Any]:
-    """A card's personality, first message and example lines (split at <START>), {{char}} and
-    {{user}} read as the character's name and "User"."""
+    """A card's personality, first message and example lines (split at <START>), its system prompt,
+    post-history instructions, Character's Note (extensions.depth_prompt) and talkativeness;
+    {{char}} and {{user}} read as the character's name and "User"."""
     name = card.name
 
     def filled(text: Any) -> str:
         return str(text or "").replace("{{char}}", name).replace("{{user}}", "User").replace("<USER>", "User").replace("<BOT>", name).strip()
 
     examples = [filled(one) for one in str(card.data.get("mes_example") or "").split("<START>")]
-    return {
+    extensions = card.data.get("extensions") or {}
+    note = extensions.get("depth_prompt") or {}
+    given: dict[str, Any] = {
         "personality": filled(card.data.get("personality")),
         "speech": "",
         "first_message": filled(card.data.get("first_mes")),
         "examples": list(dict.fromkeys(one for one in examples if one)),
+        "system_prompt": filled(card.data.get("system_prompt")),
+        "post_history_instructions": filled(card.data.get("post_history_instructions")),
     }
+    if isinstance(note, dict) and str(note.get("prompt") or "").strip():
+        given["depth_prompt"] = {
+            "prompt": filled(note.get("prompt")),
+            "depth": int(note.get("depth", 4)),
+            "role": str(note.get("role") or "system"),
+        }
+    talkativeness = _talkativeness(extensions.get("talkativeness"))
+    if talkativeness is not None:
+        given["talkativeness"] = talkativeness
+    return given

@@ -61,8 +61,7 @@ KINDS = {
 # The vaults' words for a contract kind, where the word isn't the kind itself (after - becomes _).
 KIND_SYNONYMS = {
     "hook": {"main": "major_quest", "side": "side_quest"},
-    # campaign_framing: one framing note per campaign (Premise, Tone, Truths, Opening Situation).
-    "journal": {"session": "session_report", "day_plan": "note", "campaign_framing": "lore"},
+    "journal": {"session": "session_report", "day_plan": "note"},
     "item": {"equipment": "misc"},
 }
 # Handled elsewhere, or the note's identity; anything else in frontmatter is reported as unread.

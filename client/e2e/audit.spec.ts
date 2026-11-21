@@ -301,5 +301,24 @@ test.describe.serial('visual audit', () => {
     await page.close();
     test.setTimeout(pages.length * 6 * PER_SHOT_MS + 30_000);
     await audit(browser, testInfo, 'world', pages);
+    await voiceEditor(browser, testInfo, `/w/${seeded.world}/person/${seeded.person}`);
   });
 });
+
+/** The voice editor open (Parity's prompt parts included), at each size, light: it must fit. */
+async function voiceEditor(browser: Browser, testInfo: TestInfo, target: string): Promise<void> {
+  for (const [size, device] of Object.entries(VIEWPORTS)) {
+    const context = await browser.newContext({ ...device, baseURL: String(testInfo.project.use.baseURL) });
+    const page = await context.newPage();
+    try {
+      await page.goto(target);
+      await page.getByRole('button', { name: 'Edit voice' }).click();
+      await expect(page.getByLabel('Talkativeness')).toBeVisible();
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      expect(overflow, `${target} voice editor (${size}): sideways overflow`).toBeLessThanOrEqual(0);
+      if (AUDIT_DIR !== '') await page.screenshot({ path: path.join(AUDIT_DIR, `${testInfo.project.name}-voice-editor-${size}.png`), fullPage: true });
+    } finally {
+      await context.close();
+    }
+  }
+}

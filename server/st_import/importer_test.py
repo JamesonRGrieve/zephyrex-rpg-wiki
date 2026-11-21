@@ -58,6 +58,8 @@ def test_cards_and_world_info_import_and_a_second_run_changes_nothing(tmp_path: 
     synced = {entity["name"]: entity for entity in server.get(f"/v1/world_entity?campaign_id={campaign['id']}", headers=api.headers).json()["world_entities"]}
     holst, vel = synced["Holst"], synced["Vel"]
     assert (holst["voice"]["first_message"], holst["voice"]["examples"]) == ("Stalls are full, User.", ["Holst: No credit.", "Holst: Pay first."])
+    assert (holst["voice"]["system_prompt"], holst["voice"]["depth_prompt"]["depth"], holst["voice"]["talkativeness"]) == ("You are Holst, a stablemaster.", 2, 0.3)
+    assert (vel["voice"]["talkativeness"], vel["voice"]["depth_prompt"], vel["voice"]["across_chats"]) == (0.5, None, False)
     assert vel["picture"] is not None and holst["picture"] is None
     waystones = synced["The Waystones"]
     assert (waystones["keywords"], waystones["lore"]["position"], waystones["lore"]["selective_logic"]) == (["waystone"], "at_depth", "not_any")
@@ -65,6 +67,7 @@ def test_cards_and_world_info_import_and_a_second_run_changes_nothing(tmp_path: 
     assert synced["Holst's Stable"]["lore"]["position"] == "after_character"
     properties = {row["key"]: row for row in api.properties("person", holst["id"])}
     assert (properties["Alternate greetings"]["value"], properties["Creator notes"]["is_private"]) == ("Back again?", True)
+    assert "System prompt" not in properties
 
     second = StImporter(api, "The Split Antler", "dnd").import_all(cards, entries)
     assert (second.created, second.updated, second.refused) == ([], [], [])

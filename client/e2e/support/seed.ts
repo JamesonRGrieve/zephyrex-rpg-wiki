@@ -49,7 +49,16 @@ export async function seedWorld(request: APIRequestContext): Promise<Seeded> {
     // S4c: other names, lorebook keys and how the AI plays her.
     aliases: ['The Lantern Keeper'],
     keywords: ['harbour light'],
-    voice: { personality: 'Patient, watchful, kind to sailors.', speech: 'Speaks softly, in tides and weather.', first_message: 'The light holds. What brings you up the stair?', examples: ['Mira: Mind the seventh step.'] },
+    voice: {
+      personality: 'Patient, watchful, kind to sailors.',
+      speech: 'Speaks softly, in tides and weather.',
+      first_message: 'The light holds. What brings you up the stair?',
+      examples: ['Mira: Mind the seventh step.'],
+      // Parity: a SillyTavern card's own prompt parts.
+      system_prompt: 'You are Mira, keeper of the harbour light at Port Gull.',
+      depth_prompt: { prompt: 'Mira never leaves the lantern unattended after dusk.', depth: 2, role: 'system' },
+      talkativeness: 0.4,
+    },
   });
   const rival = await create(request, 'person', { name: 'Captain Ross', kind: 'npc', campaign_id: world });
   const faction = await create(request, 'faction', { name: 'Lantern Guild', kind: 'guild', campaign_id: world, entry: entry('Lamplighters and keepers.') });

@@ -3,7 +3,8 @@
 
 - A character card becomes a person (kind npc): its description (and scenario) the entry, its
   personality, first message and examples the AI voice, its tags the person's tags, its alternate
-  greetings, creator notes, system prompt and post-history instructions private properties, and a
+  greetings and creator notes private properties, its system prompt, post-history instructions,
+  Character's Note and talkativeness the voice's own parts too, and a
   PNG card's image the person's picture (where the back end serves attachments). Its own lorebook
   (character_book) comes in as World Info.
 - A World Info entry becomes a lore journal: its content the entry, its keys the keywords, its
@@ -24,11 +25,8 @@ from vault_import.markdown import to_plate
 from vault_import.notes import Note
 
 ST_SOURCE = "st_source"
-PRIVATE_TEXTS = {
-    "creator_notes": "Creator notes",
-    "system_prompt": "System prompt",
-    "post_history_instructions": "Post-history instructions",
-}
+# The system prompt, post-history instructions, Character's Note and talkativeness go to the voice.
+PRIVATE_TEXTS = {"creator_notes": "Creator notes"}
 
 
 class StImporter(Importer):

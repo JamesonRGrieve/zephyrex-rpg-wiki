@@ -15,7 +15,30 @@
     "names_per_list": 50,
     "voice_characters": 20000,
     "voice_examples": 20,
-    "world_entity_ids": 100
+    "world_entity_ids": 100,
+    "depth_prompt_depth": 999
+  },
+  "voice_parts": [
+    "personality",
+    "speech",
+    "first_message",
+    "examples",
+    "system_prompt",
+    "post_history_instructions",
+    "depth_prompt",
+    "talkativeness",
+    "across_chats"
+  ],
+  "depth_prompt_roles": [
+    "system",
+    "user",
+    "assistant"
+  ],
+  "voice_defaults": {
+    "talkativeness": 0.5,
+    "across_chats": false,
+    "depth_prompt_depth": 4,
+    "depth_prompt_role": "system"
   },
   "location_kinds": [
     "system",
@@ -71,7 +94,8 @@
     "note",
     "manuscript",
     "prose",
-    "chapter"
+    "chapter",
+    "campaign_framing"
   ],
   "post_positions": [
     "pinned_top",

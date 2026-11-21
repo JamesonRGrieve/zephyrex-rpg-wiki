@@ -812,10 +812,13 @@ class TestNamesAndVoice:
         listed = server.get(f"/v1/world_entity?campaign_id={campaign['id']}", headers=_headers(person)).json()["world_entities"]
         by_name = {entity["name"]: entity for entity in listed}
         assert (by_name["Brindlemarsh"]["aliases"], by_name["Brindlemarsh"]["keywords"], by_name["Brindlemarsh"]["voice"]) == (["The Marsh Town"], ["stilts"], None)
-        assert (by_name["Holst"]["aliases"], by_name["Holst"]["voice"]) == (["Old Holst"], voice)
+        # Parity: the parts not given come back at their defaults.
+        filled = {**voice, "system_prompt": "", "post_history_instructions": "", "depth_prompt": None, "talkativeness": 0.5, "across_chats": False}
+        assert (by_name["Holst"]["aliases"], by_name["Holst"]["voice"]) == (["Old Holst"], filled)
         refused = [
             ("location", {"name": "Bad", "aliases": "not a list"}),
             ("person", {"name": "Bad", "voice": {"mood": "sad"}}),
+            ("person", {"name": "Bad", "voice": {"talkativeness": 2}}),
             ("person", {"name": "Bad", "aliases": [f"n{index}" for index in range(51)]}),
         ]
         for resource, body in refused:
@@ -870,3 +873,10 @@ class TestWorldEntitiesById:
     def test_refuses_no_ids_too_many_or_two_scopes(self, server: TestClient, person: Any, world: dict[str, Any]) -> None:
         for query in ("ids=", "ids=,,", "ids=" + ",".join(f"id{n}" for n in range(101)), f"ids=a&campaign_id={world['id']}"):
             assert server.get(f"/v1/world_entity?{query}", headers=_headers(person)).status_code == 422, query
+
+
+def test_a_campaigns_framing_note_is_its_own_journal_kind(server: TestClient, person: Any) -> None:
+    """rpg-ai opens a campaign from its framing note (Premise, Tone, Truths, Opening Situation)."""
+    campaign = _create(server, person, "campaign", name="Framed")
+    framing = _create(server, person, "journal", name="Framing", kind="campaign_framing", campaign_id=campaign["id"])
+    assert framing["kind"] == "campaign_framing"
