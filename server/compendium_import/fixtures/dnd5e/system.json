@@ -1,0 +1,129 @@
+{
+  "id": "dnd5e",
+  "title": "Dungeons & Dragons Fifth Edition",
+  "version": "6.0.5",
+  "packs": [
+    {
+      "name": "monsters",
+      "label": "Monsters (SRD)",
+      "system": "dnd5e",
+      "path": "packs/monsters",
+      "type": "Actor",
+      "private": false,
+      "flags": {
+        "dnd5e": {
+          "sourceBook": "SRD 5.1",
+          "types": [
+            "npc"
+          ]
+        }
+      }
+    },
+    {
+      "name": "items",
+      "label": "Items (SRD)",
+      "system": "dnd5e",
+      "path": "packs/items",
+      "type": "Item",
+      "private": false,
+      "flags": {
+        "dnd5e": {
+          "sourceBook": "SRD 5.1",
+          "types": [
+            "weapon",
+            "equipment",
+            "consumable",
+            "tool",
+            "loot",
+            "feat",
+            "container"
+          ]
+        }
+      }
+    },
+    {
+      "name": "spells",
+      "label": "Spells (SRD)",
+      "system": "dnd5e",
+      "path": "packs/spells",
+      "type": "Item",
+      "private": false,
+      "flags": {
+        "dnd5e": {
+          "sorting": "m",
+          "sourceBook": "SRD 5.1",
+          "types": [
+            "spell"
+          ]
+        }
+      }
+    },
+    {
+      "name": "races",
+      "label": "Races (SRD)",
+      "system": "dnd5e",
+      "path": "packs/races",
+      "type": "Item",
+      "private": false,
+      "flags": {
+        "dnd5e": {
+          "sourceBook": "SRD 5.1",
+          "types": [
+            "race",
+            "feat"
+          ]
+        }
+      }
+    },
+    {
+      "name": "rules",
+      "label": "Rules (SRD)",
+      "system": "dnd5e",
+      "path": "packs/rules",
+      "type": "JournalEntry",
+      "private": false,
+      "flags": {
+        "dnd5e": {
+          "display": "table-of-contents"
+        }
+      }
+    },
+    {
+      "name": "spells24",
+      "label": "Spells",
+      "path": "packs/spells24",
+      "type": "Item",
+      "ownership": {
+        "PLAYER": "OBSERVER",
+        "ASSISTANT": "OWNER"
+      },
+      "system": "dnd5e",
+      "flags": {
+        "dnd5e": {
+          "sorting": "m",
+          "sourceBook": "SRD 5.2",
+          "types": [
+            "spell"
+          ]
+        }
+      }
+    },
+    {
+      "name": "actors24",
+      "label": "Actors",
+      "path": "packs/actors24",
+      "type": "Actor",
+      "ownership": {
+        "PLAYER": "OBSERVER",
+        "ASSISTANT": "OWNER"
+      },
+      "system": "dnd5e",
+      "flags": {
+        "dnd5e": {
+          "sorting": "m",
+          "sourceBook": "SRD 5.2"
+        }
+      }
+    }
+  ]
+}
