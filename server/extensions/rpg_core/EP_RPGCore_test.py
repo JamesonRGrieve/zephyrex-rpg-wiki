@@ -1148,6 +1148,40 @@ class TestStartingFast:
         assert took < 15, f"the start took {took:.1f} s: {_STEPS_SEEN}"
 
 
+class TestEnsurePerson:
+    """Parity, 2026-11-21 (play-test): a narrator's unnamed NPC who speaks joins the cast, made once,
+    GM only, marked as made in play; the campaign's GM's to do."""
+
+    def test_made_once_gm_only_and_only_by_the_gm(self, server: TestClient, person: Any, other: Any) -> None:
+        from zephyrex.extensions.AbstractExtensionProvider import loaded_ability
+
+        campaign = _create(server, person, "campaign", name="The Rusty Anchor")
+        made = server.post(f"/v1/campaign/{campaign['id']}/person", json={"person": {"name": "The Barkeep", "summary": "Pours, listens."}}, headers=_headers(person))
+        assert made.status_code == 200, made.text
+        barkeep = made.json()["person"]
+        assert (barkeep["name"], barkeep["created"]) == ("The Barkeep", True)
+        row = server.get(f"/v1/person/{barkeep['id']}", headers=_headers(person)).json()["person"]
+        assert (row["kind"], row["campaign_id"], row["provenance"]) == ("npc", campaign["id"], "homebrew")
+        assert "Pours, listens." in row["entry"]
+        properties = server.get("/v1/record_metadata/of", params={"target_entity_type": "person", "target_entity_id": barkeep["id"]}, headers=_headers(person)).json()["metadata"]
+        assert {(one["key"], one["value"], one["is_private"]) for one in properties} == {("GM only", "true", True), ("Made in play", "By the narrator", True)}
+        # The same name again, case aside: the same person, nothing made.
+        again = server.post(f"/v1/campaign/{campaign['id']}/person", json={"person": {"name": "the barkeep"}}, headers=_headers(person)).json()["person"]
+        assert again == {"id": barkeep["id"], "name": "The Barkeep", "created": False}
+        # Through the ability rpg-ai calls in process.
+        registry = server.app.state.model_registry  # type: ignore[attr-defined]
+        ensure = loaded_ability(registry, "rpg_core", "ensure_person")
+        assert ensure is not None
+        assert ensure(registry, str(person.id), campaign["id"], "THE BARKEEP")["id"] == barkeep["id"]
+        stranger = ensure(registry, str(person.id), campaign["id"], "A Hooded Stranger", None)
+        assert stranger["created"] is True and stranger["id"] != barkeep["id"]
+        # Someone else's campaign: not theirs to read, so not found.
+        refused = server.post(f"/v1/campaign/{campaign['id']}/person", json={"person": {"name": "Intruder"}}, headers=_headers(other))
+        assert refused.status_code == 404, refused.text
+        names = sorted(one["name"] for one in _rows(server.get(f"/v1/person?campaign_id={campaign['id']}", headers=_headers(person)).json()))
+        assert names == ["A Hooded Stranger", "The Barkeep"]
+
+
 class TestWhereTheyAre:
     """Parity: who's present in a scene is who's at its place or inside it."""
 

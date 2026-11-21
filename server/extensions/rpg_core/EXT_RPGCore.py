@@ -202,6 +202,16 @@ class RPGCoreExtension(AbstractStaticExtension):
         return move_person(model_registry, requester_id, person_id, location_id, reason).model_dump(mode="json", by_alias=True)
 
     @classmethod
+    @ability("ensure_person")
+    def ensure_person(cls, model_registry: Any, requester_id: str, campaign_id: str, name: str, summary: Optional[str] = None) -> dict[str, Any]:
+        """The campaign's person called ``name`` (case aside), or a new NPC made GM only and in play,
+        ``summary`` its entry: {id, name, created} (the campaign's GM's; rpg-ai, as a new speaker
+        is saved)."""
+        from zephyrex.extensions.rpg_core.BLL_RPGCore import ensure_person  # type: ignore[import-not-found]
+
+        return ensure_person(model_registry, requester_id, campaign_id, name, summary).model_dump(mode="json")
+
+    @classmethod
     @ability("campaign_documents")
     def campaign_documents(cls, model_registry: Any, requester_id: str, campaign_id: str) -> dict[str, Any]:
         """Each of the campaign's records' full text, journals first: {"campaign_documents": [{id, kind,

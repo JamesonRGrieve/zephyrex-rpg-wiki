@@ -345,6 +345,13 @@ test.describe.serial('visual audit', () => {
     expect([run.campaign.scenario_id, run.campaign.is_scenario, run.id_map[seeded.world]]).toEqual([seeded.world, false, run.campaign.id]);
     const copiedMira = (await (await request.get(`/api/v1/person/${run.id_map[seeded.person]}`)).json()) as { person: { name: string; campaign_id: string; location_id: string } };
     expect(copiedMira.person).toMatchObject({ name: 'Mira of the Lantern', campaign_id: run.campaign.id, location_id: run.id_map[seeded.location] });
+    // A narrator's unnamed NPC who speaks joins the cast: made once (GM only), then found by name.
+    const barkeep = (await (await request.post(`/api/v1/campaign/${seeded.world}/person`, { data: { person: { name: 'The Barkeep', summary: 'Pours, listens.' } } })).json()) as { person: { id: string; created: boolean } };
+    expect(barkeep.person.created).toBe(true);
+    const again = (await (await request.post(`/api/v1/campaign/${seeded.world}/person`, { data: { person: { name: 'the barkeep' } } })).json()) as { person: { id: string; created: boolean } };
+    expect(again.person).toEqual({ id: barkeep.person.id, name: 'The Barkeep', created: false });
+    const hidden = (await (await request.get(`/api/v1/record_metadata/of?target_entity_type=person&target_entity_id=${barkeep.person.id}`)).json()) as { metadata: { key: string; value: string }[] };
+    expect(hidden.metadata.map((row) => [row.key, row.value]).sort()).toEqual([['GM only', 'true'], ['Made in play', 'By the narrator']]);
     const original = (await (await request.get(`/api/v1/person/${seeded.person}`)).json()) as { person: { campaign_id: string } };
     expect(original.person.campaign_id).toBe(seeded.world);
     const pages = worldPages(seeded);

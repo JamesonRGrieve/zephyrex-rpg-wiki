@@ -19,6 +19,7 @@ rpg_systems (operator, 2026-11-20): the wiki depends on no other suite product.
 Each ``*_id`` names its model, so the framework gives it a real foreign key.
 """
 
+import json
 from datetime import datetime
 from typing import Any, ClassVar, Optional, Type
 
@@ -334,6 +335,25 @@ class CampaignStarted(PlainModel):
     id_map: dict[str, str] = Field(..., description="Each copied record's id (and the scenario's) → its copy's")
 
 
+class PersonEnsure(PlainModel):
+    name: str = Field(..., description="Who they are, as the narrator named them (The Barkeep)")
+    summary: Optional[str] = Field(None, description="One line on them, their entry")
+
+
+class PersonEnsureEnvelope(PlainModel):
+    person: PersonEnsure
+
+
+class PersonEnsured(PlainModel):
+    id: str
+    name: str
+    created: bool = Field(..., description="Made now (false: the campaign already had them)")
+
+
+class PersonEnsuredOne(PlainModel):
+    person: PersonEnsured
+
+
 class CampaignClock(PlainModel):
     minutes: int = Field(..., description="In-world minutes from day 1, 00:00")
     day: int = Field(..., description="The in-world day, from 1")
@@ -367,6 +387,20 @@ class CampaignManager(AbstractBLLManager, RouterMixin):
     def instantiate_route(self, id: str, instantiate: CampaignStart) -> CampaignStartAccepted:
         start = CampaignStart.model_validate(instantiate)
         return start_campaign(self.model_registry, str(self.requester.id), id, start.name)
+
+    @custom_route(
+        method="POST",
+        path="/{id}/person",
+        input_model=PersonEnsureEnvelope,
+        output_model=PersonEnsuredOne,
+        authentication_type="jwt",
+        expose_in=(ExposeIn.REST,),
+        openapi_tags=("Campaigns",),
+        summary="A person of the campaign by name, made (GM only, made in play) when it has none: the campaign's GM's",
+    )
+    def ensure_person_route(self, id: str, person: PersonEnsure) -> PersonEnsuredOne:
+        asked = PersonEnsure.model_validate(person)
+        return PersonEnsuredOne(person=ensure_person(self.model_registry, str(self.requester.id), id, asked.name, asked.summary))
 
     @custom_route(
         method="GET",
@@ -1634,6 +1668,43 @@ class PersonMoved(PlainModel):
     reason: Optional[str] = None
 
     model_config = {"populate_by_name": True}
+
+
+# A person the narrator brought in: kept GM only (players' prompts see the name alone) and marked as
+# made in play, so the GM can flesh them out or fold them into someone they already had.
+MADE_IN_PLAY_PROPERTY = "Made in play"
+
+
+def ensure_person(model_registry: Any, requester_id: str, campaign_id: str, name: str, summary: Optional[str] = None) -> PersonEnsured:
+    """The campaign's person called ``name`` (case aside), or a new one: an NPC with ``summary`` as
+    its entry, GM only, made in play. The campaign's GM's to do (EDIT on the campaign), as the
+    narrator's speakers are saved (Parity, 2026-11-21: unnamed NPCs who speak join the cast)."""
+    from zephyrex.lib.RecordTarget import can_edit
+
+    wanted = checked_name(name)
+    # The campaign must be the requester's to read (404 otherwise) and to change (the GM's).
+    _manager(model_registry, requester_id, CampaignManager).get(id=campaign_id)
+    if not can_edit(model_registry, requester_id, "campaign", campaign_id):
+        raise HTTPException(status_code=403, detail="Only the campaign's GM adds its people")
+    people = _manager(model_registry, requester_id, PersonManager)
+    folded = wanted.casefold()
+    for row in people.list(campaign_id=campaign_id) or []:
+        if str(row.name or "").strip().casefold() == folded:
+            return PersonEnsured(id=str(row.id), name=str(row.name), created=False)
+    line = (summary or "").strip()
+    entry = json.dumps([{"type": "p", "children": [{"text": line}]}]) if line else None
+    made = people.create(name=wanted, kind="npc", campaign_id=campaign_id, provenance=HOMEBREW, entry=entry)
+    if "metadata" in model_registry.loaded_extension_names():
+        from zephyrex.extensions.metadata.BLL_Metadata import MetadataManager  # type: ignore[import-not-found]
+
+        rows = MetadataManager(requester_id=env("SYSTEM_ID"), model_registry=model_registry)
+        rows.create(
+            entities=[
+                {"target_entity_type": "person", "target_entity_id": str(made.id), "key": GM_ONLY_PROPERTY, "value": "true", "value_type": "boolean", "is_private": True},
+                {"target_entity_type": "person", "target_entity_id": str(made.id), "key": MADE_IN_PLAY_PROPERTY, "value": "By the narrator", "value_type": "text", "is_private": True},
+            ]
+        )
+    return PersonEnsured(id=str(made.id), name=str(made.name), created=True)
 
 
 def move_person(model_registry: Any, requester_id: str, person_id: str, location_id: str, reason: Optional[str] = None) -> PersonMoved:

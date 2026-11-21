@@ -15,6 +15,7 @@ import type { NextRequest, NextResponse } from 'next/server';
 import { bindPrisma } from './db';
 import { metadataDelete, metadataOfGet, metadataPatch, metadataPost } from './recordMetadataRoutes';
 import { campaignDocumentsGet } from './campaignDocuments';
+import { campaignPersonPost } from './ensurePerson';
 import { campaignInstantiatePost, campaignStartGet } from './scenarios';
 import { clockGet, clockPost, personMovePost, personMovesGet } from './worldTick';
 import { sessionReportGet, sessionReportPost } from './sessionReportRoutes';
@@ -64,7 +65,10 @@ function both<Row extends RecordRow, Create, Update>(spec: ResourceSpec<Row, Cre
 /** Every resource the catch-all answers, by its path. */
 const ROUTES: Record<string, Routes> = {
   // Copy on start: POST /v1/campaign/{id}/instantiate.
-  campaign: { ...both(campaigns), recordActions: { instantiate: { POST: campaignInstantiatePost }, clock: { GET: clockGet, POST: clockPost } } },
+  campaign: {
+    ...both(campaigns),
+    recordActions: { instantiate: { POST: campaignInstantiatePost }, clock: { GET: clockGet, POST: clockPost }, person: { POST: campaignPersonPost } },
+  },
   // The world tick: people moved by the GM, each move kept.
   person_move: { collection: { GET: personMovesGet, POST: personMovePost }, record: {} },
   // A start's progress and result (lite's starts are done when answered).
