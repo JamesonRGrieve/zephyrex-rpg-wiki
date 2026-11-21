@@ -16,9 +16,11 @@ KIT_CASES_PATH = REPOSITORY_ROOT / "contract" / "property-kit-cases.json"
 NAME_LIST_CASES_PATH = REPOSITORY_ROOT / "contract" / "name-list-cases.json"
 LORE_CASES_PATH = REPOSITORY_ROOT / "contract" / "lore-cases.json"
 ENTITY_IDS_CASES_PATH = REPOSITORY_ROOT / "contract" / "entity-ids-cases.json"
+PROVENANCE_CASES_PATH = REPOSITORY_ROOT / "contract" / "provenance-cases.json"
 
 CONTRACT: dict[str, Any] = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 LIMITS: dict[str, int] = CONTRACT["limits"]
+PROVENANCES: tuple[str, ...] = tuple(CONTRACT["provenances"])
 LOCATION_KINDS: tuple[str, ...] = tuple(CONTRACT["location_kinds"])
 PERSON_KINDS: tuple[str, ...] = tuple(CONTRACT["person_kinds"])
 FACTION_KINDS: tuple[str, ...] = tuple(CONTRACT["faction_kinds"])

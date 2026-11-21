@@ -34,6 +34,7 @@ import { checkedRequirement, leavesOf, RequirementError } from '../lib/requireme
 import { prisma } from './db';
 import { checkedKit, KitError } from '../lib/properties';
 import { lore } from '../lib/lore';
+import { HOMEBREW, type Provenance, ProvenanceError, provenance } from '../lib/provenance';
 import { names, voice } from '../lib/names';
 import { freeSlug, isSlug, SLUG_RULE, slugify } from '../lib/slug';
 
@@ -302,9 +303,71 @@ const CAMPAIGN_COLUMNS: Columns = {
   name: plain('name'),
   description: plain('description'),
   setting_id: plain('settingId'),
+  provenance: plain('provenance'),
+  source: plain('source'),
 };
-const campaignCreate = z.object({ name, description: z.string().default(''), setting_id: reference.default(null) });
-const campaignUpdate = z.object({ name, description: z.string(), setting_id: reference }).partial();
+const campaignCreate = z.object({
+  name,
+  description: z.string().default(''),
+  setting_id: reference.default(null),
+  provenance: z.string().nullish(),
+  source: z.string().nullish(),
+});
+// A null provenance or source is "not given"; "" clears the source (as the server's).
+const campaignUpdate = z.object({ name, description: z.string(), setting_id: reference, provenance: z.string().nullable(), source: z.string().nullable() }).partial();
+
+/** A provenance checked, as a 422 on its field. */
+function checkedProvenance(value: { provenance?: unknown; source?: unknown }): Provenance {
+  try {
+    return provenance(value);
+  } catch (error) {
+    if (error instanceof ProvenanceError) throw validationError(error.message, error.message.startsWith('provenance') ? 'provenance' : 'source');
+    throw error;
+  }
+}
+
+type Origin = { provenance?: string | null; source?: string | null };
+type OriginModel = 'campaign' | 'location' | 'person' | 'faction' | 'item' | 'journal' | 'hook';
+
+/** A new campaign's or record's input with its provenance: homebrew when not given, checked together. */
+function created<T extends Origin>(input: T): T & Provenance {
+  return { ...input, ...checkedProvenance(input) };
+}
+
+function heldOrigin(model: OriginModel, id: string): Promise<Provenance | null> {
+  const select = { provenance: true, source: true } as const;
+  switch (model) {
+    case 'campaign':
+      return prisma.campaign.findUnique({ where: { id }, select });
+    case 'location':
+      return prisma.location.findUnique({ where: { id }, select });
+    case 'person':
+      return prisma.person.findUnique({ where: { id }, select });
+    case 'faction':
+      return prisma.faction.findUnique({ where: { id }, select });
+    case 'item':
+      return prisma.item.findUnique({ where: { id }, select });
+    case 'journal':
+      return prisma.journal.findUnique({ where: { id }, select });
+    case 'hook':
+      return prisma.hook.findUnique({ where: { id }, select });
+  }
+}
+
+/**
+ * An update's input with its provenance checked against what the record holds, as the server's: a
+ * null provenance or source is "not given", "" clears the source, and making one homebrew clears its
+ * source unless a source is named too (and refused).
+ */
+async function changed<T extends Origin>(model: OriginModel, id: string, input: T): Promise<Omit<T, 'provenance' | 'source'> & Partial<Provenance>> {
+  const { provenance: kind, source, ...rest } = input;
+  const given = (value: string | null | undefined): value is string => value !== undefined && value !== null;
+  if (!given(kind) && !given(source)) return rest;
+  const held = await heldOrigin(model, id);
+  if (held === null) return rest;
+  const nextSource = given(source) ? source : kind === HOMEBREW ? null : held.source;
+  return { ...rest, ...checkedProvenance({ provenance: given(kind) ? kind : held.provenance, source: nextSource }) };
+}
 type CampaignRow = Prisma.CampaignGetPayload<object>;
 
 /** A campaign's setting is one of the owner's, and fixed once set (as the server's). */
@@ -326,7 +389,7 @@ export const campaigns: ResourceSpec<CampaignRow, z.infer<typeof campaignCreate>
   async insert(ownerId, input, stamp) {
     await checkCampaignSetting(ownerId, input.setting_id, null);
     return prisma.campaign.create({
-      data: { createdById: ownerId, ...written(CAMPAIGN_COLUMNS, input, stamp) } as Prisma.CampaignUncheckedCreateInput,
+      data: { createdById: ownerId, ...written(CAMPAIGN_COLUMNS, created(input), stamp) } as Prisma.CampaignUncheckedCreateInput,
     });
   },
   async updateIfCurrent(id, version, input, stamp, userId) {
@@ -334,7 +397,7 @@ export const campaigns: ResourceSpec<CampaignRow, z.infer<typeof campaignCreate>
     if (held !== null) await checkCampaignSetting(held.createdById, input.setting_id, held.settingId);
     const { count } = await prisma.campaign.updateMany({
       where: { id, updatedAt: version },
-      data: written(CAMPAIGN_COLUMNS, input, stamp, userId) as Prisma.CampaignUncheckedUpdateManyInput,
+      data: written(CAMPAIGN_COLUMNS, await changed('campaign', id, input), stamp, userId) as Prisma.CampaignUncheckedUpdateManyInput,
     });
     return count === 0 ? null : prisma.campaign.findUnique({ where: { id } });
   },
@@ -367,6 +430,8 @@ const LOCATION_COLUMNS: Columns = {
   aliases: plain('aliases'),
   keywords: plain('keywords'),
   lore: plain('lore'),
+  provenance: plain('provenance'),
+  source: plain('source'),
   associated_person_id: plain('associatedPersonId'),
 };
 const locationFields = {
@@ -382,6 +447,8 @@ const locationFields = {
   aliases: nameList,
   keywords: nameList,
   lore: loreText,
+    provenance: z.string().nullable(),
+    source: z.string().nullable(),
   associated_person_id: reference,
 };
 const locationCreate = z.object({
@@ -397,6 +464,8 @@ const locationCreate = z.object({
   aliases: nameList.optional(),
   keywords: nameList.optional(),
   lore: loreText.optional(),
+  provenance: z.string().nullish(),
+  source: z.string().nullish(),
   associated_person_id: reference.default(null),
 });
 const locationUpdate = z.object(locationFields).partial();
@@ -450,7 +519,7 @@ export const locations: ResourceSpec<LocationRow, z.infer<typeof locationCreate>
     await checkPlace(ownerId, input.parent_id, 'parent_id');
     await checkPerson(ownerId, input.associated_person_id);
     return prisma.location.create({
-      data: { createdById: ownerId, ...written(LOCATION_COLUMNS, input, stamp) } as Prisma.LocationUncheckedCreateInput,
+      data: { createdById: ownerId, ...written(LOCATION_COLUMNS, created(input), stamp) } as Prisma.LocationUncheckedCreateInput,
     });
   },
   async updateIfCurrent(id, version, input, stamp, userId) {
@@ -466,7 +535,7 @@ export const locations: ResourceSpec<LocationRow, z.infer<typeof locationCreate>
     await checkNoCycle(id, input.parent_id, placeParent, 'location');
     const { count } = await prisma.location.updateMany({
       where: { id, updatedAt: version },
-      data: written(LOCATION_COLUMNS, input, stamp, userId) as Prisma.LocationUncheckedUpdateManyInput,
+      data: written(LOCATION_COLUMNS, await changed('location', id, input), stamp, userId) as Prisma.LocationUncheckedUpdateManyInput,
     });
     return count === 0 ? null : prisma.location.findUnique({ where: { id } });
   },
@@ -498,6 +567,8 @@ const PERSON_COLUMNS: Columns = {
   aliases: plain('aliases'),
   keywords: plain('keywords'),
   lore: plain('lore'),
+  provenance: plain('provenance'),
+  source: plain('source'),
   voice: plain('voice'),
   location_id: plain('locationId'),
   gender: plain('gender'),
@@ -514,6 +585,8 @@ const personFields = {
   aliases: nameList,
   keywords: nameList,
   lore: loreText,
+    provenance: z.string().nullable(),
+    source: z.string().nullable(),
   voice: voiceText,
   location_id: reference,
   gender: z.string().max(LIMITS.name_characters).nullable(),
@@ -530,6 +603,8 @@ const personCreate = z.object({
   aliases: nameList.optional(),
   keywords: nameList.optional(),
   lore: loreText.optional(),
+  provenance: z.string().nullish(),
+  source: z.string().nullish(),
   voice: voiceText.optional(),
   location_id: reference.default(null),
   gender: personFields.gender.default(null),
@@ -564,7 +639,7 @@ export const people: ResourceSpec<PersonRow, z.infer<typeof personCreate>, z.inf
     await checkSetting(ownerId, input, null);
     await checkPlace(ownerId, input.location_id, 'location_id');
     return prisma.person.create({
-      data: { createdById: ownerId, ...written(PERSON_COLUMNS, input, stamp) } as Prisma.PersonUncheckedCreateInput,
+      data: { createdById: ownerId, ...written(PERSON_COLUMNS, created(input), stamp) } as Prisma.PersonUncheckedCreateInput,
     });
   },
   async updateIfCurrent(id, version, input, stamp, userId) {
@@ -578,7 +653,7 @@ export const people: ResourceSpec<PersonRow, z.infer<typeof personCreate>, z.inf
     }
     const { count } = await prisma.person.updateMany({
       where: { id, updatedAt: version },
-      data: written(PERSON_COLUMNS, input, stamp, userId) as Prisma.PersonUncheckedUpdateManyInput,
+      data: written(PERSON_COLUMNS, await changed('person', id, input), stamp, userId) as Prisma.PersonUncheckedUpdateManyInput,
     });
     return count === 0 ? null : prisma.person.findUnique({ where: { id } });
   },
@@ -614,6 +689,8 @@ const FACTION_COLUMNS: Columns = {
   aliases: plain('aliases'),
   keywords: plain('keywords'),
   lore: plain('lore'),
+  provenance: plain('provenance'),
+  source: plain('source'),
 };
 const factionCreate = z.object({
   name,
@@ -628,9 +705,11 @@ const factionCreate = z.object({
   aliases: nameList.optional(),
   keywords: nameList.optional(),
   lore: loreText.optional(),
+  provenance: z.string().nullish(),
+  source: z.string().nullish(),
 });
 const factionUpdate = z
-  .object({ name, description: z.string(), entry, kind: kindOf(FACTION_KINDS), parent_id: reference, campaign_id: reference, setting_id: reference, canon_level: canonLevel, is_template: z.boolean().nullable(), aliases: nameList, keywords: nameList, lore: loreText })
+  .object({ name, description: z.string(), entry, kind: kindOf(FACTION_KINDS), parent_id: reference, campaign_id: reference, setting_id: reference, canon_level: canonLevel, is_template: z.boolean().nullable(), aliases: nameList, keywords: nameList, lore: loreText, provenance: z.string().nullable(), source: z.string().nullable() })
   .partial();
 type FactionRow = Prisma.FactionGetPayload<object>;
 
@@ -667,7 +746,7 @@ export const factions: ResourceSpec<FactionRow, z.infer<typeof factionCreate>, z
     await checkSetting(ownerId, input, null);
     await checkFaction(ownerId, input.parent_id);
     return prisma.faction.create({
-      data: { createdById: ownerId, ...written(FACTION_COLUMNS, input, stamp) } as Prisma.FactionUncheckedCreateInput,
+      data: { createdById: ownerId, ...written(FACTION_COLUMNS, created(input), stamp) } as Prisma.FactionUncheckedCreateInput,
     });
   },
   async updateIfCurrent(id, version, input, stamp, userId) {
@@ -682,7 +761,7 @@ export const factions: ResourceSpec<FactionRow, z.infer<typeof factionCreate>, z
     await checkNoCycle(id, input.parent_id, factionParent, 'faction');
     const { count } = await prisma.faction.updateMany({
       where: { id, updatedAt: version },
-      data: written(FACTION_COLUMNS, input, stamp, userId) as Prisma.FactionUncheckedUpdateManyInput,
+      data: written(FACTION_COLUMNS, await changed('faction', id, input), stamp, userId) as Prisma.FactionUncheckedUpdateManyInput,
     });
     return count === 0 ? null : prisma.faction.findUnique({ where: { id } });
   },
@@ -719,6 +798,8 @@ const ITEM_COLUMNS: Columns = {
   aliases: plain('aliases'),
   keywords: plain('keywords'),
   lore: plain('lore'),
+  provenance: plain('provenance'),
+  source: plain('source'),
 };
 const itemCreate = z.object({
   name,
@@ -735,6 +816,8 @@ const itemCreate = z.object({
   aliases: nameList.optional(),
   keywords: nameList.optional(),
   lore: loreText.optional(),
+  provenance: z.string().nullish(),
+  source: z.string().nullish(),
 });
 const itemUpdate = z
   .object({
@@ -752,6 +835,8 @@ const itemUpdate = z
     aliases: nameList,
     keywords: nameList,
     lore: loreText,
+    provenance: z.string().nullable(),
+    source: z.string().nullable(),
   })
   .partial();
 type ItemRow = Prisma.ItemGetPayload<object>;
@@ -781,7 +866,7 @@ export const items: ResourceSpec<ItemRow, z.infer<typeof itemCreate>, z.infer<ty
     await checkWorld(ownerId, input.campaign_id);
     await checkSetting(ownerId, input, null);
     return prisma.item.create({
-      data: { createdById: ownerId, ...written(ITEM_COLUMNS, input, stamp) } as Prisma.ItemUncheckedCreateInput,
+      data: { createdById: ownerId, ...written(ITEM_COLUMNS, created(input), stamp) } as Prisma.ItemUncheckedCreateInput,
     });
   },
   async updateIfCurrent(id, version, input, stamp, userId) {
@@ -792,7 +877,7 @@ export const items: ResourceSpec<ItemRow, z.infer<typeof itemCreate>, z.infer<ty
     if (owner !== null) await checkWorld(owner.createdById, input.campaign_id);
     const { count } = await prisma.item.updateMany({
       where: { id, updatedAt: version },
-      data: written(ITEM_COLUMNS, input, stamp, userId) as Prisma.ItemUncheckedUpdateManyInput,
+      data: written(ITEM_COLUMNS, await changed('item', id, input), stamp, userId) as Prisma.ItemUncheckedUpdateManyInput,
     });
     return count === 0 ? null : prisma.item.findUnique({ where: { id } });
   },
@@ -978,6 +1063,8 @@ const JOURNAL_COLUMNS: Columns = {
   aliases: plain('aliases'),
   keywords: plain('keywords'),
   lore: plain('lore'),
+  provenance: plain('provenance'),
+  source: plain('source'),
 };
 const sessionNumber = z.number().int().min(1, 'A session number is a whole number of one or more').nullable();
 const moment = z.coerce.date().nullable();
@@ -997,6 +1084,8 @@ const journalCreate = z.object({
   aliases: nameList.optional(),
   keywords: nameList.optional(),
   lore: loreText.optional(),
+  provenance: z.string().nullish(),
+  source: z.string().nullish(),
 });
 const journalUpdate = z
   .object({
@@ -1015,6 +1104,8 @@ const journalUpdate = z
     aliases: nameList,
     keywords: nameList,
     lore: loreText,
+    provenance: z.string().nullable(),
+    source: z.string().nullable(),
   })
   .partial();
 type JournalRow = Prisma.JournalGetPayload<object>;
@@ -1058,7 +1149,7 @@ export const journals: ResourceSpec<JournalRow, z.infer<typeof journalCreate>, z
   async insert(ownerId, input, stamp) {
     await checkJournalRefs(ownerId, input);
     return prisma.journal.create({
-      data: { createdById: ownerId, ...written(JOURNAL_COLUMNS, input, stamp) } as Prisma.JournalUncheckedCreateInput,
+      data: { createdById: ownerId, ...written(JOURNAL_COLUMNS, created(input), stamp) } as Prisma.JournalUncheckedCreateInput,
     });
   },
   async updateIfCurrent(id, version, input, stamp, userId) {
@@ -1069,7 +1160,7 @@ export const journals: ResourceSpec<JournalRow, z.infer<typeof journalCreate>, z
     if (owner !== null) await checkJournalRefs(owner.createdById, input);
     const { count } = await prisma.journal.updateMany({
       where: { id, updatedAt: version },
-      data: written(JOURNAL_COLUMNS, input, stamp, userId) as Prisma.JournalUncheckedUpdateManyInput,
+      data: written(JOURNAL_COLUMNS, await changed('journal', id, input), stamp, userId) as Prisma.JournalUncheckedUpdateManyInput,
     });
     return count === 0 ? null : prisma.journal.findUnique({ where: { id } });
   },
@@ -1232,6 +1323,8 @@ const HOOK_COLUMNS: Columns = {
   aliases: plain('aliases'),
   keywords: plain('keywords'),
   lore: plain('lore'),
+  provenance: plain('provenance'),
+  source: plain('source'),
 };
 const hookCreate = z.object({
   name,
@@ -1251,6 +1344,8 @@ const hookCreate = z.object({
   aliases: nameList.optional(),
   keywords: nameList.optional(),
   lore: loreText.optional(),
+  provenance: z.string().nullish(),
+  source: z.string().nullish(),
 });
 const hookUpdate = z
   .object({
@@ -1271,6 +1366,8 @@ const hookUpdate = z
     aliases: nameList,
     keywords: nameList,
     lore: loreText,
+    provenance: z.string().nullable(),
+    source: z.string().nullable(),
   })
   .partial();
 type HookRow = Prisma.HookGetPayload<object>;
@@ -1358,7 +1455,7 @@ export const hooks: ResourceSpec<HookRow, z.infer<typeof hookCreate>, z.infer<ty
     const requires = requirementText(input.requires);
     const named = await checkRequirement(ownerId, null, requires);
     const row = await prisma.hook.create({
-      data: { createdById: ownerId, ...written(HOOK_COLUMNS, { ...input, requires }, stamp) } as Prisma.HookUncheckedCreateInput,
+      data: { createdById: ownerId, ...written(HOOK_COLUMNS, created({ ...input, requires }), stamp) } as Prisma.HookUncheckedCreateInput,
     });
     if (requires !== null) await edgesFollow(ownerId, row.id, named, stamp);
     return row;
@@ -1374,7 +1471,7 @@ export const hooks: ResourceSpec<HookRow, z.infer<typeof hookCreate>, z.infer<ty
     const named = owner === null || !changesRequirement ? [] : await checkRequirement(owner.createdById, id, requires);
     const { count } = await prisma.hook.updateMany({
       where: { id, updatedAt: version },
-      data: written(HOOK_COLUMNS, changesRequirement ? { ...input, requires } : input, stamp, userId) as Prisma.HookUncheckedUpdateManyInput,
+      data: written(HOOK_COLUMNS, await changed('hook', id, changesRequirement ? { ...input, requires } : input), stamp, userId) as Prisma.HookUncheckedUpdateManyInput,
     });
     if (count === 0) return null;
     if (owner !== null && changesRequirement) await edgesFollow(owner.createdById, id, named, stamp);

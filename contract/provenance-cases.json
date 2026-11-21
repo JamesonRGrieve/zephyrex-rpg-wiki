@@ -1,0 +1,60 @@
+{
+  "$comment": "A campaign's provenance (operator, 2026-11-21: official scenarios are parsed in for personal use): homebrew, official (as published) or adapted (from a published one); source names the title, publisher and product or page. Checked alike by server/extensions/wiki_shared/Provenance.py and client packages/wiki/src/lib/provenance.ts: what isn't given is homebrew with no source; a source is trimmed, and an empty one is none.",
+  "valid": [
+    {
+      "name": "nothing given is homebrew",
+      "value": {},
+      "checked": {
+        "provenance": "homebrew",
+        "source": null
+      }
+    },
+    {
+      "name": "official, with its source trimmed",
+      "value": {
+        "provenance": "official",
+        "source": "  Dark Heresy: Purge the Unclean, Fantasy Flight Games, p. 12 "
+      },
+      "checked": {
+        "provenance": "official",
+        "source": "Dark Heresy: Purge the Unclean, Fantasy Flight Games, p. 12"
+      }
+    },
+    {
+      "name": "adapted, no source yet",
+      "value": {
+        "provenance": "adapted",
+        "source": "  "
+      },
+      "checked": {
+        "provenance": "adapted",
+        "source": null
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "an unknown provenance",
+      "value": {
+        "provenance": "stolen"
+      },
+      "message": "provenance is one of homebrew, official, adapted"
+    },
+    {
+      "name": "homebrew with a source",
+      "value": {
+        "provenance": "homebrew",
+        "source": "Some book"
+      },
+      "message": "Homebrew has no source"
+    },
+    {
+      "name": "a source too long",
+      "value": {
+        "provenance": "official",
+        "source": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      },
+      "message": "A source has at most 300 characters"
+    }
+  ]
+}

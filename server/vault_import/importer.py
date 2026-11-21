@@ -29,6 +29,7 @@ from zephyrex.extensions.wiki_shared.Contract import (  # type: ignore[import-no
     PERSON_KINDS,
 )
 from zephyrex.extensions.wiki_shared.Names import names, voice  # type: ignore[import-not-found]
+from zephyrex.extensions.wiki_shared.Provenance import HOMEBREW, provenance  # type: ignore[import-not-found]
 from vault_import.markdown import to_plate
 from vault_import.notes import ENTITY_TYPES, Note, link_name
 
@@ -68,7 +69,7 @@ KIND_SYNONYMS = {
 READ = {
     "entity_type", "kind", "name", "campaign", "setting_wide", "is_private", "tags", "aliases", "status",
     "race", "faction", "location", "relations", "parent_location", "parent", "parent_hook", "depends_on",
-    "holder", "quantity", "session_number", "session_date", "maps", "keywords", "voice", *PROPERTIES,
+    "holder", "quantity", "session_number", "session_date", "maps", "keywords", "voice", "provenance", "source", *PROPERTIES,
     *KIND_FIELDS.values(),
 }
 STATUS_KIND = {"hook": "quest_status"}
@@ -151,6 +152,10 @@ class Importer:
         self._statuses: dict[tuple[str, str, str], str] = {}
         self._fresh = 0
         self._aliases: dict[str, list[tuple[str, tuple[str, dict[str, Any]]]]] = {}
+        # A campaign's provenance and source, from its notes' frontmatter (homebrew when none says).
+        self._provenance: dict[str, dict[str, Any]] = {}
+        self._campaign_rows: dict[str, dict[str, Any]] = {}
+        self._touched: set[str] = set()
 
     # ---- scope -----------------------------------------------------------------------------
 
@@ -166,15 +171,56 @@ class Importer:
 
     def _campaign(self, name: str) -> str:
         if not self.campaigns:
-            self.campaigns = {str(one["name"]): str(one["id"]) for one in self.api.list("campaign")}
+            rows = self.api.list("campaign")
+            self.campaigns = {str(one["name"]): str(one["id"]) for one in rows}
+            self._campaign_rows = {str(one["name"]): one for one in rows}
+        self._touched.add(name)
         if name not in self.campaigns:
             if self.dry_run:
                 self.campaigns[name] = self._placeholder()
             else:
-                made = self.api.create("campaign", name=name, setting_id=self._setting() if self.setting_slug else None)
+                made = self.api.create(
+                    "campaign", name=name, setting_id=self._setting() if self.setting_slug else None, **self._provenance_of(name)
+                )
                 self.campaigns[name] = str(made["id"])
+                self._campaign_rows[name] = made
             self.report.created.append(f"campaign {name}")
         return self.campaigns[name]
+
+    def _provenance_of(self, name: str) -> dict[str, Any]:
+        return self._provenance.get(name) or provenance({})
+
+    def _gather_provenance(self, notes: list[Note]) -> None:
+        """Each campaign's provenance and source, from its root note (its campaign_framing journal, one
+        per campaign as the vaults write it); two that disagree are refused. Every other note's
+        provenance is its own record's."""
+        for note in notes:
+            name = _text(note.meta.get("campaign"))
+            word = _text(note.meta.get("kind")) or _text(note.meta.get("journal_type")) or ""
+            if name is None or note.entity_type != "journal" or word.lower().replace("-", "_") != "campaign_framing":
+                continue
+            try:
+                wanted = provenance({"provenance": _text(note.meta.get("provenance")), "source": _text(note.meta.get("source"))})
+            except ValueError as error:
+                self.report.refused.append((note.path, str(error)))
+                continue
+            held = self._provenance.setdefault(name, wanted)
+            if held != wanted:
+                self.report.refused.append((note.path, f"campaign {name!r} is already {held['provenance']} here"))
+
+    def _settle_provenance(self) -> None:
+        """A campaign the import touched, made what its notes say (homebrew when none says)."""
+        for name in sorted(self._touched):
+            row = self._campaign_rows.get(name)
+            if row is None or f"campaign {name}" in self.report.created:
+                continue
+            wanted = self._provenance_of(name)
+            if (row.get("provenance") or HOMEBREW, row.get("source")) == (wanted["provenance"], wanted["source"]):
+                continue
+            if not self.dry_run:
+                # "" clears a source the campaign no longer has.
+                self.api.update("campaign", str(row["id"]), provenance=wanted["provenance"], source=wanted["source"] or "")
+            self.report.updated.append(f"campaign {name}")
 
     def _scope(self, note: Note) -> Optional[dict[str, Optional[str]]]:
         campaign = _text(note.meta.get("campaign"))
@@ -304,6 +350,11 @@ class Importer:
         meta, kind = placed.note.meta, placed.kind
         unresolved: list[str] = []
         fields: dict[str, Any] = {"entry": to_plate(placed.note.body, resolve, unresolved)}
+        # Where the record came from: its own provenance: and source: (homebrew when neither is given).
+        try:
+            fields.update(provenance({"provenance": _text(meta.get("provenance")), "source": _text(meta.get("source"))}))
+        except ValueError as error:
+            self.report.refused.append((placed.note.path, str(error)))
         aliases = [str(one).strip() for one in _list(meta.get("aliases")) if _text(one)]
         if aliases:
             # S4c: other names the record goes by, which link resolution and the AI's lorebook use.
@@ -356,6 +407,13 @@ class Importer:
                 held = record.get(name)
                 if (json.loads(held) if isinstance(held, str) and held else None) != value:
                     changed[name] = value
+            elif name == "provenance":
+                if (record.get(name) or HOMEBREW) != value:
+                    changed[name] = value
+            elif name == "source":
+                if record.get(name) != value:
+                    # "" clears a source the note no longer gives.
+                    changed[name] = value if value is not None else ""
             elif name in ("occurred_at", "resolved_at"):
                 if value is not None and _instant(record.get(name)) != _instant(value):
                     changed[name] = value
@@ -489,6 +547,7 @@ class Importer:
 
     def run(self, notes: list[Note]) -> Report:
         placed: list[Placed] = []
+        self._gather_provenance(notes)
         for note in notes:
             for problem in note.problems:
                 self.report.skipped.append((note.path, problem))
@@ -519,4 +578,8 @@ class Importer:
                     (self.report.updated if (fields or linked) else self.report.unchanged).append(label)
             except ApiError as error:
                 self.report.refused.append((one.note.path, str(error.detail)))
+        try:
+            self._settle_provenance()
+        except ApiError as error:
+            self.report.refused.append(("(campaigns)", str(error.detail)))
         return self.report

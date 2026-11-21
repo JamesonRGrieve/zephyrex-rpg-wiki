@@ -17,6 +17,8 @@ const row = (id: string, updated: string, deleted: string | null = null) => ({
   aliases: null as string | null,
   keywords: null as string | null,
   lore: null as string | null,
+  provenance: 'homebrew',
+  source: null as string | null,
 });
 
 describe('entityOf', () => {
@@ -36,6 +38,8 @@ describe('entityOf', () => {
       keywords: [],
       voice: null,
       lore: null,
+      provenance: 'homebrew',
+      source: null,
     });
     expect(entityOf('item', row('i1', '2026-11-20T13:00:00Z', '2026-11-20T13:00:00Z')).deleted).toBe(true);
   });

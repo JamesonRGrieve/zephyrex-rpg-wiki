@@ -12,14 +12,14 @@ vi.mock('./pages/RecordPage', () => ({
 describe('wikiExtension', () => {
   it('mounts the pages under w by default, most specific first, paired with rpg_core', () => {
     const extension = wikiExtension();
-    expect(extension.pages?.map((page) => page.path)).toEqual(['w', 'w/:world/taxonomy', 'w/:world/plot', 'w/:world/:kind', 'w/:world/:kind/:id']);
+    expect(extension.pages?.map((page) => page.path)).toEqual(['w', 'w/:world/taxonomy', 'w/:world/plot', 'w/:world/about', 'w/:world/:kind', 'w/:world/:kind/:id']);
     expect([extension.name, extension.serverExtension, extension.navItems]).toEqual(['rpg_core', 'rpg_core', [{ title: 'Worlds', url: '/w' }]]);
   });
 
   it('mounts them under a base of the app’s choosing, and passes the route’s values to the page', () => {
     const extension = wikiExtension({ base: '/wiki/' });
     expect(extension.navItems).toEqual([{ title: 'Worlds', url: '/wiki' }]);
-    const [worlds, , , , record] = extension.pages ?? [];
+    const [worlds, , , , , record] = extension.pages ?? [];
     const Worlds = worlds!.component;
     const Record = record!.component;
     render(<Worlds params={{}} searchParams={{}} />);

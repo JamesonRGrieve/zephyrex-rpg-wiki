@@ -16,6 +16,8 @@ export const Default: Story = {
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByRole('list', { name: 'Your worlds' })).toBeInTheDocument();
+    // An official world says so; a homebrew one carries no badge.
+    await expect(canvas.getByText('official')).toBeInTheDocument();
     await userEvent.type(canvas.getByLabelText('New world'), 'Hollowmere');
     await userEvent.click(canvas.getByRole('button', { name: 'Make it' }));
     await expect(args.onCreate).toHaveBeenCalledWith('Hollowmere');

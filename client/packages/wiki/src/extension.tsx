@@ -12,6 +12,7 @@ import { KindPage } from './pages/KindPage';
 import { PlotPage } from './pages/PlotPage';
 import { RecordPage } from './pages/RecordPage';
 import { TaxonomyPage } from './pages/TaxonomyPage';
+import { WorldPage } from './pages/WorldPage';
 import { WorldsPage } from './pages/WorldsPage';
 import { wikiRoot } from './lib/paths';
 
@@ -44,6 +45,7 @@ export function wikiExtension({ base = 'w' }: WikiExtensionOptions = {}): Zephyr
       { path: root, component: routed(root, () => <WorldsPage />) },
       { path: `${root}/:world/taxonomy`, component: routed(root, (params) => <TaxonomyPage world={of(params, 'world')} />) },
       { path: `${root}/:world/plot`, component: routed(root, (params) => <PlotPage world={of(params, 'world')} />) },
+      { path: `${root}/:world/about`, component: routed(root, (params) => <WorldPage world={of(params, 'world')} />) },
       { path: `${root}/:world/:kind`, component: routed(root, (params) => <KindPage world={of(params, 'world')} kind={of(params, 'kind')} />) },
       {
         path: `${root}/:world/:kind/:id`,

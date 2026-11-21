@@ -6,7 +6,7 @@ const STAMP = { created_at: '2026-11-20T12:00:00Z', updated_at: '2026-11-20T12:0
 
 export const WORLDS: World[] = [
   { id: 'w1', name: 'The Salt Coast', description: 'Smugglers and storm-gods.', ...STAMP },
-  { id: 'w2', name: 'Hollowmere', description: null, ...STAMP },
+  { id: 'w2', name: 'Hollowmere', description: null, provenance: 'official', source: 'The Hollowmere Gazetteer, p. 3', ...STAMP },
 ];
 
 const place = (id: string, name: string, kind: string | null, parent_id: string | null, description = ''): Place => ({

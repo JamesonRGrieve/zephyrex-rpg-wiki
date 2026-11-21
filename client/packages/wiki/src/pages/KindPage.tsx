@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 'use client';
 /** /w/[world]/[kind]: one world's places, people, organisations, items, journals or hooks. Trees show beside places and organisations. */
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { ReactElement } from 'react';
 import { useWrites } from 'zephyrex/hooks/useWrites';
@@ -14,7 +13,8 @@ import { Unavailable } from '../components/world/Unavailable';
 import { useCapabilities } from '../features/capabilities';
 import { factions, hooks, items, journals, people, places, type ResourceHooks, worlds } from '../features/data/records';
 import { useWikiBase } from '../base';
-import { kindPath, plotPath, recordPath, taxonomyPath } from '../lib/paths';
+import { WorldNav } from '../components/world/WorldNav';
+import { recordPath } from '../lib/paths';
 
 /** The four resources a world lists, each with the hooks the list uses. */
 const RESOURCES = { location: places, person: people, faction: factions, item: items, journal: journals, hook: hooks } as const;
@@ -59,7 +59,6 @@ function KindList({ world, kind }: { world: string; kind: EntityKind }): ReactEl
 }
 
 export function KindPage(params: { world: string; kind: string }): ReactElement {
-  const base = useWikiBase();
   const can = useCapabilities();
   const world = worlds.useOne(params.world);
   if (!isEntityKind(params.kind)) notFound();
@@ -68,31 +67,7 @@ export function KindPage(params: { world: string; kind: string }): ReactElement 
   return (
     <main className='mx-auto grid w-full max-w-5xl content-start gap-6 px-4 py-8'>
       <PageHeader title={world.data === undefined ? words.title : `${words.title} of ${world.data.name}`} />
-      <nav aria-label='This world' className='flex flex-wrap gap-x-4 gap-y-2 text-sm'>
-        <Link href={base} className='underline-offset-4 hover:underline'>
-          All worlds
-        </Link>
-        {Object.entries(ENTITY_KINDS).map(([path, one]) => (
-          <Link
-            key={path}
-            href={kindPath(base, params.world, path)}
-            aria-current={path === kind ? 'page' : undefined}
-            className='underline-offset-4 hover:underline aria-[current=page]:font-semibold'
-          >
-            {one.title}
-          </Link>
-        ))}
-        {can.taxonomy && (
-          <Link href={taxonomyPath(base, params.world)} className='underline-offset-4 hover:underline'>
-            Taxonomy
-          </Link>
-        )}
-        {can.hooks && (
-          <Link href={plotPath(base, params.world)} className='underline-offset-4 hover:underline'>
-            Plot board
-          </Link>
-        )}
-      </nav>
+      <WorldNav world={params.world} current={kind} />
       {!can.loaded ? (
         <SkeletonRows rows={3} label='Loading' />
       ) : can[words.needs] ? (

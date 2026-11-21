@@ -21,6 +21,7 @@ import { idOf } from '../../features/data/records';
 import { WriteProblem } from './WriteProblem';
 import { useWikiBase } from '../../base';
 import { kindPath } from '../../lib/paths';
+import { HOMEBREW } from '../../lib/provenance';
 
 export function WorldList({
   worlds,
@@ -85,7 +86,12 @@ export function WorldList({
               >
                 <Globe className='size-4 shrink-0 text-muted-foreground' aria-hidden />
                 <span className='min-w-0'>
-                  <span className='block truncate font-medium'>{world.name}</span>
+                  <span className='flex min-w-0 items-center gap-2'>
+                    <span className='truncate font-medium'>{world.name}</span>
+                    {world.provenance !== undefined && world.provenance !== null && world.provenance !== HOMEBREW && (
+                      <span className='shrink-0 rounded-full border px-2 py-0.5 text-xs capitalize'>{world.provenance}</span>
+                    )}
+                  </span>
                   {world.description !== null && world.description !== '' && (
                     <span className='block truncate text-xs text-muted-foreground'>{world.description}</span>
                   )}

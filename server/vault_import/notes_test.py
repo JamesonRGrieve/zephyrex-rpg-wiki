@@ -10,7 +10,7 @@ FIXTURE = Path(__file__).parent / "fixtures" / "vault"
 
 def test_the_vault_reads_every_note_with_an_entity_type_but_its_templates() -> None:
     notes = read_vault(FIXTURE)
-    assert len(notes) == 12
+    assert len(notes) == 13
     assert all(not note.path.startswith("Templates") for note in notes)
     holst = next(note for note in notes if note.name == "Holst")
     assert (holst.entity_type, holst.meta["campaign"], holst.meta["relations"][0]["attitude"]) == ("person", "The Split Antler", "wary")

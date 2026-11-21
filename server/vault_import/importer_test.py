@@ -36,7 +36,7 @@ def _one(api: Api, kind: str, campaign: str, name: str) -> dict[str, Any]:
 def test_the_vault_imports_with_its_links_and_a_second_run_changes_nothing(api: Api) -> None:
     first = Importer(api, setting_slug="dnd").run(read_vault(FIXTURE))
     assert first.refused == [], first.refused
-    assert len(first.created) == 12, first.created  # the campaign and eleven records
+    assert len(first.created) == 13, first.created  # the campaign and twelve records
     assert first.skipped == [("Characters/Stray.md", "no campaign: and not setting_wide: true")]
     assert first.unresolved == {"Characters/Holst.md": ["Nobody Here"]}
     # The vault's own kind fields read as kinds; a word that isn't one is reported, never guessed.
@@ -45,6 +45,10 @@ def test_the_vault_imports_with_its_links_and_a_second_run_changes_nothing(api: 
     [campaign] = [row for row in api.list("campaign") if row["name"] == "The Split Antler"]
     dnd = next(row for row in api.list("setting") if row["slug"] == "dnd")
     assert campaign["setting_id"] == dnd["id"]
+    # The campaign's provenance is its framing note's; a note's own is its record's (homebrew when none).
+    assert (campaign["provenance"], campaign["source"]) == ("adapted", "The Lost Mine of Phandelver, Wizards of the Coast")
+    framing = _one(api, "journal", campaign["id"], "The Split Antler — Framing")
+    assert framing["kind"] == "campaign_framing"
     world = campaign["id"]
     fens, marsh, stable = (_one(api, "location", world, name) for name in ("The Fens", "Brindlemarsh", "Brindlemarsh Stable"))
     assert (marsh["parent_id"], stable["parent_id"], json.loads(marsh["aliases"])) == (fens["id"], marsh["id"], ["The Marsh Town"])
@@ -73,15 +77,17 @@ def test_the_vault_imports_with_its_links_and_a_second_run_changes_nothing(api: 
     assert (instance["item_id"], instance["owner_person_id"], holding["quantity"]) == (item["id"], dingus["id"], 1)
     journal = _one(api, "journal", world, "Session 1 — Arrival")
     assert (journal["session_number"], journal["occurred_at"][:10]) == (1, "2026-11-01")
+    assert (journal["provenance"], journal["source"]) == ("adapted", "The Lost Mine of Phandelver, Wizards of the Coast, ch. 1")
+    assert (holst["provenance"], holst["source"]) == ("homebrew", None)
 
     second = Importer(api, setting_slug="dnd").run(read_vault(FIXTURE))
     assert (second.created, second.updated, second.refused) == ([], [], [])
-    assert len(second.unchanged) == 11
+    assert len(second.unchanged) == 12
 
 
 def test_a_dry_run_writes_nothing(server: TestClient) -> None:
     user = create_user(server)
     api = Api(server, {"Authorization": f"Bearer {user.jwt}"})
     report = Importer(api, setting_slug="dnd", dry_run=True).run(read_vault(FIXTURE))
-    assert len(report.created) == 12
+    assert len(report.created) == 13
     assert [row for row in api.list("campaign") if row["name"] == "The Split Antler"] == []

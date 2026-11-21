@@ -32,6 +32,10 @@ model Campaign {
   description  String   @default("")
   /// The setting it takes place in (S6); fixed once set.
   settingId    String?
+  /// Where it came from: homebrew, official or adapted (contract provenances).
+  provenance   String   @default("homebrew")
+  /// The official title, publisher and product or page; none for homebrew.
+  source       String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime
   updatedById  String?
@@ -58,6 +62,9 @@ model Location {
   keywords    String?
   /// S4d: its lorebook activation (SillyTavern World Info's fields, JSON text).
   lore        String?
+  /// Where it came from: homebrew, official or adapted, and its source.
+  provenance  String   @default("homebrew")
+  source      String?
   /// The person it belongs to: their equipment slots and body parts (what they wear sits there).
   associatedPersonId String?
   createdAt    DateTime @default(now())
@@ -92,6 +99,9 @@ model Person {
   keywords    String?
   /// S4d: its lorebook activation (SillyTavern World Info's fields, JSON text).
   lore        String?
+  /// Where it came from: homebrew, official or adapted, and its source.
+  provenance  String   @default("homebrew")
+  source      String?
   /// S4c: how the AI plays them (JSON text: personality, speech, first_message, examples); GM-facing.
   voice       String?
   locationId   String?
@@ -129,6 +139,9 @@ model Faction {
   keywords    String?
   /// S4d: its lorebook activation (SillyTavern World Info's fields, JSON text).
   lore        String?
+  /// Where it came from: homebrew, official or adapted, and its source.
+  provenance  String   @default("homebrew")
+  source      String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime
   updatedById  String?
@@ -163,6 +176,9 @@ model Item {
   keywords    String?
   /// S4d: its lorebook activation (SillyTavern World Info's fields, JSON text).
   lore        String?
+  /// Where it came from: homebrew, official or adapted, and its source.
+  provenance  String   @default("homebrew")
+  source      String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime
   updatedById  String?
@@ -231,6 +247,9 @@ model Journal {
   keywords      String?
   /// S4d: its lorebook activation (SillyTavern World Info's fields, JSON text).
   lore          String?
+  /// Where it came from: homebrew, official or adapted, and its source.
+  provenance    String   @default("homebrew")
+  source        String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime
   updatedById    String?
@@ -288,6 +307,9 @@ model Hook {
   keywords      String?
   /// S4d: its lorebook activation (SillyTavern World Info's fields, JSON text).
   lore          String?
+  /// Where it came from: homebrew, official or adapted, and its source.
+  provenance    String   @default("homebrew")
+  source        String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime
   updatedById    String?

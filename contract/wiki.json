@@ -16,8 +16,14 @@
     "voice_characters": 20000,
     "voice_examples": 20,
     "world_entity_ids": 100,
-    "depth_prompt_depth": 999
+    "depth_prompt_depth": 999,
+    "source_characters": 300
   },
+  "provenances": [
+    "homebrew",
+    "official",
+    "adapted"
+  ],
   "voice_parts": [
     "personality",
     "speech",

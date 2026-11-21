@@ -327,7 +327,7 @@ class TestWorldEntities:
         assert by_name["Harbour"] | {"updated_at": None} == {
             "id": harbour["id"], "kind": "location", "name": "Harbour", "aliases": [], "summary": "A port city.",
             "picture": None, "updated_at": None, "deleted": False, "setting_id": None, "canon": False, "canon_level": None,
-            "keywords": [], "voice": None, "lore": None,
+            "keywords": [], "voice": None, "lore": None, "provenance": "homebrew", "source": None,
         }
         assert page["next"] is None
 
@@ -880,3 +880,40 @@ def test_a_campaigns_framing_note_is_its_own_journal_kind(server: TestClient, pe
     campaign = _create(server, person, "campaign", name="Framed")
     framing = _create(server, person, "journal", name="Framing", kind="campaign_framing", campaign_id=campaign["id"])
     assert framing["kind"] == "campaign_framing"
+
+
+class TestProvenance:
+    """A campaign says where it came from: homebrew, official or adapted, with its source."""
+
+    def test_homebrew_unless_said_and_checked_together(self, server: TestClient, person: Any) -> None:
+        plain = _create(server, person, "campaign", name="Mine")
+        assert (plain["provenance"], plain["source"]) == ("homebrew", None)
+        official = _create(server, person, "campaign", name="Purge", provenance="official", source=" Purge the Unclean, FFG, p. 4 ")
+        assert (official["provenance"], official["source"]) == ("official", "Purge the Unclean, FFG, p. 4")
+        for body in ({"name": "Bad", "provenance": "stolen"}, {"name": "Bad", "source": "A book"}):
+            assert server.post("/v1/campaign", json={"campaign": body}, headers=_headers(person)).status_code == 422, body
+
+        # A name change leaves them; a source alone can't go on a homebrew campaign; making one homebrew clears its source.
+        renamed = _put(server, person, "campaign", official, name="Purge (cut)").json()["campaign"]
+        assert (renamed["provenance"], renamed["source"]) == ("official", "Purge the Unclean, FFG, p. 4")
+        current = server.get(f"/v1/campaign/{plain['id']}", headers=_headers(person))
+        refused = server.put(
+            f"/v1/campaign/{plain['id']}", json={"campaign": {"source": "A book"}}, headers=_headers(person, **{"If-Match": current.headers["ETag"]})
+        )
+        assert refused.status_code == 422, refused.text
+        home = _put(server, person, "campaign", renamed, provenance="homebrew").json()["campaign"]
+        assert (home["provenance"], home["source"]) == ("homebrew", None)
+        adapted = _put(server, person, "campaign", home, provenance="adapted", source="Dark Heresy core, p. 300").json()["campaign"]
+        cleared = _put(server, person, "campaign", adapted, source="").json()["campaign"]
+        assert (cleared["provenance"], cleared["source"]) == ("adapted", None)
+
+    def test_records_say_where_they_came_from_and_the_sync_carries_it(self, server: TestClient, person: Any) -> None:
+        campaign = _create(server, person, "campaign", name="Sourced")
+        relic = _create(server, person, "item", name="Relic", kind="misc", campaign_id=campaign["id"], provenance="official", source="Inquisitor's Handbook, p. 140")
+        plain = _create(server, person, "location", name="Cellar", kind="room", campaign_id=campaign["id"])
+        assert (relic["provenance"], plain["provenance"], plain["source"]) == ("official", "homebrew", None)
+        assert server.post("/v1/person", json={"person": {"name": "Bad", "source": "A book"}}, headers=_headers(person)).status_code == 422
+        synced = {entity["name"]: entity for entity in server.get(f"/v1/world_entity?campaign_id={campaign['id']}", headers=_headers(person)).json()["world_entities"]}
+        assert (synced["Relic"]["provenance"], synced["Relic"]["source"], synced["Cellar"]["provenance"]) == ("official", "Inquisitor's Handbook, p. 140", "homebrew")
+        home = _put(server, person, "item", relic, provenance="homebrew").json()["item"]
+        assert (home["provenance"], home["source"]) == ("homebrew", None)

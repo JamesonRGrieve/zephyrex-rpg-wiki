@@ -45,6 +45,9 @@ export const worldSchema = z.object({
   ...versioned,
   name: z.string(),
   description: z.string().nullable(),
+  /** Where the scenario came from: homebrew, official or adapted, and its source. */
+  provenance: z.string().nullish(),
+  source: z.string().nullish(),
 });
 export type World = z.infer<typeof worldSchema>;
 
@@ -64,6 +67,9 @@ export const placeSchema = z.object({
   keywords: z.string().nullish(),
   /** S4d: its lorebook activation (JSON text). */
   lore: z.string().nullish(),
+  /** Where it came from: homebrew, official or adapted, and its source. */
+  provenance: z.string().nullish(),
+  source: z.string().nullish(),
 });
 export type Place = z.infer<typeof placeSchema>;
 
@@ -82,6 +88,9 @@ export const personSchema = z.object({
   keywords: z.string().nullish(),
   /** S4d: its lorebook activation (JSON text). */
   lore: z.string().nullish(),
+  /** Where it came from: homebrew, official or adapted, and its source. */
+  provenance: z.string().nullish(),
+  source: z.string().nullish(),
   /** S4c: how the AI plays them (JSON text); for the GM. */
   voice: z.string().nullish(),
 });
@@ -102,6 +111,9 @@ export const factionSchema = z.object({
   keywords: z.string().nullish(),
   /** S4d: its lorebook activation (JSON text). */
   lore: z.string().nullish(),
+  /** Where it came from: homebrew, official or adapted, and its source. */
+  provenance: z.string().nullish(),
+  source: z.string().nullish(),
 });
 export type Faction = z.infer<typeof factionSchema>;
 
@@ -122,6 +134,9 @@ export const itemSchema = z.object({
   keywords: z.string().nullish(),
   /** S4d: its lorebook activation (JSON text). */
   lore: z.string().nullish(),
+  /** Where it came from: homebrew, official or adapted, and its source. */
+  provenance: z.string().nullish(),
+  source: z.string().nullish(),
 });
 export type Item = z.infer<typeof itemSchema>;
 
@@ -162,6 +177,9 @@ export const journalSchema = z.object({
   keywords: z.string().nullish(),
   /** S4d: its lorebook activation (JSON text). */
   lore: z.string().nullish(),
+  /** Where it came from: homebrew, official or adapted, and its source. */
+  provenance: z.string().nullish(),
+  source: z.string().nullish(),
 });
 export type Journal = z.infer<typeof journalSchema>;
 
@@ -197,6 +215,9 @@ export const hookSchema = z.object({
   keywords: z.string().nullish(),
   /** S4d: its lorebook activation (JSON text). */
   lore: z.string().nullish(),
+  /** Where it came from: homebrew, official or adapted, and its source. */
+  provenance: z.string().nullish(),
+  source: z.string().nullish(),
 });
 export type Hook = z.infer<typeof hookSchema>;
 

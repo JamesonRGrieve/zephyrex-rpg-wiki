@@ -181,6 +181,7 @@ function worldPages(seeded: Seeded): string[] {
   return [
     '/w',
     ...['location', 'person', 'faction', 'item', 'journal', 'hook'].map((kind) => `${w}/${kind}`),
+    `${w}/about`,
     `${w}/location/${seeded.location}`,
     `${w}/person/${seeded.person}`,
     `${w}/faction/${seeded.faction}`,
@@ -228,6 +229,8 @@ async function expectSeedShows(page: Page, seeded: Seeded): Promise<void> {
     [`${w}/location`, ['Port Gull', 'Salt Coast']],
     [`${w}/person/${seeded.person}`, ['Lamplighters', 'Alive', 'Lantern Guild', 'Captain Ross', 'Rumour', 'guarded (cautious-neutral)', 'Since Find the lost map', '-20', 'The Lantern Keeper', 'Mira: Mind the seventh step.', 'Lantern oil', 'Three flasks']],
     [`${w}/faction/${seeded.faction}`, ['Mira of the Lantern']],
+    [`${w}/about`, ['Adapted', 'Salt and Storm, Harbour Press, ch. 2']],
+    [`${w}/item/${seeded.item}`, ['Official', 'Salt and Storm, Harbour Press, p. 41']],
     [`${w}/hook/${seeded.hook}`, ['Find the lost map', 'Mira of the Lantern', 'Can happen now']],
     [`${w}/plot`, ['Recover the relic', 'Hear the vox ghost', 'Rech needs the relic before he can start.', 'Find the lost map']],
     [`${w}/taxonomy?taxon=${seeded.taxon}`, ['Nobility', 'Mira of the Lantern', 'Alive']],

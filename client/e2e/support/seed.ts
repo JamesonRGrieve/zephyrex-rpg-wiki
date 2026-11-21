@@ -30,7 +30,7 @@ const entry = (text: string) => [{ type: 'p', children: [{ text }] }];
 export async function seedWorld(request: APIRequestContext): Promise<Seeded> {
   // A setting (S6) encloses the world; its campaign-less records are its canon.
   const setting = await create(request, 'setting', { name: 'The Grim Future', entry: entry('Ten thousand years of war.') });
-  const world = await create(request, 'campaign', { name: 'The Salt Coast', setting_id: setting });
+  const world = await create(request, 'campaign', { name: 'The Salt Coast', setting_id: setting, provenance: 'adapted', source: 'Salt and Storm, Harbour Press, ch. 2' });
   await create(request, 'faction', { name: 'Adeptus Mechanicus', kind: 'religious', setting_id: setting, canon_level: 'common' });
   const coast = await create(request, 'location', { name: 'Salt Coast', kind: 'region', campaign_id: world, entry: entry('Cliffs, coves and smugglers.') });
   const location = await create(request, 'location', {
@@ -63,7 +63,14 @@ export async function seedWorld(request: APIRequestContext): Promise<Seeded> {
   const rival = await create(request, 'person', { name: 'Captain Ross', kind: 'npc', campaign_id: world });
   const faction = await create(request, 'faction', { name: 'Lantern Guild', kind: 'guild', campaign_id: world, entry: entry('Lamplighters and keepers.') });
   await create(request, 'faction', { name: 'Night Watch', kind: 'military', campaign_id: world });
-  const item = await create(request, 'item', { name: 'Brass lantern', kind: 'misc', campaign_id: world, entry: entry('Never goes out.') });
+  const item = await create(request, 'item', {
+    name: 'Brass lantern',
+    kind: 'misc',
+    campaign_id: world,
+    entry: entry('Never goes out.'),
+    provenance: 'official',
+    source: 'Salt and Storm, Harbour Press, p. 41',
+  });
   const journal = await create(request, 'journal', {
     name: 'Session 4: the Gull Rock ambush',
     kind: 'session_report',

@@ -30,6 +30,11 @@ export function taxonomyPath(base: string, world: string, taxon?: string): strin
   return taxon === undefined ? path : `${path}?taxon=${part(taxon)}`;
 }
 
+/** A world's own page (its name, description and origin): /w/<world>/about. */
+export function aboutPath(base: string, world: string): string {
+  return `${wikiRoot(base)}/${part(world)}/about`;
+}
+
 /** A world's plot board: /w/<world>/plot. */
 export function plotPath(base: string, world: string): string {
   return `${wikiRoot(base)}/${part(world)}/plot`;

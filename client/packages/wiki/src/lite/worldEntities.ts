@@ -24,6 +24,8 @@ export interface EntityRow {
   aliases: string | null;
   keywords: string | null;
   lore: string | null;
+  provenance: string;
+  source: string | null;
   /** A person's AI voice (S4c); other kinds have none. */
   voice?: string | null;
 }
@@ -48,6 +50,9 @@ export interface WorldEntity {
   voice: Voice | null;
   /** S4d: its lorebook activation (SillyTavern World Info's fields), or none. */
   lore: Lore | null;
+  /** Where it came from: homebrew, official or adapted, and its source. */
+  provenance: string;
+  source: string | null;
 }
 
 export const DEFAULT_LIMIT = 100;
@@ -83,6 +88,8 @@ export function entityOf(kind: WorldEntityKind, row: EntityRow): WorldEntity {
     keywords: storedNames(row.keywords),
     voice: kind === 'person' ? storedVoice(row.voice ?? null) : null,
     lore: storedLore(row.lore),
+    provenance: row.provenance,
+    source: row.source,
   };
 }
 

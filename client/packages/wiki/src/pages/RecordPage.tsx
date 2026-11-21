@@ -18,6 +18,7 @@ import { HookState } from '../components/world/HookState';
 import { HookLinks, type LinkedHook, type Taker } from '../components/world/HookLinks';
 import { type CarriedLine, InventoryList } from '../components/world/InventoryList';
 import { PostList } from '../components/world/PostList';
+import { OriginOf } from '../components/world/OriginOf';
 import { PropertyList } from '../components/world/PropertyList';
 import { VoicePanel } from '../components/world/VoicePanel';
 import { type RelationLine, RelationList } from '../components/world/RelationList';
@@ -280,6 +281,24 @@ function Standing({ world, id }: { world: string; id: string }): ReactElement | 
   );
 }
 
+/** Where the record came from (homebrew, official or adapted), through its own resource. */
+function Origin({ kind, id }: { kind: EntityKind; id: string }): ReactElement {
+  switch (kind) {
+    case 'location':
+      return <OriginOf resource={places} id={id} />;
+    case 'person':
+      return <OriginOf resource={people} id={id} />;
+    case 'faction':
+      return <OriginOf resource={factions} id={id} />;
+    case 'item':
+      return <OriginOf resource={items} id={id} />;
+    case 'journal':
+      return <OriginOf resource={journals} id={id} />;
+    case 'hook':
+      return <OriginOf resource={hooks} id={id} />;
+  }
+}
+
 /** The posts on the record (W3), pinned first. */
 function Posts({ type, id }: { type: EntityKind; id: string }): ReactElement {
   const rows = posts.useList({ target_entity_type: type, target_entity_id: id });
@@ -327,6 +346,7 @@ function Record({
             <p className='rounded-md border px-3 py-2 text-sm'>A template: copied into worlds, never one of a world&rsquo;s facts.</p>
           )}
           <Names aliases={storedNames(record.aliases ?? null)} keywords={storedNames(record.keywords ?? null)} />
+          <Origin kind={kind} id={id} />
           <EntityPage kind={record.kind} entry={record.entry} description={record.description} where={where} />
           {extra}
           {can.properties && <Properties type={kind} id={id} />}

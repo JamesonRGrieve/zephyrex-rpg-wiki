@@ -38,6 +38,7 @@ from zephyrex.extensions.wiki_shared.Records import (  # type: ignore[import-not
 )
 from zephyrex.extensions.wiki_shared.EntityIds import EntityIdsError, entity_ids  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Lore import lore_text, stored_lore  # type: ignore[import-not-found]
+from zephyrex.extensions.wiki_shared.Provenance import HOMEBREW, checked_provenance, checked_source, provenance  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Names import names_text, stored_names, stored_voice, voice_text  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Contract import ATTACHMENT_ROLES, CANON_LEVELS, ENTITY_TYPES, LIMITS  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Report import report_entry  # type: ignore[import-not-found]
@@ -202,18 +203,30 @@ class CampaignModel(
     Manager: ClassVar[Type["CampaignManager"]] = None
     table_comment: ClassVar[str] = "A world: the top-level container every record scopes to. user_id = its owner."
 
+    # Where the scenario came from (operator, 2026-11-21: official ones are parsed in for personal use).
+    provenance: Optional[str] = Field(None, description="contract/wiki.json provenances: homebrew, official or adapted")
+    source: Optional[str] = Field(None, description="The official title, publisher and product or page; none for homebrew")
+
     class Create(BaseModel, UserModel.Reference.ID.Optional, SettingModel.Reference.ID.Optional):
         name: str = Field(...)
         description: Optional[str] = None
+        provenance: Optional[str] = None
+        source: Optional[str] = None
 
         _name = field_validator("name")(checked_name)
+        _provenance = field_validator("provenance")(lambda value: None if value is None else checked_provenance(value))
+        _source = field_validator("source")(checked_source)
 
     class Update(BaseModel):
         name: Optional[str] = None
         description: Optional[str] = None
         setting_id: Optional[str] = None
+        provenance: Optional[str] = None
+        # "" clears it; none leaves it as it is (read by _provenance_holds).
+        source: Optional[str] = None
 
         _name = field_validator("name")(checked_name)
+        _provenance = field_validator("provenance")(lambda value: None if value is None else checked_provenance(value))
 
     class Search(ApplicationModel.Search, UserModel.Reference.ID.Search, SettingModel.Reference.ID.Search):
         name: Optional[StringSearchModel] = None
@@ -221,6 +234,39 @@ class CampaignModel(
 
 class CampaignManager(AbstractBLLManager, RouterMixin):
     _model = CampaignModel
+
+
+def _provenance_holds(context: HookContext) -> None:
+    """A campaign's (or a record's) provenance and source checked together: on create, homebrew when
+    not given; on update, against what it holds (homebrew has no source, so making one homebrew
+    clears its source)."""
+    if context.method_name == "create":
+        if context.kwargs.get("entities") is not None:
+            return
+        given = {"provenance": context.kwarg("provenance", default=None), "source": context.kwarg("source", default=None)}
+    elif context.method_name == "update":
+        # None is "not given": the provenance can't be emptied, and "" clears the source.
+        wanted = {key: _UNSET if (value := context.kwarg(key, default=_UNSET)) is None else value for key in ("provenance", "source")}
+        if all(value is _UNSET for value in wanted.values()):
+            return
+        record_id = context.kwarg("id", default=None) or context.arg(0, default=None)
+        try:
+            held = context.manager.get(id=record_id) if record_id else None
+        except HTTPException:
+            return
+        given = {key: getattr(held, key, None) if value is _UNSET else value for key, value in wanted.items()}
+        if wanted["provenance"] == HOMEBREW and wanted["source"] is _UNSET:
+            given["source"] = None
+    else:
+        return
+    try:
+        checked = provenance(given)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    context.kwargs.update(checked)
+
+
+hook_bll(CampaignManager, timing=HookTiming.BEFORE, priority=20)(_provenance_holds)
 
 
 CampaignModel.Manager = CampaignManager
@@ -242,6 +288,8 @@ class RPG_PersonModel(BaseModel):
     aliases: Optional[str] = Field(None, description="Other names it goes by, as JSON text (S4c)")
     keywords: Optional[str] = Field(None, description="What else wakes it in the AI's lorebook, as JSON text (S4c)")
     lore: Optional[str] = Field(None, description="Its lorebook activation (SillyTavern World Info's fields), as JSON text (S4d)")
+    provenance: Optional[str] = Field(None, description="contract/wiki.json provenances: homebrew, official or adapted")
+    source: Optional[str] = Field(None, description="The official title, publisher and product or page; none for homebrew")
     voice: Optional[str] = Field(None, description="How the AI plays them: personality, speech, first_message, examples, as JSON text (S4c; GM-facing)")
     user_id: Optional[str] = Field(None, description="FK → users.id; the player. None = an NPC")
     location_id: Optional[str] = Field(None, description="FK → locations.id; where they are")
@@ -260,6 +308,10 @@ class RPG_PersonModel(BaseModel):
         _keywords = field_validator("keywords")(names_text)
         lore: Optional[Any] = None
         _lore = field_validator("lore")(lore_text)
+        provenance: Optional[str] = None
+        source: Optional[str] = None
+        _provenance = field_validator("provenance")(lambda value: None if value is None else checked_provenance(value))
+        _source = field_validator("source")(checked_source)
         voice: Optional[Any] = None
         _voice = field_validator("voice")(voice_text)
         user_id: Optional[str] = None
@@ -285,6 +337,9 @@ class RPG_PersonModel(BaseModel):
         _keywords = field_validator("keywords")(names_text)
         lore: Optional[Any] = None
         _lore = field_validator("lore")(lore_text)
+        provenance: Optional[str] = None
+        source: Optional[str] = None
+        _provenance = field_validator("provenance")(lambda value: None if value is None else checked_provenance(value))
         voice: Optional[Any] = None
         _voice = field_validator("voice")(voice_text)
         user_id: Optional[str] = None
@@ -318,6 +373,8 @@ class RPG_LocationModel(BaseModel):
     aliases: Optional[str] = Field(None, description="Other names it goes by, as JSON text (S4c)")
     keywords: Optional[str] = Field(None, description="What else wakes it in the AI's lorebook, as JSON text (S4c)")
     lore: Optional[str] = Field(None, description="Its lorebook activation (SillyTavern World Info's fields), as JSON text (S4d)")
+    provenance: Optional[str] = Field(None, description="contract/wiki.json provenances: homebrew, official or adapted")
+    source: Optional[str] = Field(None, description="The official title, publisher and product or page; none for homebrew")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
@@ -331,6 +388,10 @@ class RPG_LocationModel(BaseModel):
         _keywords = field_validator("keywords")(names_text)
         lore: Optional[Any] = None
         _lore = field_validator("lore")(lore_text)
+        provenance: Optional[str] = None
+        source: Optional[str] = None
+        _provenance = field_validator("provenance")(lambda value: None if value is None else checked_provenance(value))
+        _source = field_validator("source")(checked_source)
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
@@ -344,6 +405,9 @@ class RPG_LocationModel(BaseModel):
         _keywords = field_validator("keywords")(names_text)
         lore: Optional[Any] = None
         _lore = field_validator("lore")(lore_text)
+        provenance: Optional[str] = None
+        source: Optional[str] = None
+        _provenance = field_validator("provenance")(lambda value: None if value is None else checked_provenance(value))
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
@@ -363,6 +427,8 @@ class RPG_FactionModel(BaseModel):
     aliases: Optional[str] = Field(None, description="Other names it goes by, as JSON text (S4c)")
     keywords: Optional[str] = Field(None, description="What else wakes it in the AI's lorebook, as JSON text (S4c)")
     lore: Optional[str] = Field(None, description="Its lorebook activation (SillyTavern World Info's fields), as JSON text (S4d)")
+    provenance: Optional[str] = Field(None, description="contract/wiki.json provenances: homebrew, official or adapted")
+    source: Optional[str] = Field(None, description="The official title, publisher and product or page; none for homebrew")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
@@ -376,6 +442,10 @@ class RPG_FactionModel(BaseModel):
         _keywords = field_validator("keywords")(names_text)
         lore: Optional[Any] = None
         _lore = field_validator("lore")(lore_text)
+        provenance: Optional[str] = None
+        source: Optional[str] = None
+        _provenance = field_validator("provenance")(lambda value: None if value is None else checked_provenance(value))
+        _source = field_validator("source")(checked_source)
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
@@ -389,6 +459,9 @@ class RPG_FactionModel(BaseModel):
         _keywords = field_validator("keywords")(names_text)
         lore: Optional[Any] = None
         _lore = field_validator("lore")(lore_text)
+        provenance: Optional[str] = None
+        source: Optional[str] = None
+        _provenance = field_validator("provenance")(lambda value: None if value is None else checked_provenance(value))
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
@@ -409,6 +482,8 @@ class RPG_ItemModel(BaseModel):
     aliases: Optional[str] = Field(None, description="Other names it goes by, as JSON text (S4c)")
     keywords: Optional[str] = Field(None, description="What else wakes it in the AI's lorebook, as JSON text (S4c)")
     lore: Optional[str] = Field(None, description="Its lorebook activation (SillyTavern World Info's fields), as JSON text (S4d)")
+    provenance: Optional[str] = Field(None, description="contract/wiki.json provenances: homebrew, official or adapted")
+    source: Optional[str] = Field(None, description="The official title, publisher and product or page; none for homebrew")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
@@ -422,6 +497,10 @@ class RPG_ItemModel(BaseModel):
         _keywords = field_validator("keywords")(names_text)
         lore: Optional[Any] = None
         _lore = field_validator("lore")(lore_text)
+        provenance: Optional[str] = None
+        source: Optional[str] = None
+        _provenance = field_validator("provenance")(lambda value: None if value is None else checked_provenance(value))
+        _source = field_validator("source")(checked_source)
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
@@ -435,6 +514,9 @@ class RPG_ItemModel(BaseModel):
         _keywords = field_validator("keywords")(names_text)
         lore: Optional[Any] = None
         _lore = field_validator("lore")(lore_text)
+        provenance: Optional[str] = None
+        source: Optional[str] = None
+        _provenance = field_validator("provenance")(lambda value: None if value is None else checked_provenance(value))
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
@@ -471,6 +553,10 @@ def _world_stays(context: HookContext) -> None:
 
 for _manager in (PersonManager, LocationManager, FactionManager, ItemManager, JournalManager, HookManager, TaxonManager, StatusManager, PropertyKitManager):
     hook_bll(_manager, timing=HookTiming.BEFORE, priority=20)(_world_stays)
+
+# Where a record came from, as a campaign says it (operator, 2026-11-21: entities have provenance too).
+for _manager in (PersonManager, LocationManager, FactionManager, ItemManager, JournalManager, HookManager):
+    hook_bll(_manager, timing=HookTiming.BEFORE, priority=22)(_provenance_holds)
 
 
 def _template_stays(context: HookContext) -> None:
@@ -577,6 +663,8 @@ class RPG_JournalModel(BaseModel):
     aliases: Optional[str] = Field(None, description="Other names it goes by, as JSON text (S4c)")
     keywords: Optional[str] = Field(None, description="What else wakes it in the AI's lorebook, as JSON text (S4c)")
     lore: Optional[str] = Field(None, description="Its lorebook activation (SillyTavern World Info's fields), as JSON text (S4d)")
+    provenance: Optional[str] = Field(None, description="contract/wiki.json provenances: homebrew, official or adapted")
+    source: Optional[str] = Field(None, description="The official title, publisher and product or page; none for homebrew")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
@@ -590,6 +678,10 @@ class RPG_JournalModel(BaseModel):
         _keywords = field_validator("keywords")(names_text)
         lore: Optional[Any] = None
         _lore = field_validator("lore")(lore_text)
+        provenance: Optional[str] = None
+        source: Optional[str] = None
+        _provenance = field_validator("provenance")(lambda value: None if value is None else checked_provenance(value))
+        _source = field_validator("source")(checked_source)
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
@@ -603,6 +695,9 @@ class RPG_JournalModel(BaseModel):
         _keywords = field_validator("keywords")(names_text)
         lore: Optional[Any] = None
         _lore = field_validator("lore")(lore_text)
+        provenance: Optional[str] = None
+        source: Optional[str] = None
+        _provenance = field_validator("provenance")(lambda value: None if value is None else checked_provenance(value))
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
@@ -622,6 +717,8 @@ class RPG_HookModel(BaseModel):
     aliases: Optional[str] = Field(None, description="Other names it goes by, as JSON text (S4c)")
     keywords: Optional[str] = Field(None, description="What else wakes it in the AI's lorebook, as JSON text (S4c)")
     lore: Optional[str] = Field(None, description="Its lorebook activation (SillyTavern World Info's fields), as JSON text (S4d)")
+    provenance: Optional[str] = Field(None, description="contract/wiki.json provenances: homebrew, official or adapted")
+    source: Optional[str] = Field(None, description="The official title, publisher and product or page; none for homebrew")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
@@ -635,6 +732,10 @@ class RPG_HookModel(BaseModel):
         _keywords = field_validator("keywords")(names_text)
         lore: Optional[Any] = None
         _lore = field_validator("lore")(lore_text)
+        provenance: Optional[str] = None
+        source: Optional[str] = None
+        _provenance = field_validator("provenance")(lambda value: None if value is None else checked_provenance(value))
+        _source = field_validator("source")(checked_source)
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
@@ -648,6 +749,9 @@ class RPG_HookModel(BaseModel):
         _keywords = field_validator("keywords")(names_text)
         lore: Optional[Any] = None
         _lore = field_validator("lore")(lore_text)
+        provenance: Optional[str] = None
+        source: Optional[str] = None
+        _provenance = field_validator("provenance")(lambda value: None if value is None else checked_provenance(value))
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
@@ -915,6 +1019,9 @@ class WorldEntity(PlainModel):
     voice: Optional[dict[str, Any]] = None
     # S4d: its lorebook activation (SillyTavern World Info's fields), or none.
     lore: Optional[dict[str, Any]] = None
+    # Where it came from: homebrew, official or adapted, and its source.
+    provenance: str = HOMEBREW
+    source: Optional[str] = None
 
 
 class WorldEntitiesPage(PlainModel):
@@ -976,6 +1083,8 @@ def _entity(kind: str, record: Any, changed_at: datetime, deleted: bool) -> Worl
         setting_id=getattr(record, "setting_id", None),
         canon=campaign is None and getattr(record, "setting_id", None) is not None,
         canon_level=getattr(record, "canon_level", None),
+        provenance=getattr(record, "provenance", None) or HOMEBREW,
+        source=getattr(record, "source", None),
     )
 
 

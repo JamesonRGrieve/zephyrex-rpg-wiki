@@ -18,11 +18,11 @@ def test_in_process_it_imports_as_the_owner_and_again_changes_nothing(capsys: py
     server = TestClient(create())
     owner = create_user(server)
     assert main([str(FIXTURE), "--app", "rpg_wiki_app:create", "--owner", str(owner.id), "--setting", "dnd"]) == 0
-    assert capsys.readouterr().out.startswith("created: 12, updated: 0")
+    assert capsys.readouterr().out.startswith("created: 13, updated: 0")
     mine = Api(server, {"Authorization": f"Bearer {owner.jwt}"})
     assert [row["name"] for row in mine.list("campaign")] == ["The Split Antler"]
     assert main([str(FIXTURE), "--app", "rpg_wiki_app:create", "--owner", str(owner.id), "--setting", "dnd"]) == 0
-    assert capsys.readouterr().out.startswith("created: 0, updated: 0, unchanged: 11")
+    assert capsys.readouterr().out.startswith("created: 0, updated: 0, unchanged: 12")
 
 
 def test_it_needs_one_way_in() -> None:
