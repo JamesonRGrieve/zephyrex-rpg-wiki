@@ -12,7 +12,7 @@ import { useWrites } from 'zephyrex/hooks/useWrites';
 import { LoadProblem } from 'zephyrex/ui/load-problem';
 import { PageHeader } from 'zephyrex/ui/page-header';
 import { SkeletonRows } from 'zephyrex/ui/skeleton';
-import { useWikiBase } from '../base';
+import { SettingSectionsOf, useWikiBase } from '../base';
 import { Unavailable } from '../components/world/Unavailable';
 import { WorldList } from '../components/world/WorldList';
 import { useCapabilities } from '../features/capabilities';
@@ -57,6 +57,7 @@ function SettingSection({
         listLabel={`Campaigns in ${title}`}
         quietEmpty
       />
+      {setting !== null && <SettingSectionsOf settingId={setting.id} />}
     </section>
   );
 }

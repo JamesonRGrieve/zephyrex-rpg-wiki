@@ -15,7 +15,7 @@ import { useCapabilities } from '../features/capabilities';
 import { factions, hooks, items, journals, people, places, type ResourceHooks } from '../features/data/records';
 import { isCanon, scopeFields, scopeQuery, settingOf, settingScope } from '../lib/scope';
 import { useScope } from '../features/data/scopes';
-import { useWikiBase } from '../base';
+import { SettingSectionsOf, useWikiBase } from '../base';
 import { WorldNav } from '../components/world/WorldNav';
 import { recordPath } from '../lib/paths';
 
@@ -107,6 +107,7 @@ export function KindPage(params: { world: string; kind: string }): ReactElement 
         <>
           <KindList key={kind} world={params.world} kind={kind} />
           {!scope.isSetting && scope.settingId && <CanonList setting={scope.settingId} kind={kind} />}
+          {scope.isSetting && scope.settingId && <SettingSectionsOf settingId={scope.settingId} />}
         </>
       ) : (
         <Unavailable what={words.plural} />
