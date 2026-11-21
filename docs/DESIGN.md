@@ -93,16 +93,16 @@ self-hosted single-user build.
 | W35 | Whiteboards: a free canvas of shapes, notes, and live entity and map cards | Kanka (3.5), World Anvil | ✓ | ✓ |
 | W36 | Custom entity types (Kanka "custom modules"): name, icon, fields; any module can be disabled or renamed per campaign | Kanka | ✓ | ✓ |
 | W37 | Webhooks on entity changes (Discord and any URL) | Kanka | ✓ | ✓ |
-| W38 | Discord integration: post updates, look up entities from a bot | Kanka (webhooks), World Anvil *(verify)* | – | ✓ |
+| W38 | Discord integration: post updates, look up entities from a bot | Kanka (webhooks), World Anvil (Discord webhooks) | – | ✓ |
 | W39 | Vanity URLs for public worlds | Kanka | – | ✓ |
 | W40 | Readers: followers and paid subscriber tiers on a public world; subscriber-only blocks inside public articles | World Anvil | – | ✓ |
 | W41 | Co-authors with shared manuscripts; drag secrets into writing notes | World Anvil | – | ✓ |
 | W42 | Community statblock library: share, copy and edit statblocks | World Anvil | – | ✓ |
 | W43 | VTT integration: push statblocks and journals to a table (our VTT; Foundry through the adapter) | World Anvil (Foundry) | ✓ | ✓ |
 | W44 | Embeds: HeroForge and other 3D models, video, audio, any oEmbed source | World Anvil | ✓ | ✓ |
-| W45 | Custom CSS per world (scoped to the world's pages and sanitised), alongside the token themes of W29 | World Anvil, Kanka *(verify)* | ✓ | ✓ |
+| W45 | Custom CSS per world (scoped to the world's pages and sanitised), alongside the token themes of W29 | World Anvil (world, per-article and container CSS), Kanka (premium CSS) | ✓ | ✓ |
 | W46 | Community: a public world directory, follows, comments, worldbuilding challenges and prompts | World Anvil | – | ✓ |
-| W47 | Plugin marketplace: themes, sheet templates, content packs | Kanka *(verify)* | ✓ (install from file) | ✓ |
+| W47 | Plugin marketplace: themes, sheet templates, content packs | Kanka (plugins.kanka.io) | ✓ (install from file) | ✓ |
 | W48 | Files attached to any entity, with per-plan limits | Kanka | ✓ | ✓ |
 | W49 | Entity map polygons and areas (not only pins) | Kanka (1.42) | ✓ | ✓ |
 | W50 | Calendar weather per date | Kanka | ✓ | ✓ |
@@ -113,6 +113,13 @@ self-hosted single-user build.
 | W55 | Relations between any kinds of record | both | ✓ | ✓ |
 | W56 | Dispositions: how a person regards the party, a person or an organisation, changing as hooks resolve; relation influences | ours (dh-campaign) | ✓ | ✓ |
 | W57 | Hook requirements as all/any expressions (with game-system checks VTT evaluates), blocked-with-excuse, resolution in a session; a plot board | ours (dh-campaign) | ✓ | ✓ |
+| W58 | Rollable random tables and random generators, linking to records | World Anvil | ✓ | ✓ |
+| W59 | Content trees (organograms): hierarchies, magic systems, ranks | World Anvil | ✓ | ✓ |
+| W60 | Notebook: quick notes outside any record, colour-coded, mobile-first | World Anvil | ✓ | ✓ |
+| W61 | To-do list, filled with drafts and mention stubs (records named before they exist) | World Anvil | ✓ | ✓ |
+| W62 | Autolinker: suggest mentions for names already in the world, accept all or one by one | World Anvil | ✓ | ✓ |
+| W63 | Variables: values set once and used across records | World Anvil | ✓ | ✓ |
+| W64 | Public-world extras: custom domain and slugs, SEO metadata, RSS feed, announcements, side navigation, homepage layout, password-protected pages, access codes | World Anvil | – | ✓ |
 
 ## Feature audit against Kanka and World Anvil (2026-11-21)
 
@@ -130,10 +137,10 @@ marked against what is **built and on `main`** (9486e7c), not what is planned:
 the mention editor, the entity page, lists, search and Kanka import. ○ is a later phase.
 
 **Sources.** Kanka: its features, pricing and docs pages, its API overview, and the release posts
-3.5 to 3.15 (Nov 2025 to Aug 2026), read on 2026-11-20 and 21. **World Anvil refuses automated
-reads** (HTTP 403 on worldanvil.com); its rows come from search results, its Codex feature list,
-its pricing page and API docs as they appear there, and independent 2026 reviews (Deckle,
-Kindlepreneur). They're marked *(WA unverified)* until someone reads the pages in a browser.
+3.5 to 3.15 (Nov 2025 to Aug 2026), read on 2026-11-20 and 21. World Anvil: its features index,
+all 16 feature pages, the per-tier feature list (learn/account/list-features) and the changelog,
+read on 2026-11-21 in the operator's own Chromium (SOP *STL Library Archival → Browser for store
+reads*; World Anvil refuses automated and headless reads with HTTP 403).
 
 | Area | Feature | Kanka | World Anvil | Wiki | Where / what's missing | Release |
 |---|---|---|---|---|---|---|
@@ -153,7 +160,7 @@ Kindlepreneur). They're marked *(WA unverified)* until someone reads the pages i
 | | Calendars | ✓ | ✓ | Planned | W12 | ○ |
 | | Timelines and eras | ✓ | ✓ | Planned | W13 | ○ |
 | | Maps | ✓ | ✓ | Planned | W17, reusing VTT's renderer (below) | ○ |
-| | World Anvil's ~28 article templates as kinds | – | ✓ | Partial | kinds per type from the contract; no prompted template fields *(WA unverified)* | ○ |
+| | World Anvil's 25+ prompted article templates as kinds | – | ✓ | Partial | kinds per type from the contract; no prompted template fields | ○ |
 | | Custom entity types (Kanka custom categories; WA custom templates) | ✓ premium | ✓ paid | Planned | W36 | ○ |
 | | Disable or rename a module per world | ✓ | – | Partial | capabilities hide what isn't loaded; no per-world toggle or rename | ○ |
 | | Archive (hide from lists, keep) | ✓ (3.5) | – | Planned | W53; soft delete exists for sync, not archive | ○ |
@@ -206,7 +213,7 @@ Kindlepreneur). They're marked *(WA unverified)* until someone reads the pages i
 | | Import from World Anvil | – | – | Planned | W31, phase 5 | ○ |
 | | CSV import | ✓ (3.9) | – | Planned | W54 | ○ |
 | | Public API | ✓ | ✓ (Boromir, approved keys) | Partial | SaaS: the framework's REST and GraphQL at `/v1`; lite: the same REST; no docs page or tokens UI | ○ |
-| | Webhooks, Discord | ✓ premium | ✓ *(WA unverified)* | Planned | W37, W38 (framework `webhooks`) | ○ |
+| | Webhooks, Discord | ✓ premium | ✓ (Discord webhooks, Master) | Planned | W37, W38 (framework `webhooks`) | ○ |
 | | Sync to an AI product's lorebook | – | – | Covered | `world_entities` (S2b, rpg-ai A15) | ● |
 | | Foundry / VTT journals | – | ✓ (community module) | Planned | W43, through VTT | ○ |
 | **Publishing** | Public worlds and pages | ✓ | ✓ | Planned | W27 (SaaS) | ○ |
@@ -215,7 +222,14 @@ Kindlepreneur). They're marked *(WA unverified)* until someone reads the pages i
 | | Followers, paid subscribers, subscriber groups | – | ✓ paid | Planned | W40 (SaaS) | ○ |
 | | Community: showcase, comments, challenges | ✓ (showcase) | ✓ | Planned | W46 (SaaS) | ○ |
 | | Plugins / marketplace (sheets, themes, packs) | ✓ premium | – | Planned | W47 | ○ |
-| **Platform** | Mobile web: works at 360–390 px, 44 px targets | responsive | ✓ *(WA unverified)* | Covered | audited on phone and tablet (9486e7c) | ● |
+| **Tools** | Rollable random tables and generators | – | ✓ | Planned | W58 | ○ |
+| | Content trees (organograms) | – | ✓ | Planned | W59 | ○ |
+| | Notebook for quick notes | – | ✓ | Planned | W60 | ○ |
+| | To-do list with drafts and mention stubs | – | ✓ | Planned | W61 | ○ |
+| | Autolinker for existing names | – | ✓ | Planned | W62 | ○ |
+| | Variables reused across records | – | ✓ | Planned | W63 | ○ |
+| | Public-world extras (domains, slugs, SEO, RSS, announcements, passwords, access codes) | – | ✓ paid | Planned | W64 | ○ |
+| **Platform** | Mobile web: works at 360–390 px, 44 px targets | responsive | ✓ (mobile notebook) | Covered | audited on phone and tablet (9486e7c) | ● |
 | | Installable app, offline reading | – | – | Planned | W34 | ○ |
 | | Self-hosted, one person, free | – | – | Covered | the lite edition | ● |
 | | Live multi-user presence | ✓ (maps, whiteboards) | – | Planned | framework live_sync | ○ |
@@ -229,7 +243,7 @@ scene importer as a way in, and add only the wiki's pins (target type and id), a
 the record side sheet. A VTT scene published to the wiki is a map variant, as dh-campaign's
 `maps:` block already treats exterior and interior variants.
 
-**Counts** (83 rows, after S3c): Covered 15, Partial 18, Not built 1, Planned 47, Out of scope 2. **Every
+**Counts** (90 rows, after S3c and the World Anvil reading): Covered 15, Partial 18, Not built 1, Planned 54, Out of scope 2. **Every
 Planned and Partial row is in scope for the initial release** (operator's goal: full coverage,
 2026-11-21, via Zephyrex RPG); ● marks phase 1, which orders the work and drops nothing. **The gaps that matter for the initial release** (● and not Covered): editing a
 record in place, the entry editor with `@` mentions, backlinks and aliases, properties (S4b),
