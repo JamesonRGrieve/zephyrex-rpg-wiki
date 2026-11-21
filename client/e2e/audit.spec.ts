@@ -292,6 +292,9 @@ test.describe.serial('visual audit', () => {
     expect(flicker.status(), await flicker.text()).toBe(201);
     const withLore = (await (await request.get(`/api/v1/world_entity?campaign_id=${seeded.world}`)).json()) as { world_entities: { name: string; lore: { position: string; probability: number } | null }[] };
     expect(withLore.world_entities.find((entity) => entity.name === 'The Flicker')?.lore).toMatchObject({ position: 'at_depth', probability: 100 });
+    // The sandbox cast read by id (rpg-ai): in the order asked, an unknown id absent.
+    const cast = (await (await request.get(`/api/v1/world_entity?ids=${seeded.location},no-such-id,${seeded.person}`)).json()) as { world_entities: { name: string }[]; next: null };
+    expect([cast.world_entities.map((entity) => entity.name), cast.next]).toEqual([['Port Gull', 'Mira of the Lantern'], null]);
     const pages = worldPages(seeded);
     const page = await browser.newPage({ baseURL: String(testInfo.project.use.baseURL) });
     await expectSeedShows(page, seeded);

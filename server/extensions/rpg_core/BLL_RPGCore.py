@@ -26,6 +26,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel as PlainModel
 from pydantic import Field, field_validator, model_validator
 from zephyrex.extensions.genealogy.BLL_Genealogy import PersonManager, PersonModel
+from zephyrex.lib.Rooms import room_of
 from zephyrex.extensions.wiki_shared.Contract import PERSON_KINDS  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Records import (  # type: ignore[import-not-found]
     checked_kind,
@@ -35,6 +36,7 @@ from zephyrex.extensions.wiki_shared.Records import (  # type: ignore[import-not
     slugify,
     with_entry_text,
 )
+from zephyrex.extensions.wiki_shared.EntityIds import EntityIdsError, entity_ids  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Lore import lore_text, stored_lore  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Names import names_text, stored_names, stored_voice, voice_text  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Contract import ATTACHMENT_ROLES, CANON_LEVELS, ENTITY_TYPES, LIMITS  # type: ignore[import-not-found]
@@ -956,6 +958,27 @@ def _checked_page(kinds: Optional[list[str]], limit: int) -> list[str]:
     return wanted
 
 
+def _entity(kind: str, record: Any, changed_at: datetime, deleted: bool) -> WorldEntity:
+    """A record as rpg-ai's lorebook reads it (the sync's and the by-id read's one shaping)."""
+    campaign = getattr(record, "campaign_id", None)
+    return WorldEntity(
+        id=str(record.id),
+        kind=kind,
+        name=str(record.name or ""),
+        aliases=stored_names(getattr(record, "aliases", None)),
+        keywords=stored_names(getattr(record, "keywords", None)),
+        voice=stored_voice(getattr(record, "voice", None)) if kind == "person" else None,
+        lore=stored_lore(getattr(record, "lore", None)),
+        summary=summary(getattr(record, "description", None)),
+        picture=None,
+        updated_at=_naive(changed_at),
+        deleted=deleted,
+        setting_id=getattr(record, "setting_id", None),
+        canon=campaign is None and getattr(record, "setting_id", None) is not None,
+        canon_level=getattr(record, "canon_level", None),
+    )
+
+
 def _gather(
     model_registry: Any,
     requester_id: str,
@@ -982,22 +1005,7 @@ def _gather(
                 # A template (S4b, W7) is copied into campaigns, never a world fact: rpg-ai never sees it.
                 if getattr(record, "is_template", None):
                     continue
-                entity = WorldEntity(
-                    id=str(record.id),
-                    kind=kind,
-                    name=str(record.name or ""),
-                    aliases=stored_names(getattr(record, "aliases", None)),
-                    keywords=stored_names(getattr(record, "keywords", None)),
-                    voice=stored_voice(getattr(record, "voice", None)) if kind == "person" else None,
-                    lore=stored_lore(getattr(record, "lore", None)),
-                    summary=summary(getattr(record, "description", None)),
-                    picture=None,
-                    updated_at=_naive(change.changed_at),
-                    deleted=change.deleted_at is not None,
-                    setting_id=getattr(record, "setting_id", None),
-                    canon=campaign is None and getattr(record, "setting_id", None) is not None,
-                    canon_level=getattr(record, "canon_level", None),
-                )
+                entity = _entity(kind, record, change.changed_at, change.deleted_at is not None)
                 if floor and (entity.updated_at, entity.id) <= floor:
                     continue
                 found.append(entity)
@@ -1097,6 +1105,28 @@ def setting_canon(
     return _paged(_gather(model_registry, requester_id, wanted, {"setting_id": setting_id}, True, start, floor, limit), limit, model_registry)
 
 
+def world_entities_by_id(model_registry: Any, requester_id: str, ids: list[str]) -> WorldEntitiesPage:
+    """The named records (rpg-ai's sandbox cast: persons from several campaigns, or a setting's
+    canon), shaped as the sync shapes them, under the requester's access. An id the requester can't
+    see, a deleted record, a template or an unknown id is simply absent; ``next`` is always none."""
+    from zephyrex.logic.AbstractLogicManager.models import FieldComparison
+
+    try:
+        wanted = entity_ids(ids)
+    except EntityIdsError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    found: list[WorldEntity] = []
+    for kind, manager_class in WORLD_ENTITY_MANAGERS.items():
+        manager = _manager(model_registry, requester_id, manager_class)
+        for record in manager.list(filters=[FieldComparison(manager.Model, "id", "in", wanted)]) or []:
+            if getattr(record, "is_template", None):
+                continue
+            found.append(_entity(kind, record, getattr(record, "updated_at", None) or record.created_at, False))
+    order = {entity_id: index for index, entity_id in enumerate(wanted)}
+    found.sort(key=lambda entity: order[entity.id])
+    return WorldEntitiesPage(world_entities=_with_pictures(model_registry, found), next=None)
+
+
 class WorldEntityManager(AbstractBLLManager[Any], RouterMixin):
     """REST for rpg-ai's lorebook sync: GET /v1/world_entity."""
 
@@ -1117,18 +1147,21 @@ class WorldEntityManager(AbstractBLLManager[Any], RouterMixin):
         self,
         campaign_id: Optional[str] = None,
         setting_id: Optional[str] = None,
+        ids: Optional[str] = None,
         include_setting: bool = False,
         since: Optional[datetime] = None,
         kinds: Optional[str] = None,
         after: Optional[str] = None,
         limit: int = DEFAULT_LIMIT,
     ) -> WorldEntitiesPage:
-        """?campaign_id= (with &include_setting=true for its setting's canon too), or ?setting_id= for
-        a setting's canon alone."""
+        """?campaign_id= (with &include_setting=true for its setting's canon too), ?setting_id= for
+        a setting's canon alone, or ?ids=a,b for the named records wherever they are."""
         wanted = [kind for kind in kinds.split(",") if kind] if kinds else None
         requester = str(self.requester.id)
-        if (campaign_id is None) == (setting_id is None):
-            raise HTTPException(status_code=422, detail="Name a campaign_id or a setting_id")
+        if [campaign_id, setting_id, ids].count(None) != 2:
+            raise HTTPException(status_code=422, detail="Name a campaign_id, a setting_id or ids")
+        if ids is not None:
+            return world_entities_by_id(self.model_registry, requester, ids.split(","))
         if setting_id is not None:
             return setting_canon(self.model_registry, requester, setting_id, since=since, kinds=wanted, after=after, limit=limit)
         return world_entities(
@@ -1300,3 +1333,12 @@ class TemplateManager(AbstractBLLManager[Any], RouterMixin):
     )
     def instantiate_route(self, template: TemplateUse) -> TemplateCopy:
         return instantiate(self.model_registry, str(self.requester.id), TemplateUse.model_validate(template))
+
+
+# ---------------------------------------------------------------------------
+# A campaign's room (the framework's rooms): its changes reach whoever has it open, and VTT puts a
+# campaign's scenes and tables in the same room, so their lists update live. Joining needs VIEW on
+# the campaign (its GM and players). Nothing happens unless the app loads `rooms`.
+# ---------------------------------------------------------------------------
+
+room_of(CampaignManager, lambda campaign: ("campaign", campaign.id))

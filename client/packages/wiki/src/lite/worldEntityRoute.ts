@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * GET /v1/world_entity?campaign_id=[&include_setting=true] or ?setting_id= (a setting's canon, S6),
- * &since=&kinds=&after=&limit= — a world's places, people,
+ * or ?ids=a,b (the named records wherever they are), &since=&kinds=&after=&limit= — a world's places, people,
  * factions, items and journals changed since a time, tombstones included (rpg-ai A15), as the server's rpg_core
  * answers it. Lite has one owner, so "under the caller's access" is the owner's own records.
  */
@@ -20,6 +20,7 @@ import {
   type WorldEntityKind,
 } from './worldEntities';
 import { seenBy } from './worldRecords';
+import { EntityIdsError, entityIds } from '../lib/entityIds';
 
 const SELECT = {
   id: true,
@@ -50,13 +51,36 @@ function rowsOf(kind: WorldEntityKind, where: object): Promise<EntityRow[]> {
   }
 }
 
+/**
+ * ?ids=a,b: the named records wherever they are (rpg-ai's sandbox cast), shaped as the sync shapes
+ * them, in the order asked. An id that isn't the owner's, a deleted record, a template or an unknown
+ * id is simply absent, as on the server; `next` is always none.
+ */
+async function byId(ownerId: string, text: string): Promise<NextResponse> {
+  let ids: string[];
+  try {
+    ids = entityIds(text.split(','));
+  } catch (error) {
+    if (error instanceof EntityIdsError) throw validationError(error.message, 'ids');
+    throw error;
+  }
+  const where = { createdById: ownerId, id: { in: ids }, deletedAt: null, OR: [{ isTemplate: null }, { isTemplate: false }] };
+  const rows = await Promise.all(WORLD_ENTITY_KINDS.map(async (kind) => (await rowsOf(kind, where)).map((row) => entityOf(kind, row))));
+  const order = new Map(ids.map((id, index) => [id, index]));
+  const found = rows.flat().sort((one, two) => (order.get(one.id) ?? 0) - (order.get(two.id) ?? 0));
+  return NextResponse.json({ world_entities: found, next: null });
+}
+
 export async function worldEntityGet(request: NextRequest): Promise<NextResponse> {
   try {
     const owner = await localOwner(request);
     const query = request.nextUrl.searchParams;
     const campaignId = query.get('campaign_id') || null;
     const settingId = query.get('setting_id') || null;
-    if ((campaignId === null) === (settingId === null)) throw validationError('Name a campaign_id or a setting_id', 'campaign_id');
+    const idsText = query.get('ids');
+    if ([campaignId, settingId, idsText].filter((one) => one !== null).length !== 1)
+      throw validationError('Name a campaign_id, a setting_id or ids', 'campaign_id');
+    if (idsText !== null) return await byId(owner.id, idsText);
     let canonOf: string | null = settingId;
     if (campaignId !== null) {
       const campaign = await prisma.campaign.findFirst({ where: { id: campaignId, createdById: owner.id }, select: { settingId: true } });

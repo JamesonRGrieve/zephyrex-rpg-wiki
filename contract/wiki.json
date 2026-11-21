@@ -14,7 +14,8 @@
     "properties_per_record": 200,
     "names_per_list": 50,
     "voice_characters": 20000,
-    "voice_examples": 20
+    "voice_examples": 20,
+    "world_entity_ids": 100
   },
   "location_kinds": [
     "system",

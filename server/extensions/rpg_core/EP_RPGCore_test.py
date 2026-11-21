@@ -839,3 +839,34 @@ class TestLore:
         for bad in ({"position": "middle"}, {"probability": 101}, {"colour": "red"}):
             response = server.post("/v1/journal", json={"journal": {"name": "Bad", "lore": bad}}, headers=_headers(person))
             assert response.status_code == 422, (bad, response.text)
+
+
+class TestWorldEntitiesById:
+    """rpg-ai's sandbox cast: persons from several campaigns, or a setting's canon, read by id,
+    shaped as the sync shapes them; what the caller can't see is simply absent."""
+
+    def test_named_records_wherever_they_are(self, server: TestClient, person: Any, other: Any) -> None:
+        setting = _create(server, person, "setting", name="Cast Setting")
+        first = _create(server, person, "campaign", name="Cast One", setting_id=setting["id"])
+        second = _create(server, person, "campaign", name="Cast Two")
+        mira = _create(server, person, "person", name="Mira", kind="npc", campaign_id=first["id"], voice={"personality": "Watchful."})
+        ross = _create(server, person, "person", name="Ross", kind="npc", campaign_id=second["id"])
+        saint = _create(server, person, "person", name="The Saint", kind="npc", setting_id=setting["id"])
+        port = _create(server, person, "location", name="Port", kind="city", campaign_id=first["id"])
+        mould = _create(server, person, "person", name="Mould", kind="npc", campaign_id=first["id"], is_template=True)
+        theirs = _create(server, other, "person", name="Not yours", kind="npc")
+        ids = [ross["id"], mira["id"], theirs["id"], saint["id"], mould["id"], "no-such-id", port["id"], mira["id"]]
+        response = server.get(f"/v1/world_entity?ids={','.join(ids)}", headers=_headers(person))
+        assert response.status_code == 200, response.text
+        body = response.json()
+        # In the order asked, each once; the other user's, the template and the unknown id absent.
+        assert [(entity["name"], entity["kind"]) for entity in body["world_entities"]] == [
+            ("Ross", "person"), ("Mira", "person"), ("The Saint", "person"), ("Port", "location"),
+        ]
+        by_name = {entity["name"]: entity for entity in body["world_entities"]}
+        assert by_name["Mira"]["voice"]["personality"] == "Watchful."
+        assert (by_name["The Saint"]["canon"], by_name["Mira"]["canon"], body["next"]) == (True, False, None)
+
+    def test_refuses_no_ids_too_many_or_two_scopes(self, server: TestClient, person: Any, world: dict[str, Any]) -> None:
+        for query in ("ids=", "ids=,,", "ids=" + ",".join(f"id{n}" for n in range(101)), f"ids=a&campaign_id={world['id']}"):
+            assert server.get(f"/v1/world_entity?{query}", headers=_headers(person)).status_code == 422, query
