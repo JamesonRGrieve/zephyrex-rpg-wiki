@@ -16,12 +16,13 @@
     "storybook": "storybook dev -p 6006",
     "storybook-build": "storybook build",
     "storybook-test": "test-storybook --url http://localhost:6006",
-    "refresh:zephyrex": "pnpm update --no-save zephyrex @zephyrex/auth @zephyrex/lite @zephyrex/marketing @jgrieve/forms zod2gql"
+    "refresh:zephyrex": "pnpm update --no-save zephyrex @zephyrex/attachments @zephyrex/auth @zephyrex/lite @zephyrex/marketing @jgrieve/forms zod2gql"
   },
   "dependencies": {
     "@jgrieve/forms": "^0.0.1-alpha.1",
     "@prisma/adapter-better-sqlite3": "7.10.0",
     "@prisma/client": "^7.10.0",
+    "@zephyrex/attachments": "^0.0.1-alpha.1",
     "@zephyrex/auth": "^0.0.1-alpha.1",
     "@zephyrex/lite": "^0.0.1-alpha.1",
     "@zephyrex/marketing": "^0.0.1-alpha.1",
@@ -51,6 +52,9 @@
       "injected": true
     },
     "@zephyrex/marketing": {
+      "injected": true
+    },
+    "@zephyrex/attachments": {
       "injected": true
     }
   },

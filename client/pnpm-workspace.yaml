@@ -26,6 +26,7 @@ overrides:
   zephyrex: file:../../client-framework/packages/zephyrex
   '@zephyrex/auth': file:../../auth
   '@zephyrex/lite': file:../../client-framework/packages/lite
+  '@zephyrex/attachments': file:../../client-framework/packages/attachments
   '@zephyrex/marketing': file:../../client-framework/packages/marketing
   '@jgrieve/forms': file:../../dynamic-form
   zod2gql: file:../../zod2gql
