@@ -333,6 +333,8 @@ const CAMPAIGN_COLUMNS: Columns = {
   setting_id: plain('settingId'),
   provenance: plain('provenance'),
   source: plain('source'),
+  is_scenario: plain('isScenario'),
+  scenario_id: plain('scenarioId'),
 };
 const campaignCreate = z.object({
   name,
@@ -340,9 +342,14 @@ const campaignCreate = z.object({
   setting_id: reference.default(null),
   provenance: z.string().nullish(),
   source: z.string().nullish(),
+  // Copy on start: a scenario, never played; a playthrough names the scenario it was copied from.
+  is_scenario: z.boolean().nullish(),
+  scenario_id: reference.default(null),
 });
 // A null provenance or source is "not given"; "" clears the source (as the server's).
-const campaignUpdate = z.object({ name, description: z.string(), setting_id: reference, provenance: z.string().nullable(), source: z.string().nullable() }).partial();
+const campaignUpdate = z
+  .object({ name, description: z.string(), setting_id: reference, provenance: z.string().nullable(), source: z.string().nullable(), is_scenario: z.boolean().nullable() })
+  .partial();
 
 /** A picture by link (an https address; "" or none is none), as a 422 on its field. */
 const pictureLink = z.unknown().transform((value, context) => {
@@ -422,7 +429,16 @@ export const campaigns: ResourceSpec<CampaignRow, z.infer<typeof campaignCreate>
   modelName: 'CampaignModel',
   createSchema: campaignCreate,
   updateSchema: campaignUpdate,
-  list: (ownerId) => prisma.campaign.findMany({ where: { createdById: ownerId }, orderBy: { name: 'asc' } }),
+  // ?is_scenario=true for scenarios alone, ?scenario_id= for a scenario's playthroughs (as the server's).
+  list: (ownerId, query) =>
+    prisma.campaign.findMany({
+      where: {
+        createdById: ownerId,
+        ...filters(query, [['scenario_id', 'scenarioId']]),
+        ...(query.get('is_scenario') === null || query.get('is_scenario') === '' ? {} : { isScenario: query.get('is_scenario') === 'true' }),
+      },
+      orderBy: { name: 'asc' },
+    }),
   find: (id, ownerId) => prisma.campaign.findFirst({ where: { id, createdById: ownerId } }),
   async insert(ownerId, input, stamp) {
     await checkCampaignSetting(ownerId, input.setting_id, null);

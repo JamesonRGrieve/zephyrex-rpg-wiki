@@ -207,12 +207,17 @@ class CampaignModel(
     # Where the scenario came from (operator, 2026-11-21: official ones are parsed in for personal use).
     provenance: Optional[str] = Field(None, description="contract/wiki.json provenances: homebrew, official or adapted")
     source: Optional[str] = Field(None, description="The official title, publisher and product or page; none for homebrew")
+    # Copy on start (operator, 2026-11-21): a scenario is never played; starting it makes a playthrough.
+    is_scenario: Optional[bool] = Field(None, description="A scenario: play never edits it; starting it copies it (instantiate)")
+    scenario_id: Optional[str] = Field(None, description="FK → campaigns.id; the scenario this campaign is a playthrough of")
 
     class Create(BaseModel, UserModel.Reference.ID.Optional, SettingModel.Reference.ID.Optional):
         name: str = Field(...)
         description: Optional[str] = None
         provenance: Optional[str] = None
         source: Optional[str] = None
+        is_scenario: Optional[bool] = None
+        scenario_id: Optional[str] = None
 
         _name = field_validator("name")(checked_name)
         _provenance = field_validator("provenance")(lambda value: None if value is None else checked_provenance(value))
@@ -222,6 +227,7 @@ class CampaignModel(
         name: Optional[str] = None
         description: Optional[str] = None
         setting_id: Optional[str] = None
+        is_scenario: Optional[bool] = None
         provenance: Optional[str] = None
         # "" clears it; none leaves it as it is (read by _provenance_holds).
         source: Optional[str] = None
@@ -233,8 +239,36 @@ class CampaignModel(
         name: Optional[StringSearchModel] = None
 
 
+class CampaignStart(PlainModel):
+    name: Optional[str] = Field(None, description="The playthrough's name; the scenario's when not given")
+
+
+class CampaignStartEnvelope(PlainModel):
+    instantiate: CampaignStart
+
+
+class CampaignStarted(PlainModel):
+    campaign: dict[str, Any] = Field(..., description="The new campaign, a playthrough of the scenario")
+    id_map: dict[str, str] = Field(..., description="Each copied record's id (and the scenario's) → its copy's")
+
+
 class CampaignManager(AbstractBLLManager, RouterMixin):
     _model = CampaignModel
+
+    @custom_route(
+        method="POST",
+        path="/{id}/instantiate",
+        input_model=CampaignStartEnvelope,
+        output_model=CampaignStarted,
+        authentication_type="jwt",
+        status_code=201,
+        expose_in=(ExposeIn.REST,),
+        openapi_tags=("Campaigns",),
+        summary="Start a scenario: a new campaign with its own copy of every record and relation",
+    )
+    def instantiate_route(self, id: str, instantiate: CampaignStart) -> CampaignStarted:
+        start = CampaignStart.model_validate(instantiate)
+        return instantiate_campaign(self.model_registry, str(self.requester.id), id, start.name)
 
 
 def _provenance_holds(context: HookContext) -> None:
@@ -1515,6 +1549,128 @@ class TemplateManager(AbstractBLLManager[Any], RouterMixin):
     )
     def instantiate_route(self, template: TemplateUse) -> TemplateCopy:
         return instantiate(self.model_registry, str(self.requester.id), TemplateUse.model_validate(template))
+
+
+# ---------------------------------------------------------------------------
+# Copy on start (operator, 2026-11-21): a scenario instantiated into a playthrough (Scenarios.py)
+# ---------------------------------------------------------------------------
+
+# The campaign's own records, in the order they're copied (a reference to a later one waits for the
+# second pass).
+_SCENARIO_RECORDS = (TaxonManager, StatusManager, LocationManager, FactionManager, PersonManager, ItemManager, JournalManager, HookManager)
+
+
+def _scenario_links() -> list[tuple[Any, tuple[str, ...]]]:
+    """Each link table, and the fields that tie a row to a copied record (any one is enough)."""
+    from zephyrex.extensions.entity_posts.BLL_EntityPosts import EntityPostManager  # type: ignore[import-not-found]
+    from zephyrex.extensions.genealogy.BLL_Genealogy import RelationshipManager
+    from zephyrex.extensions.world_narrative.BLL_WorldNarrative import (  # type: ignore[import-not-found]
+        DispositionManager,
+        FactionHookManager,
+        PersonHookManager,
+        RelationInfluenceManager,
+    )
+    from zephyrex.extensions.world_taxonomy.BLL_WorldTaxonomy import EntityStatusManager  # type: ignore[import-not-found]
+
+    return [
+        (RelationshipManager, ("person_id", "faction_id", "target_person_id", "target_faction_id")),
+        (RelationInfluenceManager, ("relationship_id",)),
+        (HookDependencyManager, ("parent_hook_id", "child_hook_id")),
+        (PersonHookManager, ("person_id",)),
+        (FactionHookManager, ("faction_id",)),
+        (DispositionManager, ("person_id",)),
+        (EntityTaxonManager, ("target_entity_id",)),
+        (EntityStatusManager, ("target_entity_id",)),
+        (EntityPostManager, ("target_entity_id",)),
+    ]
+
+
+def instantiate_campaign(model_registry: Any, requester_id: str, source_campaign_id: str, name: Optional[str] = None) -> CampaignStarted:
+    """A playthrough of a scenario: a new campaign (its scenario_id the source's, its provenance the
+    source's) with the requester's own copy of every record the scenario holds and every link
+    between them, references turned to the copies (Scenarios.py). The setting's canon stays shared;
+    templates stay with the scenario. Returns the campaign and the id map, source → copy."""
+    from zephyrex.extensions.rpg_core.Scenarios import Copying, copy_rows, finish, touching  # type: ignore[import-not-found]
+
+    campaigns = _manager(model_registry, requester_id, CampaignManager)
+    source = campaigns.get(id=source_campaign_id)
+    copying = Copying()
+    gathered: list[tuple[Any, list[Any]]] = []
+    for manager_class in _SCENARIO_RECORDS:
+        manager = _manager(model_registry, requester_id, manager_class)
+        rows = [row for row in manager.list(campaign_id=source_campaign_id) or [] if not getattr(row, "is_template", None)]
+        gathered.append((manager, rows))
+        copying.pending.update(str(row.id) for row in rows)
+    made = campaigns.create(
+        name=name or source.name,
+        description=source.description,
+        setting_id=source.setting_id,
+        provenance=getattr(source, "provenance", None),
+        source=getattr(source, "source", None),
+        is_scenario=False,
+        scenario_id=str(source.id),
+    )
+    copying.id_map[str(source.id)] = str(made.id)
+    for manager, rows in gathered:
+        copy_rows(manager, rows, copying)
+    record_ids = [one for one in copying.id_map if one != str(source.id)]
+    for manager_class, anchors in _scenario_links():
+        manager = _manager(model_registry, requester_id, manager_class)
+        # The scenario's own id too: its play-style tags come with it.
+        rows = touching(manager, anchors, list(copying.id_map))
+        copying.pending.update(str(row.id) for row in rows)
+        copy_rows(manager, rows, copying)
+    _copy_carried(model_registry, requester_id, record_ids, copying, copy_rows, touching)
+    _copy_record_extras(model_registry, requester_id, record_ids, copying)
+    finish(copying)
+    return CampaignStarted(campaign=_manager(model_registry, requester_id, CampaignManager).get(id=str(made.id)).model_dump(mode="json"), id_map=copying.id_map)
+
+
+def _copy_carried(model_registry: Any, requester_id: str, record_ids: list[str], copying: Any, copy_rows: Any, touching: Any) -> None:
+    """What the copied records carry: each item instance they hold or own made anew, then held."""
+    holdings = _manager(model_registry, requester_id, EntityInventoryManager)
+    instances = _manager(model_registry, requester_id, ItemInstanceManager)
+    held = touching(holdings, ("target_entity_id",), record_ids)
+    owned = touching(instances, ("owner_person_id",), record_ids)
+    wanted = {str(row.item_instance_id) for row in held} - {str(row.id) for row in owned}
+    extra = touching(instances, ("id",), sorted(wanted)) if wanted else []
+    copy_rows(instances, owned + extra, copying)
+    copy_rows(holdings, held, copying)
+
+
+def _copy_record_extras(model_registry: Any, requester_id: str, record_ids: list[str], copying: Any) -> None:
+    """Each copied record's properties and pictures (the same uploaded assets, attached again)."""
+    from zephyrex.logic.AbstractLogicManager.models import FieldComparison
+
+    loaded = model_registry.loaded_extension_names()
+    if "metadata" in loaded and record_ids:
+        from zephyrex.extensions.metadata.BLL_Metadata import (  # type: ignore[import-not-found]
+            MetadataManager,
+            RecordMetadataManager,
+            RecordMetadataWrite,
+        )
+
+        rows = MetadataManager(requester_id=env("SYSTEM_ID"), model_registry=model_registry)
+        writer = RecordMetadataManager(requester_id=requester_id, model_registry=model_registry)
+        for row in rows.list(filters=[FieldComparison(rows.Model, "target_entity_id", "in", record_ids)]) or []:
+            writer.add_route(
+                RecordMetadataWrite(
+                    target_entity_type=row.target_entity_type,
+                    target_entity_id=copying.id_map[str(row.target_entity_id)],
+                    key=row.key,
+                    value=row.value,
+                    value_type=row.value_type,
+                    ordinal=row.ordinal,
+                    is_private=row.is_private,
+                )
+            )
+    if "attachments" in loaded and record_ids:
+        from zephyrex.extensions.attachments.BLL_Attachments import AttachmentManager  # type: ignore[import-not-found]
+
+        links = _manager(model_registry, requester_id, AttachmentManager)
+        from zephyrex.extensions.rpg_core.Scenarios import copy_rows, touching  # type: ignore[import-not-found]
+
+        copy_rows(links, touching(links, ("target_entity_id",), record_ids), copying)
 
 
 # ---------------------------------------------------------------------------

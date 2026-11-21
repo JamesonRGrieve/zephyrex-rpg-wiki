@@ -193,7 +193,8 @@ class Importer:
                 self.campaigns[name] = self._placeholder()
             else:
                 made = self.api.create(
-                    "campaign", name=name, setting_id=self._setting() if self.setting_slug else None, **self._provenance_of(name)
+                    # A vault's campaign is a scenario: play starts a copy of it (copy on start).
+                    "campaign", name=name, setting_id=self._setting() if self.setting_slug else None, is_scenario=True, **self._provenance_of(name)
                 )
                 self.campaigns[name] = str(made["id"])
                 self._campaign_rows[name] = made
@@ -268,17 +269,19 @@ class Importer:
                 self.report.updated.append(label)
 
     def _settle_provenance(self) -> None:
-        """A campaign the import touched, made what its notes say (homebrew when none says)."""
+        """A campaign the import touched, made what its notes say (homebrew when none says), and a
+        scenario."""
         for name in sorted(self._touched):
             row = self._campaign_rows.get(name)
             if row is None or f"campaign {name}" in self.report.created:
                 continue
             wanted = self._provenance_of(name)
-            if (row.get("provenance") or HOMEBREW, row.get("source")) == (wanted["provenance"], wanted["source"]):
+            held = (row.get("provenance") or HOMEBREW, row.get("source"), bool(row.get("is_scenario")))
+            if held == (wanted["provenance"], wanted["source"], True):
                 continue
             if not self.dry_run:
-                # "" clears a source the campaign no longer has.
-                self.api.update("campaign", str(row["id"]), provenance=wanted["provenance"], source=wanted["source"] or "")
+                # "" clears a source the campaign no longer has; a vault's campaign is a scenario.
+                self.api.update("campaign", str(row["id"]), provenance=wanted["provenance"], source=wanted["source"] or "", is_scenario=True)
             self.report.updated.append(f"campaign {name}")
 
     def _scope(self, note: Note) -> Optional[dict[str, Optional[str]]]:

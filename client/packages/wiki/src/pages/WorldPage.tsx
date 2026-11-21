@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 'use client';
 /** /w/[world]/about: a world (a campaign, or a scenario in rpg-ai) itself: its description and where it came from. */
+import { useRouter } from 'next/navigation';
 import type { ReactElement } from 'react';
 import { useWrites } from 'zephyrex/hooks/useWrites';
 import { LoadProblem } from 'zephyrex/ui/load-problem';
@@ -11,6 +12,10 @@ import { Unavailable } from '../components/world/Unavailable';
 import { WorldNav } from '../components/world/WorldNav';
 import { useCapabilities } from '../features/capabilities';
 import { entityTaxa, taxa, worlds } from '../features/data/records';
+import { useStartScenario } from '../features/data/scenarios';
+import { ScenarioPanel } from '../components/world/ScenarioPanel';
+import { useWikiBase } from '../base';
+import { aboutPath } from '../lib/paths';
 import { PlayStyles } from '../components/world/PlayStyles';
 import { PLAY_STYLE } from '../contract';
 
@@ -51,6 +56,31 @@ function WorldPlayStyles({ world }: { world: string }): ReactElement {
   );
 }
 
+/** A scenario's start, or a playthrough's link back to its scenario. */
+function Scenario({ world }: { world: string }): ReactElement | null {
+  const base = useWikiBase();
+  const router = useRouter();
+  const one = worlds.useOne(world);
+  const source = worlds.useOne(one.data?.scenario_id ?? null);
+  const start = useStartScenario();
+  if (one.data === undefined) return null;
+  return (
+    <ScenarioPanel
+      isScenario={one.data.is_scenario === true}
+      scenario={source.data === undefined ? null : { name: source.data.name, href: aboutPath(base, source.data.id) }}
+      onStart={async (name) => {
+        try {
+          const made = await start(world, name ?? undefined);
+          router.push(aboutPath(base, made.campaign.id));
+          return null;
+        } catch (error) {
+          return `The playthrough could not be started: ${error instanceof Error ? error.message : String(error)}`;
+        }
+      }}
+    />
+  );
+}
+
 function About({ world }: { world: string }): ReactElement {
   const one = worlds.useOne(world);
   if (one.error !== undefined) return <LoadProblem what='this world' error={one.error} onRetry={() => one.mutate()} />;
@@ -59,6 +89,7 @@ function About({ world }: { world: string }): ReactElement {
     <section aria-label='About this world' className='grid gap-4'>
       {one.data.description !== null && one.data.description !== '' && <p className='whitespace-pre-line'>{one.data.description}</p>}
       <OriginOf resource={worlds} id={world} />
+      <Scenario world={world} />
       <WorldPlayStyles world={world} />
     </section>
   );

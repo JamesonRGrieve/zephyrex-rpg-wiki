@@ -49,6 +49,9 @@ export const worldSchema = z.object({
   /** Where the scenario came from: homebrew, official or adapted, and its source. */
   provenance: z.string().nullish(),
   source: z.string().nullish(),
+  /** Copy on start: a scenario is never played; a playthrough names the scenario it was copied from. */
+  is_scenario: z.boolean().nullish(),
+  scenario_id: z.string().nullish(),
 });
 export type World = z.infer<typeof worldSchema>;
 

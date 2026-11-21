@@ -36,6 +36,10 @@ model Campaign {
   provenance   String   @default("homebrew")
   /// The official title, publisher and product or page; none for homebrew.
   source       String?
+  /// A scenario: play never edits it; starting it copies it (copy on start).
+  isScenario   Boolean?
+  /// The scenario this campaign is a playthrough of.
+  scenarioId   String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime
   updatedById  String?

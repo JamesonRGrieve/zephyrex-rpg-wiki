@@ -50,6 +50,7 @@ def test_the_vault_imports_with_its_links_and_a_second_run_changes_nothing(serve
     assert campaign["setting_id"] == dnd["id"]
     # The campaign's provenance is its framing note's; a note's own is its record's (homebrew when none).
     assert (campaign["provenance"], campaign["source"]) == ("adapted", "The Lost Mine of Phandelver, Wizards of the Coast")
+    assert campaign["is_scenario"] is True  # play starts a copy of it
     framing = _one(api, "journal", campaign["id"], "The Split Antler — Framing")
     assert framing["kind"] == "campaign_framing"
     # Its framing note's tags are the campaign's play styles: shared ones matched, the rest its own.

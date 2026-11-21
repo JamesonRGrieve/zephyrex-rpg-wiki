@@ -960,3 +960,67 @@ class TestPictureLinks:
         cleared = _put(server, person, "person", ilsa, picture_url="").json()["person"]
         assert not cleared["picture_url"]
         assert server.get(f"/v1/world_entity?ids={ilsa['id']}", headers=_headers(person)).json()["world_entities"][0]["picture"] is None
+
+
+def _rows(body: dict[str, Any]) -> list[dict[str, Any]]:
+    """A list answer's rows (its one list, whatever the resource's plural)."""
+    return next(value for value in body.values() if isinstance(value, list))
+
+
+class TestCopyOnStart:
+    """Starting a scenario copies it into a playthrough: its own copy of every record and relation,
+    references turned to the copies; the setting's canon stays shared; the scenario is untouched."""
+
+    def test_a_playthrough_is_a_full_copy_with_its_references_remapped(self, server: TestClient, person: Any, other: Any) -> None:
+        setting = _create(server, person, "setting", name="Copy Setting")
+        canon = _create(server, person, "person", name="The Saint", kind="npc", setting_id=setting["id"])
+        scenario = _create(server, person, "campaign", name="The Flicker", setting_id=setting["id"], is_scenario=True, provenance="official", source="Book, p. 1")
+        tower = _create(server, person, "location", name="Tower", kind="building", campaign_id=scenario["id"])
+        room = _create(server, person, "location", name="Lamp room", kind="room", campaign_id=scenario["id"], parent_id=tower["id"])
+        mira = _create(
+            server, person, "person", name="Mira", kind="npc", campaign_id=scenario["id"], location_id=room["id"],
+            entry=[{"type": "p", "children": [{"text": "Keeps "}, {"type": "mention", "target_entity_type": "location", "target_entity_id": tower["id"], "children": [{"text": "the tower"}]}, {"text": "."}]}],
+        )
+        find = _create(server, person, "hook", name="Find the map", kind="objective", campaign_id=scenario["id"])
+        relic = _create(server, person, "hook", name="Recover the relic", kind="major_quest", campaign_id=scenario["id"], requires=find["id"], giver_person_id=mira["id"])
+        # Its requirement owns the dependency edge find → relic (copied, then kept by the copy's requirement).
+        _create(server, person, "relationship", person_id=mira["id"], target_person_id=canon["id"], kind="serves", intensity=0.5)
+        tag = _create(server, person, "taxon", name="Keepers", kind="tag", campaign_id=scenario["id"])
+        _create(server, person, "entity_taxon", taxon_id=tag["id"], target_entity_type="person", target_entity_id=mira["id"])
+        _create(server, person, "person", name="Mould", kind="npc", campaign_id=scenario["id"], is_template=True)
+
+        response = server.post(f"/v1/campaign/{scenario['id']}/instantiate", json={"instantiate": {"name": "The Flicker, run 1"}}, headers=_headers(person))
+        assert response.status_code == 201, response.text
+        started = response.json()
+        run, ids = started["campaign"], started["id_map"]
+        assert (run["name"], run["scenario_id"], run["is_scenario"], run["provenance"], run["setting_id"]) == ("The Flicker, run 1", scenario["id"], False, "official", setting["id"])
+        assert ids[scenario["id"]] == run["id"] and canon["id"] not in ids
+        copies = {
+            row["name"]: row
+            for kind in ("person", "location", "hook")
+            for row in _rows(server.get(f"/v1/{kind}?campaign_id={run['id']}", headers=_headers(person)).json())
+        }
+        # Every record copied (the template stayed), each reference turned to its copy.
+        assert set(copies) == {"Mira", "Tower", "Lamp room", "Find the map", "Recover the relic"}
+        assert copies["Lamp room"]["parent_id"] == ids[tower["id"]] and copies["Mira"]["location_id"] == ids[room["id"]]
+        assert ids[tower["id"]] in copies["Mira"]["entry"] and tower["id"] not in copies["Mira"]["entry"]
+        relic_copy = copies["Recover the relic"]
+        assert ids[find["id"]] in relic_copy["requires"] and find["id"] not in relic_copy["requires"]
+        assert relic_copy["giver_person_id"] == ids[mira["id"]]
+        edges = server.get(f"/v1/hook_dependency?parent_hook_id={ids[find['id']]}", headers=_headers(person)).json()["hook_dependencies"]
+        assert [edge["child_hook_id"] for edge in edges] == [ids[relic["id"]]]
+        # A tie to the setting's canon is copied pointing at the same, shared canon.
+        ties = server.get(f"/v1/relationship?person_id={ids[mira['id']]}", headers=_headers(person)).json()["relationships"]
+        assert [tie["target_person_id"] for tie in ties] == [canon["id"]]
+        # Its tag is the copy's own; the scenario keeps its own records.
+        copied_tag = server.get(f"/v1/entity_taxon?target_entity_type=person&target_entity_id={ids[mira['id']]}", headers=_headers(person)).json()["entity_taxons"]
+        assert [row["taxon_id"] for row in copied_tag] == [ids[tag["id"]]]
+        held = _rows(server.get(f"/v1/person?campaign_id={scenario['id']}", headers=_headers(person)).json())
+        assert sorted(row["name"] for row in held) == ["Mira", "Mould"]
+        # Lists: scenarios alone, and a scenario's playthroughs.
+        scenarios = server.get("/v1/campaign?is_scenario=true", headers=_headers(person)).json()["campaigns"]
+        assert scenario["id"] in {row["id"] for row in scenarios} and run["id"] not in {row["id"] for row in scenarios}
+        runs = server.get(f"/v1/campaign?scenario_id={scenario['id']}", headers=_headers(person)).json()["campaigns"]
+        assert [row["id"] for row in runs] == [run["id"]]
+        # Someone who can't see the scenario can't start it.
+        assert server.post(f"/v1/campaign/{scenario['id']}/instantiate", json={"instantiate": {}}, headers=_headers(other)).status_code == 404

@@ -18,7 +18,7 @@ from rpg_wiki_app import create
 INJECTED = {
     "persons": {"kind", "campaign_id", "user_id", "location_id", "entry", "setting_id", "canon_level", "is_template", "aliases", "keywords", "voice", "lore", "provenance", "source", "picture_url"},
     "property_kits": {"campaign_id", "setting_id"},
-    "campaigns": {"setting_id", "provenance", "source"},
+    "campaigns": {"setting_id", "provenance", "source", "is_scenario", "scenario_id"},
     "locations": {"campaign_id", "setting_id", "canon_level", "is_template", "aliases", "keywords", "lore", "provenance", "source", "picture_url"},
     "factions": {"campaign_id", "setting_id", "canon_level", "is_template", "aliases", "keywords", "lore", "provenance", "source", "picture_url"},
     "items": {"campaign_id", "setting_id", "canon_level", "is_template", "aliases", "keywords", "lore", "provenance", "source", "picture_url"},
@@ -38,6 +38,7 @@ FOREIGN_KEYS = {
     ("taxons", "setting_id"): "settings",
     ("statuses", "setting_id"): "settings",
     ("campaigns", "setting_id"): "settings",
+    ("campaigns", "scenario_id"): "campaigns",
     ("property_kits", "setting_id"): "settings",
     ("property_kits", "campaign_id"): "campaigns",
     ("persons", "campaign_id"): "campaigns",

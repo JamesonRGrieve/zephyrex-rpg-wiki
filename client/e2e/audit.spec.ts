@@ -229,7 +229,7 @@ async function expectSeedShows(page: Page, seeded: Seeded): Promise<void> {
     [`${w}/location`, ['Port Gull', 'Salt Coast']],
     [`${w}/person/${seeded.person}`, ['Lamplighters', 'Alive', 'Lantern Guild', 'Captain Ross', 'Rumour', 'guarded (cautious-neutral)', 'Since Find the lost map', '-20', 'The Lantern Keeper', 'Mira: Mind the seventh step.', 'Lantern oil', 'Three flasks']],
     [`${w}/faction/${seeded.faction}`, ['Mira of the Lantern']],
-    [`${w}/about`, ['Adapted', 'Salt and Storm, Harbour Press, ch. 2', 'mystery']],
+    [`${w}/about`, ['Adapted', 'Salt and Storm, Harbour Press, ch. 2', 'mystery', 'Start a playthrough']],
     [`${w}/item/${seeded.item}`, ['Official', 'Salt and Storm, Harbour Press, p. 41']],
     [`${w}/hook/${seeded.hook}`, ['Find the lost map', 'Mira of the Lantern', 'Can happen now']],
     [`${w}/plot`, ['Recover the relic', 'Hear the vox ghost', 'Rech needs the relic before he can start.', 'Find the lost map']],
@@ -301,6 +301,15 @@ test.describe.serial('visual audit', () => {
     // Parity: a record kept to the GM says so, and only it.
     const secrets = (await (await request.get(`/api/v1/world_entity?ids=${seeded.journal},${seeded.person}`)).json()) as { world_entities: { gm_only: boolean }[] };
     expect(secrets.world_entities.map((entity) => entity.gm_only)).toEqual([true, false]);
+    // Copy on start: a playthrough of the scenario, every record its own copy, references turned to the copies.
+    const started = await request.post(`/api/v1/campaign/${seeded.world}/instantiate`, { data: { instantiate: { name: 'The Salt Coast, run 1' } } });
+    expect(started.status(), await started.text()).toBe(201);
+    const run = (await started.json()) as { campaign: { id: string; scenario_id: string; is_scenario: boolean }; id_map: Record<string, string> };
+    expect([run.campaign.scenario_id, run.campaign.is_scenario, run.id_map[seeded.world]]).toEqual([seeded.world, false, run.campaign.id]);
+    const copiedMira = (await (await request.get(`/api/v1/person/${run.id_map[seeded.person]}`)).json()) as { person: { name: string; campaign_id: string; location_id: string } };
+    expect(copiedMira.person).toMatchObject({ name: 'Mira of the Lantern', campaign_id: run.campaign.id, location_id: run.id_map[seeded.location] });
+    const original = (await (await request.get(`/api/v1/person/${seeded.person}`)).json()) as { person: { campaign_id: string } };
+    expect(original.person.campaign_id).toBe(seeded.world);
     const pages = worldPages(seeded);
     const page = await browser.newPage({ baseURL: String(testInfo.project.use.baseURL) });
     await expectSeedShows(page, seeded);

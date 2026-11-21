@@ -14,6 +14,7 @@ import { apiErrorResponse, collectionRoutes, localOwner, notFound, recordRoutes,
 import type { NextRequest, NextResponse } from 'next/server';
 import { bindPrisma } from './db';
 import { metadataDelete, metadataOfGet, metadataPatch, metadataPost } from './recordMetadataRoutes';
+import { campaignInstantiatePost } from './scenarios';
 import { sessionReportGet, sessionReportPost } from './sessionReportRoutes';
 import { worldEntityGet } from './worldEntityRoute';
 import {
@@ -60,7 +61,8 @@ function both<Row extends RecordRow, Create, Update>(spec: ResourceSpec<Row, Cre
 
 /** Every resource the catch-all answers, by its path. */
 const ROUTES: Record<string, Routes> = {
-  campaign: both(campaigns),
+  // Copy on start: POST /v1/campaign/{id}/instantiate.
+  campaign: { ...both(campaigns), recordActions: { instantiate: { POST: campaignInstantiatePost } } },
   disposition: both(dispositions),
   entity_inventory: both(entityInventories),
   entity_post: both(entityPosts),

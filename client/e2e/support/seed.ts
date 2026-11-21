@@ -30,7 +30,14 @@ const entry = (text: string) => [{ type: 'p', children: [{ text }] }];
 export async function seedWorld(request: APIRequestContext): Promise<Seeded> {
   // A setting (S6) encloses the world; its campaign-less records are its canon.
   const setting = await create(request, 'setting', { name: 'The Grim Future', entry: entry('Ten thousand years of war.') });
-  const world = await create(request, 'campaign', { name: 'The Salt Coast', setting_id: setting, provenance: 'adapted', source: 'Salt and Storm, Harbour Press, ch. 2' });
+  // A scenario (copy on start): play makes its own copy of it.
+  const world = await create(request, 'campaign', {
+    name: 'The Salt Coast',
+    setting_id: setting,
+    provenance: 'adapted',
+    source: 'Salt and Storm, Harbour Press, ch. 2',
+    is_scenario: true,
+  });
   await create(request, 'faction', { name: 'Adeptus Mechanicus', kind: 'religious', setting_id: setting, canon_level: 'common' });
   // A scenario's play style: a shared one, seeded as the system's.
   const styles = (await (await request.get('/api/v1/taxon?kind=play_style')).json()) as { taxons: { id: string; name: string }[] };
