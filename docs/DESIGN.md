@@ -109,6 +109,128 @@ self-hosted single-user build.
 | W51 | Campaign brief and frame on the campaign page, when the AI product's campaign frame is loaded (premise, tone, truths, boundaries; GM secrets withheld) | ours | ✓ | ✓ |
 | W52 | Scenarios drafted from the world (plots, quests, factions, places), and a scenario's outcome written back as events, journal entries and changed relations | ours | ✓ | ✓ |
 
+## Feature audit against Kanka and World Anvil (2026-11-21)
+
+The operator asked for a full feature audit against the competitors before the initial release
+(2026-11-21, via Zephyrex RPG); the wiki's targets are Kanka and World Anvil. Each feature is
+marked against what is **built and on `main`** (9486e7c), not what is planned:
+
+- **Covered:** built in both editions, with its tests (where).
+- **Partial:** some of it is built (what's missing).
+- **Planned:** not built; its W-row above holds it.
+- **Not planned:** a deliberate no (why).
+- **Out of scope:** the competitor's business, not a product feature.
+
+**Release:** ● is needed for the initial release, which is DESIGN's phase 1: the entity core,
+the mention editor, the entity page, lists, search and Kanka import. ○ is a later phase.
+
+**Sources.** Kanka: its features, pricing and docs pages, its API overview, and the release posts
+3.5 to 3.15 (Nov 2025 to Aug 2026), read on 2026-11-20 and 21. **World Anvil refuses automated
+reads** (HTTP 403 on worldanvil.com); its rows come from search results, its Codex feature list,
+its pricing page and API docs as they appear there, and independent 2026 reviews (Deckle,
+Kindlepreneur). They're marked *(WA unverified)* until someone reads the pages in a browser.
+
+| Area | Feature | Kanka | World Anvil | Wiki | Where / what's missing | Release |
+|---|---|---|---|---|---|---|
+| **Entities** | Worlds (campaigns) | ✓ | ✓ | Covered | `rpg_core` campaigns; `/w` | ● |
+| | Places, nested at every scale, with kinds | ✓ | ✓ | Covered | `world_spatial`; tree view (S1) | ● |
+| | People (characters), kind, place, world | ✓ | ✓ | Covered | genealogy + `rpg_core` (S1) | ● |
+| | Life status (alive, dead, missing), title | ✓ (3.10) | ✓ | Partial | statuses (S4a) can carry it; no title field | ● |
+| | Organisations and families, tree, defunct | ✓ | ✓ | Partial | `world_social` (S2); no defunct flag | ● |
+| | Organisation membership (role, rank) | ✓ | ✓ | Partial | relations `member_of` (S4a); no members table or rank (W20) | ○ |
+| | Items: kind, quantity, durability, creators, price, weight | ✓ | ✓ | Partial | `world_inventory` (S2); price, weight, size, creators missing (W4 properties can hold them) | ● |
+| | Journals, notes, lore, handouts, manuscripts | ✓ | ✓ | Covered | `world_narrative` journals (S3) | ● |
+| | Session reports linked to what they mention | ✓ (journals) | ✓ | Covered | `session_report` (S3, rpg-ai A24) | ● |
+| | Quests with status and elements | ✓ | ✓ | Partial | hooks DAG with per-actor progress (S3b); no quest elements, no hook-level status | ● |
+| | Events (with places, reminders) | ✓ | ✓ | Planned | W1, W12–W15 | ○ |
+| | Races, species, creatures, cultures, religions | ✓ | ✓ | Partial | taxa of those kinds (S4a); no creature/race pages of their own | ○ |
+| | Abilities (with charges) | ✓ | – | Planned | W1 | ○ |
+| | Calendars | ✓ | ✓ | Planned | W12 | ○ |
+| | Timelines and eras | ✓ | ✓ | Planned | W13 | ○ |
+| | Maps | ✓ | ✓ | Planned | W17, reusing VTT's renderer (below) | ○ |
+| | World Anvil's ~28 article templates as kinds | – | ✓ | Partial | kinds per type from the contract; no prompted template fields *(WA unverified)* | ○ |
+| | Custom entity types (Kanka custom categories; WA custom templates) | ✓ premium | ✓ paid | Planned | W36 | ○ |
+| | Disable or rename a module per world | ✓ | – | Partial | capabilities hide what isn't loaded; no per-world toggle or rename | ○ |
+| | Archive (hide from lists, keep) | ✓ (3.5) | – | Not planned yet | add with W36; soft delete exists for sync, not archive | ○ |
+| | Aliases (search and mentions) | ✓ | – | Planned | rpg-ai's sync carries `aliases: []`; no field yet | ● |
+| **Entity page** | Rich-text entry (stored Plate value) | ✓ | ✓ (BBCode) | Partial | stored and shown (S1); **no editor**: pages are read-only | ● |
+| | Edit fields in place | ✓ | ✓ | **Not built** | lists create by name and kind and delete; record pages can't edit anything | ● |
+| | `@` mentions | ✓ | ✓ | Partial | mention nodes in the data model (S3); no editor, no hover cards (W2) | ● |
+| | Backlinks ("mentioned in") | ✓ | ✓ | Planned | W2; Kanka counts map markers too | ● |
+| | Posts / articles on any entity, pinned | ✓ | ✓ | Covered | `entity_posts` (S3); read-only | ● |
+| | Properties (attributes) and property kits | ✓ | ✓ | Planned | S4b, waiting on the framework's metadata target (W4) | ● |
+| | Entity templates (archetypes) | ✓ | ✓ | Planned | S4b (W7) | ○ |
+| | Inventory on any entity, worn vs packed | ✓ | ✓ | Covered | S2 (W8); read-only on the page | ● |
+| | Tags (tree, colour, icon), statuses, categories | ✓ | ✓ | Covered | `world_taxonomy` (S4a); no icon field | ● |
+| | Portrait, header image, gallery picker | ✓ | ✓ | Planned | S2c, on the framework's attachments extension | ● |
+| | Files attached to an entity | ✓ | ✓ | Planned | S2c / W48 | ○ |
+| | Sidebar / profile summary (pinned properties) | ✓ | ✓ | Planned | with W4 | ○ |
+| | Revision history and restore | ✓ (90 days) | ✓ | Planned | W33 | ○ |
+| | Deleted-entry recovery (30 days) | ✓ premium | – | Partial | lite tombstones (S2b) exist; no restore UI | ○ |
+| **Relations** | Typed relations, attitude, colour, mirror | ✓ | ✓ | Covered | world_social on genealogy (S4a); read-only list | ● |
+| | Relations between any kinds (not only people and organisations) | ✓ | ✓ | Partial | people and organisations only | ○ |
+| | Relation explorer / web, PNG export | ✓ | ✓ | Planned | W5, W19 | ○ |
+| | Family trees | ✓ premium | ✓ | Planned | W18 (genealogy has the data) | ○ |
+| | Diplomacy webs | – | ✓ | Planned | W19 | ○ |
+| | Dispositions that change with events | – | – | Not planned yet | from dh-campaign's tracker; proposed as S3c | ○ |
+| **Story** | Plot-hook DAG, progress per person and organisation | ✓ (quests) | ✓ (plots) | Covered | S3b | ● |
+| | Requirements as all/any expressions, blocked-with-excuse, resolution | – | – | Not planned yet | proposed S3c, from dh-campaign | ○ |
+| | Plots: acts, beats, twists | – | ✓ | Planned | W22 | ○ |
+| | Manuscripts: chapters, word count, focus mode | – | ✓ paid | Partial | journal kinds `manuscript`, `chapter`, `prose`; no writing tools (W23) | ○ |
+| | Statblocks and character sheets | ✓ (plugin sheets) | ✓ | Planned | W25, from VTT's systems | ○ |
+| | Whiteboards | ✓ premium | ✓ | Planned | W35 | ○ |
+| **Time** | Calendars, moons, seasons, weather, reminders | ✓ | ✓ | Planned | W12, W15, W50 | ○ |
+| | Timelines, eras, chronicles on a map | ✓ | ✓ | Planned | W13, W14 | ○ |
+| **Maps** | Image maps with pins linked to entities | ✓ | ✓ | Planned | W17; reuse VTT's renderer | ○ |
+| | Layers, groups, polygons, paths with distance, custom icons | ✓ (Maps v4) | ✓ paid | Planned | W17, W49 | ○ |
+| | Live multi-user editing and presence | ✓ (3.14) | – | Planned | framework live_sync | ○ |
+| | Real-world maps | ✓ *(verify)* | – | Planned | W17 | ○ |
+| **Access** | Per-entity, per-post, per-property visibility; roles | ✓ | ✓ | Planned | W9; `acl_rbac` is optional and unwired | ○ |
+| | Inline secrets for chosen readers | – | ✓ paid | Planned | W10 | ○ |
+| | View as a player | ✓ | ✓ | Planned | W11 | ○ |
+| | Members, invitations, roles, join requests | ✓ | ✓ | Planned | W28 (SaaS) | ○ |
+| | Co-authors | – | ✓ paid | Planned | W41 | ○ |
+| **Campaign** | Dashboard with widgets, several per role | ✓ | ✓ | Planned | W26 | ○ |
+| | Bookmarks / quick links, quick create | ✓ | – | Planned | with W26; ⌘K command palette in Screens | ○ |
+| | Players' characters per campaign | ✓ | ✓ | Partial | person `kind` and `user_id` (S1); no player screens | ○ |
+| | Dice rolls, conversations | deprecated | – | Out of scope | Kanka deprecated both; VTT owns dice | — |
+| **Find** | Search across every kind, full text, with filters | ✓ (Ctrl+K) | ✓ | Partial | find-by-name on each list only (W32, S5) | ● |
+| | Filters on lists (tag any/all, negation, status, place) | ✓ | ✓ | Partial | API filters exist (S1–S4a); no filter UI beyond name | ● |
+| **Data** | Export JSON and Markdown | ✓ | ✓ (JSON zip) | Planned | W31 | ● |
+| | Import from Kanka | ✓ (own JSON) | – | Planned | W31, phase 1 | ● |
+| | Import from World Anvil | – | – | Planned | W31, phase 5 | ○ |
+| | CSV import | ✓ (3.9) | – | Not planned yet | add to W31 | ○ |
+| | Public API | ✓ | ✓ (Boromir, approved keys) | Partial | SaaS: the framework's REST and GraphQL at `/v1`; lite: the same REST; no docs page or tokens UI | ○ |
+| | Webhooks, Discord | ✓ premium | ✓ *(WA unverified)* | Planned | W37, W38 (framework `webhooks`) | ○ |
+| | Sync to an AI product's lorebook | – | – | Covered | `world_entities` (S2b, rpg-ai A15) | ● |
+| | Foundry / VTT journals | – | ✓ (community module) | Planned | W43, through VTT | ○ |
+| **Publishing** | Public worlds and pages | ✓ | ✓ | Planned | W27 (SaaS) | ○ |
+| | Themes, custom CSS, theme builder | ✓ premium | ✓ | Partial | light and dark from the framework tokens (fixed in the audit); W29, W45 | ○ |
+| | Vanity URLs, white label | – | ✓ (Sage) | Planned | W39; white label not planned | ○ |
+| | Followers, paid subscribers, subscriber groups | – | ✓ paid | Planned | W40 (SaaS) | ○ |
+| | Community: showcase, comments, challenges | ✓ (showcase) | ✓ | Planned | W46 (SaaS) | ○ |
+| | Plugins / marketplace (sheets, themes, packs) | ✓ premium | – | Planned | W47 | ○ |
+| **Platform** | Mobile web: works at 360–390 px, 44 px targets | responsive | ✓ *(WA unverified)* | Covered | audited on phone and tablet (9486e7c) | ● |
+| | Installable app, offline reading | – | – | Planned | W34 | ○ |
+| | Self-hosted, one person, free | – | – | Covered | the lite edition | ● |
+| | Live multi-user presence | ✓ (maps, whiteboards) | – | Planned | framework live_sync | ○ |
+| | Ads, referrals, achievements, hall of fame, tiers and storage quotas | ✓ | ✓ | Out of scope | business model; quotas come with SaaS billing | — |
+
+**Maps reuse VTT's renderer.** Map rendering belongs to the VTT, which is taking a
+mobile-optimised renderer and Universal VTT and Foundry scene import. The wiki's map (W17) is a
+world map with pins, layers, groups and areas linked to wiki records. It should reuse from VTT:
+the renderer component (tiled image, pan and zoom, touch), its layer and group model, and the
+scene importer as a way in, and add only the wiki's pins (target type and id), areas (W49) and
+the record side sheet. A VTT scene published to the wiki is a map variant, as dh-campaign's
+`maps:` block already treats exterior and interior variants.
+
+**Counts** (83 rows): Covered 13, Partial 18, Not built 1, Planned 45, Not planned yet 4,
+Out of scope 2. Fifteen release rows (●) aren't covered. **The gaps that matter for the initial release** (● and not Covered): editing a
+record in place, the entry editor with `@` mentions, backlinks and aliases, properties (S4b),
+portraits and images (S2c), cross-kind search and list filters, Kanka import and JSON/Markdown
+export, life status and item fields (with properties), quest status and elements, and
+organisation details.
+
 OBJECT_PLAN decision 28 (whiteboards out of scope, "pure frontend") is superseded by the
 operator's full-parity direction. W35 needs a `whiteboard` model in the wiki (board,
 elements, entity links), recorded in OBJECT_PLAN when that phase starts.
