@@ -9,7 +9,8 @@ import type { ComponentType, ReactElement } from 'react';
 import type { ZephyrexClientExtension } from 'zephyrex';
 import { type SettingSections, SettingSectionsProvider, WikiBaseProvider } from './base';
 import { KindPage } from './pages/KindPage';
-import { LastScopePage } from './pages/LastScopePage';
+import { LastScopePage, lastScopePath } from './pages/LastScopePage';
+import { useLastScope } from './lib/lastScope';
 import { PlotPage } from './pages/PlotPage';
 import { RecordPage } from './pages/RecordPage';
 import { TaxonomyPage } from './pages/TaxonomyPage';
@@ -32,6 +33,28 @@ function routed(base: string, render: (params: Record<string, string>) => ReactE
 }
 
 const of = (params: Record<string, string>, name: string): string => params[name] ?? '';
+
+/** A sidebar sub-entry, as a nav item's useChildren gives it (the framework's NavChild). */
+type NavChild = { title: string; url: string };
+
+/** The sidebar's entries under Settings, in order: each a kind of page (or the plot board, or game systems). */
+export const SETTINGS_ENTRIES: readonly (readonly [string, string])[] = [
+  ['Places', 'location'],
+  ['People', 'person'],
+  ['Organisations', 'faction'],
+  ['Items', 'item'],
+  ['Lore', 'journal'],
+  ['Plot', 'plot'],
+  ['Game systems', 'systems'],
+];
+
+/** The Settings entry's useChildren: made once per extension (a stable hook for the sidebar). */
+function settingsChildren(base: string): () => readonly NavChild[] {
+  return function useSettingsChildren(): readonly NavChild[] {
+    const scope = useLastScope();
+    return SETTINGS_ENTRIES.map(([title, kind]) => ({ title, url: lastScopePath(base, scope, kind) }));
+  };
+}
 
 export interface WikiExtensionOptions {
   /** Where the pages live: "w" by default. */
@@ -60,21 +83,8 @@ export function wikiExtension({ base = 'w', settingSections = [] }: WikiExtensio
         component: routed(root, (params) => <RecordPage world={of(params, 'world')} kind={of(params, 'kind')} id={of(params, 'id')} />, settingSections),
       },
     ],
-    // Settings, and under it each kind of page in the setting or campaign last shown (/last/<kind>).
-    navItems: [
-      {
-        title: 'Settings',
-        url: `/${root}`,
-        children: [
-          ['Places', 'location'],
-          ['People', 'person'],
-          ['Organisations', 'faction'],
-          ['Items', 'item'],
-          ['Lore', 'journal'],
-          ['Plot', 'plot'],
-          ['Game systems', 'systems'],
-        ].map(([title, kind]) => ({ title: title ?? '', url: `/${root}/last/${kind ?? ''}` })),
-      },
-    ],
+    // Settings, and under it each kind of page in the setting or campaign last shown, computed as
+    // the sidebar renders (useChildren), so they follow the person as they move.
+    navItems: [{ title: 'Settings', url: `/${root}`, useChildren: settingsChildren(`/${root}`) }],
   };
 }

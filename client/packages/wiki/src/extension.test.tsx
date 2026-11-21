@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { render, screen } from '@testing-library/react';
+import { act, render, renderHook, screen } from '@testing-library/react';
+import { rememberScope } from './lib/lastScope';
 import { describe, expect, it, vi } from 'vitest';
 import { useWikiBase } from './base';
 import { wikiExtension } from './extension';
@@ -9,26 +10,29 @@ vi.mock('./pages/RecordPage', () => ({
   RecordPage: ({ world, kind, id }: { world: string; kind: string; id: string }) => <p>{`${useWikiBase()} ${world} ${kind} ${id}`}</p>,
 }));
 
-const KINDS = [
-  ['Places', 'location'],
-  ['People', 'person'],
-  ['Organisations', 'faction'],
-  ['Items', 'item'],
-  ['Lore', 'journal'],
-  ['Plot', 'plot'],
-  ['Game systems', 'systems'],
-];
-
 describe('wikiExtension', () => {
   it('mounts the pages under w by default, most specific first, paired with rpg_core', () => {
     const extension = wikiExtension();
     expect(extension.pages?.map((page) => page.path)).toEqual(['w', 'w/last/:kind', 'w/:world/taxonomy', 'w/:world/plot', 'w/:world/about', 'w/:world/:kind', 'w/:world/:kind/:id']);
-    expect([extension.name, extension.serverExtension, extension.navItems]).toEqual(['rpg_core', 'rpg_core', [{ title: 'Settings', url: '/w', children: KINDS.map(([title, kind]) => ({ title, url: `/w/last/${kind}` })) }]]);
+    expect([extension.name, extension.serverExtension, extension.navItems?.map((item) => [item.title, item.url])]).toEqual(['rpg_core', 'rpg_core', [['Settings', '/w']]]);
   });
 
   it('mounts them under a base of the app’s choosing, and passes the route’s values to the page', () => {
     const extension = wikiExtension({ base: '/wiki/' });
-    expect(extension.navItems?.[0]?.children?.[1]).toEqual({ title: 'People', url: '/wiki/last/person' });
+    // Under Settings, each kind in the scope last shown; Settings itself before any.
+    window.localStorage.clear();
+    const useChildren = extension.navItems?.[0]?.useChildren;
+    expect(renderHook(() => useChildren?.()).result.current?.[1]).toEqual({ title: 'People', url: '/wiki' });
+    act(() => rememberScope('c1'));
+    expect(renderHook(() => useChildren?.()).result.current?.map((child) => child.url)).toEqual([
+      '/wiki/c1/location',
+      '/wiki/c1/person',
+      '/wiki/c1/faction',
+      '/wiki/c1/item',
+      '/wiki/c1/journal',
+      '/wiki/c1/plot',
+      '/wiki',
+    ]);
     const [worlds, , , , , , record] = extension.pages ?? [];
     const Worlds = worlds!.component;
     const Record = record!.component;
