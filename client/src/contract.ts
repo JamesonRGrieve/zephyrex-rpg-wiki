@@ -16,4 +16,7 @@ export const JOURNAL_KINDS = contract.journal_kinds as readonly string[];
 export const HOOK_KINDS = contract.hook_kinds as readonly string[];
 export const TAXON_KINDS = contract.taxon_kinds as readonly string[];
 export const STATUS_KINDS = contract.status_kinds as readonly string[];
+export const ATTITUDES = contract.attitudes as readonly string[];
+export const ATTITUDE_NUANCES = contract.attitude_nuances as Readonly<Record<string, string>>;
+export const DISPOSITION_TARGETS = contract.disposition_targets as readonly string[];
 export const POST_POSITIONS = contract.post_positions as readonly string[];

@@ -1,0 +1,156 @@
+{
+  "$comment": "Whom a person regards how, now (W56, from dh-campaign's tracker). A person's dispositions toward one target (the party, a person or an organisation) are entries: one default and any number with a trigger hook. The current attitude is the entry whose trigger was resolved most recently (later in the list wins a tie), else the default, else none. Held on the server (server/extensions/wiki_shared/Dispositions.py) and in the lite edition (client/src/lib/dispositions.ts).",
+  "cases": [
+    {
+      "name": "only the default",
+      "entries": [
+        {
+          "attitude": "cautious-neutral",
+          "default": true,
+          "trigger": null
+        }
+      ],
+      "resolved": {},
+      "current": "cautious-neutral"
+    },
+    {
+      "name": "a resolved trigger changes it",
+      "entries": [
+        {
+          "attitude": "cautious-neutral",
+          "default": true,
+          "trigger": null
+        },
+        {
+          "attitude": "wary",
+          "default": false,
+          "trigger": "HEAR_DOCK_STORY"
+        }
+      ],
+      "resolved": {
+        "HEAR_DOCK_STORY": "2026-11-21T10:00:00Z"
+      },
+      "current": "wary"
+    },
+    {
+      "name": "an unresolved trigger doesn't",
+      "entries": [
+        {
+          "attitude": "cautious-neutral",
+          "default": true,
+          "trigger": null
+        },
+        {
+          "attitude": "wary",
+          "default": false,
+          "trigger": "HEAR_DOCK_STORY"
+        }
+      ],
+      "resolved": {},
+      "current": "cautious-neutral"
+    },
+    {
+      "name": "the latest resolution wins",
+      "entries": [
+        {
+          "attitude": "neutral",
+          "default": true,
+          "trigger": null
+        },
+        {
+          "attitude": "hostile",
+          "default": false,
+          "trigger": "BETRAYED"
+        },
+        {
+          "attitude": "grateful",
+          "default": false,
+          "trigger": "RESCUED"
+        }
+      ],
+      "resolved": {
+        "RESCUED": "2026-11-21T09:00:00Z",
+        "BETRAYED": "2026-11-21T11:00:00Z"
+      },
+      "current": "hostile"
+    },
+    {
+      "name": "a tie goes to the later entry",
+      "entries": [
+        {
+          "attitude": "neutral",
+          "default": true,
+          "trigger": null
+        },
+        {
+          "attitude": "wary",
+          "default": false,
+          "trigger": "A"
+        },
+        {
+          "attitude": "hostile",
+          "default": false,
+          "trigger": "B"
+        }
+      ],
+      "resolved": {
+        "A": "2026-11-21T09:00:00Z",
+        "B": "2026-11-21T09:00:00Z"
+      },
+      "current": "hostile"
+    },
+    {
+      "name": "missing until found",
+      "entries": [
+        {
+          "attitude": "missing",
+          "default": true,
+          "trigger": null
+        },
+        {
+          "attitude": "guarded",
+          "default": false,
+          "trigger": "FIND_OSRIC"
+        }
+      ],
+      "resolved": {
+        "FIND_OSRIC": "2026-11-21T12:00:00Z"
+      },
+      "current": "guarded"
+    },
+    {
+      "name": "no default, nothing resolved",
+      "entries": [
+        {
+          "attitude": "wary",
+          "default": false,
+          "trigger": "A"
+        }
+      ],
+      "resolved": {},
+      "current": null
+    }
+  ],
+  "bands": [
+    {
+      "attitude": "warm",
+      "band": "helpful"
+    },
+    {
+      "attitude": "reserved",
+      "band": "cautious-neutral"
+    },
+    {
+      "attitude": "cornered",
+      "band": "wary"
+    },
+    {
+      "attitude": "hostile",
+      "band": "hostile"
+    },
+    {
+      "attitude": "missing",
+      "band": "missing"
+    }
+  ]
+}

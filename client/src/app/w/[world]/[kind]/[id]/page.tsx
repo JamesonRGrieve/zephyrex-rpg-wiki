@@ -11,7 +11,10 @@ import type { ReactElement, ReactNode } from 'react';
 import { LoadProblem } from 'zephyrex/ui/load-problem';
 import { PageHeader } from 'zephyrex/ui/page-header';
 import { SkeletonRows } from 'zephyrex/ui/skeleton';
+import { useWrites } from 'zephyrex/hooks/useWrites';
+import { type DispositionLine, DispositionList } from '~/components/world/DispositionList';
 import { EntityPage, type EntityPageProps } from '~/components/world/EntityPage';
+import { HookState } from '~/components/world/HookState';
 import { HookLinks, type LinkedHook, type Taker } from '~/components/world/HookLinks';
 import { type CarriedLine, InventoryList } from '~/components/world/InventoryList';
 import { PostList } from '~/components/world/PostList';
@@ -20,8 +23,10 @@ import { type Chip, TaxonChips } from '~/components/world/TaxonChips';
 import { ENTITY_KINDS, type EntityKind, isEntityKind } from '~/components/world/kinds';
 import { Unavailable } from '~/components/world/Unavailable';
 import { type Capabilities, useCapabilities } from '~/features/capabilities';
+import { usePlot } from '~/features/data/plot';
 import {
   carried,
+  dispositions,
   entityStatuses,
   entityTaxa,
   factionHooks,
@@ -35,10 +40,13 @@ import {
   personHooks,
   places,
   posts,
+  relationInfluences,
   relationships,
   statuses,
   taxa,
 } from '~/features/data/records';
+import { currentAttitude } from '~/lib/dispositions';
+import { describeRequirement } from '~/lib/requirements';
 
 interface Shown {
   name: string;
@@ -111,6 +119,15 @@ function Relations({ world, type, id }: { world: string; type: 'person' | 'facti
   const outgoing = from.data ?? [];
   const shown = new Set(outgoing.map((row) => row.id));
   const incoming = (to.data ?? []).filter((row) => row.mirror_relationship_id === null || !shown.has(row.mirror_relationship_id));
+  // A relation's attitude now: its latest resolved influence (W56), else what it was written with.
+  const influences = relationInfluences.useList();
+  const plot = usePlot(world);
+  const influenced = (id: string, written: number | null): number | null => {
+    const resolved = (influences.data ?? [])
+      .filter((one) => one.relationship_id === id && plot.resolvedAt[one.hook_id] !== undefined)
+      .sort((a, b) => (plot.resolvedAt[a.hook_id] ?? '').localeCompare(plot.resolvedAt[b.hook_id] ?? ''));
+    return resolved.at(-1)?.to_intensity ?? written;
+  };
   const lines: RelationLine[] | undefined =
     from.data === undefined || to.data === undefined
       ? undefined
@@ -121,11 +138,80 @@ function Relations({ world, type, id }: { world: string; type: 'person' | 'facti
           id: row.id,
           ...other,
           kind: row.kind,
-          intensity: row.intensity,
+          intensity: influenced(row.id, row.intensity),
           colour: row.colour,
           mirrored: row.mirror_relationship_id !== null,
         }));
   return <RelationList lines={lines} error={from.error ?? to.error} onRetry={() => Promise.all([from.mutate(), to.mutate()])} />;
+}
+
+/** How this person regards others now (W56): per target, the latest resolved trigger, else the baseline. */
+function Dispositions({ world, id }: { world: string; id: string }): ReactElement {
+  const rows = dispositions.useList({ person_id: id });
+  const plot = usePlot(world);
+  const allPeople = people.useList({ campaign_id: world });
+  const allFactions = factions.useList({ campaign_id: world });
+  const personName = new Map((allPeople.data ?? []).map((row) => [row.id, row.name]));
+  const factionName = new Map((allFactions.data ?? []).map((row) => [row.id, row.name]));
+  const groups = new Map<string, NonNullable<typeof rows.data>>();
+  for (const row of rows.data ?? []) {
+    const key = `${row.target_kind}:${row.target_person_id ?? row.target_faction_id ?? ''}`;
+    groups.set(key, [...(groups.get(key) ?? []), row]);
+  }
+  const lines: DispositionLine[] | undefined =
+    rows.data === undefined
+      ? undefined
+      : [...groups.entries()].map(([key, entries]) => {
+          const first = entries[0]!;
+          const attitude = currentAttitude(
+            entries.map((entry) => ({ attitude: entry.attitude, default: entry.is_default === true, trigger: entry.trigger_hook_id })),
+            plot.resolvedAt,
+          );
+          const because = entries.filter((entry) => entry.trigger_hook_id !== null && entry.attitude === attitude && plot.resolvedAt[entry.trigger_hook_id] !== undefined).at(-1);
+          const chosen = because ?? entries.find((entry) => entry.is_default === true);
+          return {
+            key,
+            target:
+              first.target_kind === 'party'
+                ? 'The party'
+                : first.target_person_id !== null
+                  ? (personName.get(first.target_person_id) ?? 'Someone')
+                  : (factionName.get(first.target_faction_id ?? '') ?? 'An organisation'),
+            href:
+              first.target_kind === 'person'
+                ? `/w/${world}/person/${first.target_person_id ?? ''}`
+                : first.target_kind === 'faction'
+                  ? `/w/${world}/faction/${first.target_faction_id ?? ''}`
+                  : null,
+            attitude,
+            because: because?.trigger_hook_id ? plot.nameOf(because.trigger_hook_id) : null,
+            note: chosen?.note ?? null,
+          };
+        });
+  return <DispositionList lines={lines} error={rows.error} onRetry={() => rows.mutate()} />;
+}
+
+/** Where a hook stands (W57), and marking it as happened or not. */
+function Standing({ world, id }: { world: string; id: string }): ReactElement | null {
+  const plot = usePlot(world);
+  const one = hooks.useOne(id);
+  const { update } = hooks.useActions();
+  const writes = useWrites(() => Promise.all([one.mutate(), plot.retry()]));
+  const hook = one.data;
+  if (hook === undefined || plot.hooks === undefined) return null;
+  const requirement = plot.requirementOf(hook);
+  return (
+    <HookState
+      state={plot.stateOf(hook)}
+      needs={requirement === null ? null : describeRequirement(requirement, plot.nameOf)}
+      excuse={hook.excuse}
+      resolvedOn={hook.resolved_at === null ? null : new Date(hook.resolved_at).toLocaleDateString()}
+      busy={writes.busy}
+      problem={writes.problem}
+      onResolve={() => void writes.run(update(hook, { resolved_at: new Date().toISOString() }), 'The hook could not be marked as happened', 'Marked as happened')}
+      onUnresolve={() => void writes.run(update(hook, { resolved_at: null, resolved_journal_id: null }), 'The hook could not be changed', 'Marked as not happened')}
+    />
+  );
 }
 
 /** The posts on the record (W3), pinned first. */
@@ -195,7 +281,20 @@ function PersonPage({ world, id, can }: { world: string; id: string; can: Capabi
   const one = people.useOne(id);
   const place = places.useOne(one.data?.location_id ?? null);
   const where = place.data === undefined ? undefined : { label: 'At', name: place.data.name, href: placeHref(world, place.data.id) };
-  return <Record world={world} kind='person' id={id} record={one.data} error={one.error} onRetry={() => one.mutate()} where={where} canCarry={can.items} canPost={can.posts} />;
+  return (
+    <Record
+      world={world}
+      kind='person'
+      id={id}
+      record={one.data}
+      error={one.error}
+      onRetry={() => one.mutate()}
+      where={where}
+      canCarry={can.items}
+      canPost={can.posts}
+      extra={can.hooks ? <Dispositions world={world} id={id} /> : undefined}
+    />
+  );
 }
 
 function FactionPage({ world, id, can }: { world: string; id: string; can: Capabilities }): ReactElement {
@@ -280,7 +379,12 @@ function HookPage({ world, id, can }: { world: string; id: string; can: Capabili
       where={where}
       canCarry={false}
       canPost={can.posts}
-      extra={<Plot world={world} id={id} />}
+      extra={
+        <>
+          <Standing world={world} id={id} />
+          <Plot world={world} id={id} />
+        </>
+      }
     />
   );
 }

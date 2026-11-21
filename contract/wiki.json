@@ -6,7 +6,9 @@
     "entry_depth": 32,
     "summary_characters": 400,
     "report_mentions": 200,
-    "hook_status_characters": 40
+    "hook_status_characters": 40,
+    "requirement_leaves": 200,
+    "requirement_depth": 16
   },
   "location_kinds": [
     "system",
@@ -96,6 +98,50 @@
   "status_kinds": [
     "entity_status",
     "quest_status"
+  ],
+  "attitudes": [
+    "friendly",
+    "helpful",
+    "cautious-neutral",
+    "neutral",
+    "wary",
+    "hostile",
+    "enraged",
+    "missing"
+  ],
+  "attitude_nuances": {
+    "warm": "helpful",
+    "cooperative": "helpful",
+    "professional": "helpful",
+    "confiding": "helpful",
+    "candid": "helpful",
+    "open": "helpful",
+    "grateful": "helpful",
+    "trusting": "helpful",
+    "peaceful": "helpful",
+    "guarded": "cautious-neutral",
+    "cautious": "cautious-neutral",
+    "reserved": "cautious-neutral",
+    "observant": "cautious-neutral",
+    "curious": "cautious-neutral",
+    "hidden": "cautious-neutral",
+    "briefed": "cautious-neutral",
+    "controlled": "cautious-neutral",
+    "evasive": "wary",
+    "obstructive": "wary",
+    "defensive": "wary",
+    "desperate": "wary",
+    "cornered": "wary",
+    "disrupted": "wary",
+    "anxious": "wary",
+    "distressed": "wary",
+    "breaking": "wary",
+    "dismissed": "wary"
+  },
+  "disposition_targets": [
+    "party",
+    "person",
+    "faction"
   ],
   "entity_types": [
     "person",

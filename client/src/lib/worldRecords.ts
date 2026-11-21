@@ -18,6 +18,9 @@ import {
   LIMITS,
   LOCATION_KINDS,
   PERSON_KINDS,
+  ATTITUDE_NUANCES,
+  ATTITUDES,
+  DISPOSITION_TARGETS,
   POST_POSITIONS,
   STATUS_KINDS,
   TAXON_KINDS,
@@ -25,6 +28,7 @@ import {
 import { type Columns, columnsOf, fieldsOf, plain } from '~/lib/columns';
 import { EntryError, parseEntry } from '~/lib/entry';
 import { wouldCloseCycle } from '~/lib/hookGraph';
+import { checkedRequirement, leavesOf, RequirementError } from '~/lib/requirements';
 import { prisma } from '~/lib/prisma';
 
 const name = z.string().trim().min(1, 'A name is required').max(LIMITS.name_characters);
@@ -825,6 +829,10 @@ const HOOK_COLUMNS: Columns = {
   kind: plain('kind'),
   giver_person_id: plain('giverPersonId'),
   giver_faction_id: plain('giverFactionId'),
+  requires: plain('requires'),
+  excuse: plain('excuse'),
+  resolved_at: plain('resolvedAt'),
+  resolved_journal_id: plain('resolvedJournalId'),
   campaign_id: plain('campaignId'),
 };
 const hookCreate = z.object({
@@ -834,6 +842,10 @@ const hookCreate = z.object({
   kind: kindOf(HOOK_KINDS).default(null),
   giver_person_id: reference.default(null),
   giver_faction_id: reference.default(null),
+  requires: z.unknown().default(null),
+  excuse: z.string().nullable().default(null),
+  resolved_at: z.coerce.date().nullable().default(null),
+  resolved_journal_id: reference.default(null),
   campaign_id: reference.default(null),
 });
 const hookUpdate = z
@@ -844,6 +856,10 @@ const hookUpdate = z
     kind: kindOf(HOOK_KINDS),
     giver_person_id: reference,
     giver_faction_id: reference,
+    requires: z.unknown(),
+    excuse: z.string().nullable(),
+    resolved_at: z.coerce.date().nullable(),
+    resolved_journal_id: reference,
     campaign_id: reference,
   })
   .partial();
@@ -857,6 +873,50 @@ async function checkHookRefs(ownerId: string, input: Record<string, unknown>): P
   await checkWorld(ownerId, input.campaign_id);
   await checkOwned(ownerId, input.giver_person_id, livePerson, 'That person is not one of yours', 'giver_person_id');
   await checkOwned(ownerId, input.giver_faction_id, liveFaction, 'That organisation is not one of yours', 'giver_faction_id');
+}
+
+/** A requirement as it arrives (JSON text, a hook id or the structure) as stored JSON text, or null. */
+function requirementText(value: unknown): string | null {
+  if (value === null || value === undefined || value === '') return null;
+  let node: unknown = value;
+  try {
+    if (typeof value === 'string' && /^[[{"]/.test(value)) node = JSON.parse(value) as unknown;
+    const checked = checkedRequirement(node);
+    if (leavesOf(checked).length > LIMITS.requirement_leaves)
+      throw new RequirementError(`A requirement names at most ${LIMITS.requirement_leaves} hooks`);
+    return JSON.stringify(checked);
+  } catch (error) {
+    if (error instanceof RequirementError || error instanceof SyntaxError) throw validationError(error.message, 'requires');
+    throw error;
+  }
+}
+
+/** Every hook a requirement names is the owner's, and none already waits on `id` (as the server). */
+async function checkRequirement(ownerId: string, id: string | null, text: string | null): Promise<string[]> {
+  if (text === null) return [];
+  const named = leavesOf(JSON.parse(text) as never);
+  for (const leaf of named) await checkOwned(ownerId, leaf, liveHook, 'A requirement names a hook that isn’t one of yours', 'requires');
+  if (id !== null) {
+    const edges = await prisma.hookDependency.findMany({ where: { createdById: ownerId }, select: { parentHookId: true, childHookId: true } });
+    if (named.some((leaf) => wouldCloseCycle(edges, leaf, id)))
+      throw validationError('A hook can’t wait on itself or on a hook that waits on it', 'requires');
+  }
+  return named;
+}
+
+/** A hook with a requirement waits on exactly the hooks it names: its incoming edges follow. */
+async function edgesFollow(ownerId: string, id: string, named: readonly string[], stamp: Date): Promise<void> {
+  const have = await prisma.hookDependency.findMany({ where: { childHookId: id }, select: { id: true, parentHookId: true } });
+  await prisma.$transaction([
+    prisma.hookDependency.deleteMany({ where: { id: { in: have.filter((edge) => !named.includes(edge.parentHookId)).map((edge) => edge.id) } } }),
+    ...named
+      .filter((parent) => !have.some((edge) => edge.parentHookId === parent))
+      .map((parent) =>
+        prisma.hookDependency.create({
+          data: { createdById: ownerId, parentHookId: parent, childHookId: id, reason: 'requirement', createdAt: stamp, updatedAt: stamp },
+        }),
+      ),
+  ]);
 }
 
 export const hooks: ResourceSpec<HookRow, z.infer<typeof hookCreate>, z.infer<typeof hookUpdate>> = {
@@ -882,19 +942,28 @@ export const hooks: ResourceSpec<HookRow, z.infer<typeof hookCreate>, z.infer<ty
   find: (id, ownerId) => prisma.hook.findFirst({ where: { id, createdById: ownerId, deletedAt: null } }),
   async insert(ownerId, input, stamp) {
     await checkHookRefs(ownerId, input);
-    return prisma.hook.create({
-      data: { createdById: ownerId, ...written(HOOK_COLUMNS, input, stamp) } as Prisma.HookUncheckedCreateInput,
+    const requires = requirementText(input.requires);
+    const named = await checkRequirement(ownerId, null, requires);
+    const row = await prisma.hook.create({
+      data: { createdById: ownerId, ...written(HOOK_COLUMNS, { ...input, requires }, stamp) } as Prisma.HookUncheckedCreateInput,
     });
+    if (requires !== null) await edgesFollow(ownerId, row.id, named, stamp);
+    return row;
   },
   async updateIfCurrent(id, version, input, stamp, userId) {
     const owner = await prisma.hook.findUnique({ where: { id }, select: { createdById: true, campaignId: true } });
     checkWorldStays(owner?.campaignId, input.campaign_id);
     if (owner !== null) await checkHookRefs(owner.createdById, input);
+    const changesRequirement = 'requires' in input;
+    const requires = changesRequirement ? requirementText(input.requires) : null;
+    const named = owner === null || !changesRequirement ? [] : await checkRequirement(owner.createdById, id, requires);
     const { count } = await prisma.hook.updateMany({
       where: { id, updatedAt: version },
-      data: written(HOOK_COLUMNS, input, stamp, userId) as Prisma.HookUncheckedUpdateManyInput,
+      data: written(HOOK_COLUMNS, changesRequirement ? { ...input, requires } : input, stamp, userId) as Prisma.HookUncheckedUpdateManyInput,
     });
-    return count === 0 ? null : prisma.hook.findUnique({ where: { id } });
+    if (count === 0) return null;
+    if (owner !== null && changesRequirement) await edgesFollow(owner.createdById, id, named, stamp);
+    return prisma.hook.findUnique({ where: { id } });
   },
   async remove(id) {
     // Its dependencies (either end) and everyone's progress go with it, as on the server.
@@ -902,10 +971,12 @@ export const hooks: ResourceSpec<HookRow, z.infer<typeof hookCreate>, z.infer<ty
       prisma.hookDependency.deleteMany({ where: { OR: [{ parentHookId: id }, { childHookId: id }] } }),
       prisma.personHook.deleteMany({ where: { hookId: id } }),
       prisma.factionHook.deleteMany({ where: { hookId: id } }),
+      prisma.disposition.deleteMany({ where: { triggerHookId: id } }),
+      prisma.relationInfluence.deleteMany({ where: { hookId: id } }),
       prisma.hook.update({ where: { id }, data: tombstone() }),
     ]);
   },
-  fields: (row) => fieldsOf(HOOK_COLUMNS, row),
+  fields: (row) => ({ ...fieldsOf(HOOK_COLUMNS, row), resolved_at: row.resolvedAt?.toISOString() ?? null }),
 };
 
 const DEPENDENCY_COLUMNS: Columns = {
@@ -942,6 +1013,8 @@ export const hookDependencies: ResourceSpec<DependencyRow, z.infer<typeof depend
   async insert(ownerId, input, stamp) {
     await checkOwned(ownerId, input.parent_hook_id, liveHook, 'That hook is not one of yours', 'parent_hook_id');
     await checkOwned(ownerId, input.child_hook_id, liveHook, 'That hook is not one of yours', 'child_hook_id');
+    const child = await prisma.hook.findUnique({ where: { id: input.child_hook_id }, select: { requires: true } });
+    if (child?.requires) throw validationError('That hook’s requirement is an expression: edit it there', 'child_hook_id');
     const edges = await prisma.hookDependency.findMany({
       where: { createdById: ownerId },
       select: { parentHookId: true, childHookId: true },
@@ -1443,12 +1516,163 @@ export const relationships: ResourceSpec<RelationRow, z.infer<typeof relationCre
     return row;
   },
   async remove(id) {
-    // A relation takes its mirror with it, as on the server.
-    await prisma.relationship.deleteMany({ where: { OR: [{ id }, { mirrorRelationshipId: id }] } });
+    // A relation takes its mirror and its influences with it, as on the server.
+    await prisma.$transaction([
+      prisma.relationInfluence.deleteMany({ where: { relationshipId: id } }),
+      prisma.relationship.deleteMany({ where: { OR: [{ id }, { mirrorRelationshipId: id }] } }),
+    ]);
   },
   fields: (row) => ({
     ...fieldsOf(RELATION_COLUMNS, row),
     valid_from: row.validFrom?.toISOString() ?? null,
     valid_to: row.validTo?.toISOString() ?? null,
   }),
+};
+
+// ---- disposition, relation_influence (W56: narrative state from dh-campaign's tracker) --------
+
+const attitude = z
+  .string()
+  .refine((value) => ATTITUDES.includes(value) || value in ATTITUDE_NUANCES, 'An attitude is one from the scale, or a nuance of one');
+const DISPOSITION_COLUMNS: Columns = {
+  person_id: plain('personId'),
+  target_kind: plain('targetKind'),
+  target_person_id: plain('targetPersonId'),
+  target_faction_id: plain('targetFactionId'),
+  attitude: plain('attitude'),
+  is_default: plain('isDefault'),
+  trigger_hook_id: plain('triggerHookId'),
+  note: plain('note'),
+};
+const dispositionCreate = z
+  .object({
+    person_id: z.string().min(1),
+    target_kind: z.enum(DISPOSITION_TARGETS as [string, ...string[]]),
+    target_person_id: reference.default(null),
+    target_faction_id: reference.default(null),
+    attitude,
+    is_default: z.boolean().default(false),
+    trigger_hook_id: reference.default(null),
+    note: z.string().nullable().default(null),
+  })
+  .refine(
+    (input) =>
+      (input.target_kind === 'party' && input.target_person_id === null && input.target_faction_id === null) ||
+      (input.target_kind === 'person' && input.target_person_id !== null && input.target_faction_id === null) ||
+      (input.target_kind === 'faction' && input.target_faction_id !== null && input.target_person_id === null),
+    { message: 'Name the target that matches target_kind: a person, an organisation, or neither for the party', path: ['target_kind'] },
+  )
+  .refine((input) => input.is_default !== (input.trigger_hook_id !== null), {
+    message: 'An entry is either the default or has a trigger hook',
+    path: ['trigger_hook_id'],
+  });
+const dispositionUpdate = z.object({ attitude, note: z.string().nullable() }).partial();
+type DispositionRow = Prisma.DispositionGetPayload<object>;
+
+export const dispositions: ResourceSpec<DispositionRow, z.infer<typeof dispositionCreate>, z.infer<typeof dispositionUpdate>> = {
+  resource: 'disposition',
+  plural: 'dispositions',
+  modelName: 'DispositionModel',
+  createSchema: dispositionCreate,
+  updateSchema: dispositionUpdate,
+  list: (ownerId, query) =>
+    prisma.disposition.findMany({
+      where: {
+        createdById: ownerId,
+        ...filters(query, [
+          ['person_id', 'personId'],
+          ['target_kind', 'targetKind'],
+          ['target_person_id', 'targetPersonId'],
+          ['target_faction_id', 'targetFactionId'],
+          ['trigger_hook_id', 'triggerHookId'],
+        ]),
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
+  find: (id, ownerId) => prisma.disposition.findFirst({ where: { id, createdById: ownerId } }),
+  async insert(ownerId, input, stamp) {
+    await checkOwned(ownerId, input.person_id, livePerson, 'That person is not one of yours', 'person_id');
+    await checkOwned(ownerId, input.target_person_id, livePerson, 'That person is not one of yours', 'target_person_id');
+    await checkOwned(ownerId, input.target_faction_id, liveFaction, 'That organisation is not one of yours', 'target_faction_id');
+    await checkOwned(ownerId, input.trigger_hook_id, liveHook, 'That hook is not one of yours', 'trigger_hook_id');
+    if (input.is_default) {
+      const same = {
+        personId: input.person_id,
+        targetKind: input.target_kind,
+        targetPersonId: input.target_person_id,
+        targetFactionId: input.target_faction_id,
+        isDefault: true,
+      };
+      if ((await prisma.disposition.count({ where: same })) > 0)
+        throw validationError('That person already has a default attitude toward that target', 'is_default');
+    }
+    return prisma.disposition.create({
+      data: { createdById: ownerId, ...written(DISPOSITION_COLUMNS, input, stamp) } as Prisma.DispositionUncheckedCreateInput,
+    });
+  },
+  async updateIfCurrent(id, version, input, stamp, userId) {
+    const { count } = await prisma.disposition.updateMany({
+      where: { id, updatedAt: version },
+      data: written(DISPOSITION_COLUMNS, input, stamp, userId) as Prisma.DispositionUncheckedUpdateManyInput,
+    });
+    return count === 0 ? null : prisma.disposition.findUnique({ where: { id } });
+  },
+  async remove(id) {
+    await prisma.disposition.delete({ where: { id } });
+  },
+  fields: (row) => fieldsOf(DISPOSITION_COLUMNS, row),
+};
+
+const INFLUENCE_COLUMNS: Columns = {
+  relationship_id: plain('relationshipId'),
+  hook_id: plain('hookId'),
+  to_intensity: plain('toIntensity'),
+  note: plain('note'),
+};
+const toIntensity = z.number().min(-1, 'Attitude is -1 to +1').max(1, 'Attitude is -1 to +1');
+const influenceCreate = z.object({
+  relationship_id: z.string().min(1),
+  hook_id: z.string().min(1),
+  to_intensity: toIntensity,
+  note: z.string().nullable().default(null),
+});
+const influenceUpdate = z.object({ to_intensity: toIntensity, note: z.string().nullable() }).partial();
+type InfluenceRow = Prisma.RelationInfluenceGetPayload<object>;
+
+export const relationInfluences: ResourceSpec<InfluenceRow, z.infer<typeof influenceCreate>, z.infer<typeof influenceUpdate>> = {
+  resource: 'relation_influence',
+  plural: 'relation_influences',
+  modelName: 'RelationInfluenceModel',
+  createSchema: influenceCreate,
+  updateSchema: influenceUpdate,
+  list: (ownerId, query) =>
+    prisma.relationInfluence.findMany({
+      where: {
+        createdById: ownerId,
+        ...filters(query, [
+          ['relationship_id', 'relationshipId'],
+          ['hook_id', 'hookId'],
+        ]),
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
+  find: (id, ownerId) => prisma.relationInfluence.findFirst({ where: { id, createdById: ownerId } }),
+  async insert(ownerId, input, stamp) {
+    await checkOwned(ownerId, input.relationship_id, (where) => prisma.relationship.count({ where }), 'That relation is not one of yours', 'relationship_id');
+    await checkOwned(ownerId, input.hook_id, liveHook, 'That hook is not one of yours', 'hook_id');
+    return prisma.relationInfluence.create({
+      data: { createdById: ownerId, ...written(INFLUENCE_COLUMNS, input, stamp) } as Prisma.RelationInfluenceUncheckedCreateInput,
+    });
+  },
+  async updateIfCurrent(id, version, input, stamp, userId) {
+    const { count } = await prisma.relationInfluence.updateMany({
+      where: { id, updatedAt: version },
+      data: written(INFLUENCE_COLUMNS, input, stamp, userId) as Prisma.RelationInfluenceUncheckedUpdateManyInput,
+    });
+    return count === 0 ? null : prisma.relationInfluence.findUnique({ where: { id } });
+  },
+  async remove(id) {
+    await prisma.relationInfluence.delete({ where: { id } });
+  },
+  fields: (row) => fieldsOf(INFLUENCE_COLUMNS, row),
 };

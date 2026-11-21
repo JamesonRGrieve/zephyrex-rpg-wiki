@@ -108,6 +108,11 @@ self-hosted single-user build.
 | W50 | Calendar weather per date | Kanka | ✓ | ✓ |
 | W51 | Campaign brief and frame on the campaign page, when the AI product's campaign frame is loaded (premise, tone, truths, boundaries; GM secrets withheld) | ours | ✓ | ✓ |
 | W52 | Scenarios drafted from the world (plots, quests, factions, places), and a scenario's outcome written back as events, journal entries and changed relations | ours | ✓ | ✓ |
+| W53 | Archive: hide a record from lists without deleting it | Kanka | ✓ | ✓ |
+| W54 | CSV import | Kanka | ✓ | ✓ |
+| W55 | Relations between any kinds of record | both | ✓ | ✓ |
+| W56 | Dispositions: how a person regards the party, a person or an organisation, changing as hooks resolve; relation influences | ours (dh-campaign) | ✓ | ✓ |
+| W57 | Hook requirements as all/any expressions (with game-system checks VTT evaluates), blocked-with-excuse, resolution in a session; a plot board | ours (dh-campaign) | ✓ | ✓ |
 
 ## Feature audit against Kanka and World Anvil (2026-11-21)
 
@@ -141,7 +146,7 @@ Kindlepreneur). They're marked *(WA unverified)* until someone reads the pages i
 | | Items: kind, quantity, durability, creators, price, weight | ✓ | ✓ | Partial | `world_inventory` (S2); price, weight, size, creators missing (W4 properties can hold them) | ● |
 | | Journals, notes, lore, handouts, manuscripts | ✓ | ✓ | Covered | `world_narrative` journals (S3) | ● |
 | | Session reports linked to what they mention | ✓ (journals) | ✓ | Covered | `session_report` (S3, rpg-ai A24) | ● |
-| | Quests with status and elements | ✓ | ✓ | Partial | hooks DAG with per-actor progress (S3b); no quest elements, no hook-level status | ● |
+| | Quests with status and elements | ✓ | ✓ | Partial | hooks DAG with per-actor progress (S3b), hook state and resolution (S3c); no quest elements | ● |
 | | Events (with places, reminders) | ✓ | ✓ | Planned | W1, W12–W15 | ○ |
 | | Races, species, creatures, cultures, religions | ✓ | ✓ | Partial | taxa of those kinds (S4a); no creature/race pages of their own | ○ |
 | | Abilities (with charges) | ✓ | – | Planned | W1 | ○ |
@@ -151,7 +156,7 @@ Kindlepreneur). They're marked *(WA unverified)* until someone reads the pages i
 | | World Anvil's ~28 article templates as kinds | – | ✓ | Partial | kinds per type from the contract; no prompted template fields *(WA unverified)* | ○ |
 | | Custom entity types (Kanka custom categories; WA custom templates) | ✓ premium | ✓ paid | Planned | W36 | ○ |
 | | Disable or rename a module per world | ✓ | – | Partial | capabilities hide what isn't loaded; no per-world toggle or rename | ○ |
-| | Archive (hide from lists, keep) | ✓ (3.5) | – | Not planned yet | add with W36; soft delete exists for sync, not archive | ○ |
+| | Archive (hide from lists, keep) | ✓ (3.5) | – | Planned | W53; soft delete exists for sync, not archive | ○ |
 | | Aliases (search and mentions) | ✓ | – | Planned | rpg-ai's sync carries `aliases: []`; no field yet | ● |
 | **Entity page** | Rich-text entry (stored Plate value) | ✓ | ✓ (BBCode) | Partial | stored and shown (S1); **no editor**: pages are read-only | ● |
 | | Edit fields in place | ✓ | ✓ | **Not built** | lists create by name and kind and delete; record pages can't edit anything | ● |
@@ -168,13 +173,13 @@ Kindlepreneur). They're marked *(WA unverified)* until someone reads the pages i
 | | Revision history and restore | ✓ (90 days) | ✓ | Planned | W33 | ○ |
 | | Deleted-entry recovery (30 days) | ✓ premium | – | Partial | lite tombstones (S2b) exist; no restore UI | ○ |
 | **Relations** | Typed relations, attitude, colour, mirror | ✓ | ✓ | Covered | world_social on genealogy (S4a); read-only list | ● |
-| | Relations between any kinds (not only people and organisations) | ✓ | ✓ | Partial | people and organisations only | ○ |
+| | Relations between any kinds (not only people and organisations) | ✓ | ✓ | Partial | people and organisations only; any kind is W55 | ○ |
 | | Relation explorer / web, PNG export | ✓ | ✓ | Planned | W5, W19 | ○ |
 | | Family trees | ✓ premium | ✓ | Planned | W18 (genealogy has the data) | ○ |
 | | Diplomacy webs | – | ✓ | Planned | W19 | ○ |
-| | Dispositions that change with events | – | – | Not planned yet | from dh-campaign's tracker; proposed as S3c | ○ |
+| | Dispositions that change with events | – | – | Covered | W56, S3c: dispositions and relation influences (person page, relations) | ○ |
 | **Story** | Plot-hook DAG, progress per person and organisation | ✓ (quests) | ✓ (plots) | Covered | S3b | ● |
-| | Requirements as all/any expressions, blocked-with-excuse, resolution | – | – | Not planned yet | proposed S3c, from dh-campaign | ○ |
+| | Requirements as all/any expressions, blocked-with-excuse, resolution | – | – | Covered | W57, S3c: requirements, resolution, plot board, `plot_state` | ○ |
 | | Plots: acts, beats, twists | – | ✓ | Planned | W22 | ○ |
 | | Manuscripts: chapters, word count, focus mode | – | ✓ paid | Partial | journal kinds `manuscript`, `chapter`, `prose`; no writing tools (W23) | ○ |
 | | Statblocks and character sheets | ✓ (plugin sheets) | ✓ | Planned | W25, from VTT's systems | ○ |
@@ -199,7 +204,7 @@ Kindlepreneur). They're marked *(WA unverified)* until someone reads the pages i
 | **Data** | Export JSON and Markdown | ✓ | ✓ (JSON zip) | Planned | W31 | ● |
 | | Import from Kanka | ✓ (own JSON) | – | Planned | W31, phase 1 | ● |
 | | Import from World Anvil | – | – | Planned | W31, phase 5 | ○ |
-| | CSV import | ✓ (3.9) | – | Not planned yet | add to W31 | ○ |
+| | CSV import | ✓ (3.9) | – | Planned | W54 | ○ |
 | | Public API | ✓ | ✓ (Boromir, approved keys) | Partial | SaaS: the framework's REST and GraphQL at `/v1`; lite: the same REST; no docs page or tokens UI | ○ |
 | | Webhooks, Discord | ✓ premium | ✓ *(WA unverified)* | Planned | W37, W38 (framework `webhooks`) | ○ |
 | | Sync to an AI product's lorebook | – | – | Covered | `world_entities` (S2b, rpg-ai A15) | ● |
@@ -224,8 +229,9 @@ scene importer as a way in, and add only the wiki's pins (target type and id), a
 the record side sheet. A VTT scene published to the wiki is a map variant, as dh-campaign's
 `maps:` block already treats exterior and interior variants.
 
-**Counts** (83 rows): Covered 13, Partial 18, Not built 1, Planned 45, Not planned yet 4,
-Out of scope 2. Fifteen release rows (●) aren't covered. **The gaps that matter for the initial release** (● and not Covered): editing a
+**Counts** (83 rows, after S3c): Covered 15, Partial 18, Not built 1, Planned 47, Out of scope 2. **Every
+Planned and Partial row is in scope for the initial release** (operator's goal: full coverage,
+2026-11-21, via Zephyrex RPG); ● marks phase 1, which orders the work and drops nothing. **The gaps that matter for the initial release** (● and not Covered): editing a
 record in place, the entry editor with `@` mentions, backlinks and aliases, properties (S4b),
 portraits and images (S2c), cross-kind search and list filters, Kanka import and JSON/Markdown
 export, life status and item fields (with properties), quest status and elements, and
@@ -361,6 +367,7 @@ records.
 | S2b | rpg-ai A15: world_entities (a world's changes since a time, tombstones included), the summary rule, a record's world fixed once set, lite soft delete | Done, on the framework's changes() (a4d6a3ec); committed with S3 |
 | S3 | Journals, notes, lore and session reports (`world_narrative`; rpg-ai A24's session_report and session_report_get), posts (`entity_posts`, W3) | Done: both editions, server 51/51 and client checks on 58137; committed with S2b |
 | S3b | The plot-hook DAG in `world_narrative` (hooks, hook_dependencies with a cycle guard, person_hooks, faction_hooks; OBJECT_PLAN §6, moved from vtt's rpg_state), rpg_core's campaign on hooks; hooks kept out of world_entities (GM secrets until W9) | Done: both editions, server 57/57 and client checks on 58137 |
+| S3c | Narrative state from the operator's dh-campaign tracker (W56, W57): hook requirements as all/any expressions with game-system checks (their hooks become the edges), excuse, resolution in a session; `plot_state` (ability) and a plot board; dispositions (party, person or organisation; scale plus nuances; changed by a hook) and relation influences, in `world_narrative` | Done in both editions; server 76/77 on 58137 (the one red is the framework's status bug), client checks and audit green |
 | S4a | Tags, categories, races and statuses (`world_taxonomy`, W6); relations between people and organisations with attitude, colour and mirror (`world_social` on genealogy's relationships, W5) | Done in both editions; server 61/62 on 58137, the one red waiting on the framework's status/statuses fix |
 | S4b | Property kits and values (W4, on the framework's metadata with a polymorphic target), templates (W7) | Waits on that framework change |
 | S2c | Pictures: the framework's new attachments extension (an asset over storage, a polymorphic attachment with role primary_image) on any record; world_entities.picture (rpg-ai A31) | Waits on the framework's new attachments extension (operator's choice, 2026-11-21) |

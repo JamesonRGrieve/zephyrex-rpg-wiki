@@ -444,10 +444,12 @@ Cycle guard: manager-layer hook rejects parent_id mutations that would close a c
 | EventParticipantModel | event_id FK, person_id or faction_id (XOR), role |
 | TimelineModel | name, description, campaign_id (opt) |
 | TimelineEntryModel | timeline_id FK, event_id FK, ordinal, label |
-| HookModel | name, description, campaign_id (opt), kind (major_quest\|side_quest\|objective\|plot_thread\|mystery\|rumor\|obligation\|foreshadowing\|hint\|background), giver_person_id, giver_faction_id |
+| HookModel | name, description, campaign_id (opt), kind (major_quest\|side_quest\|objective\|plot_thread\|mystery\|rumor\|obligation\|foreshadowing\|hint\|background), giver_person_id, giver_faction_id; S3c: requires (all/any/char expression; its hooks become the dependency edges), excuse, resolved_at, resolved_journal_id |
 | HookDependencyModel | parent_hook_id FK, child_hook_id FK, reason |
 | PersonHookModel | person_id FK, hook_id FK, status, accepted_at, completed_at, progress |
 | FactionHookModel | faction_id FK, hook_id FK, status, accepted_at, completed_at, progress |
+| DispositionModel | person_id FK, target_kind (party\|person\|faction), target_person_id or target_faction_id, attitude (contract scale + nuances), is_default, trigger_hook_id FK → hooks, note. Current attitude per target: the latest resolved trigger, else the default (S3c, from dh-campaign's tracker) |
+| RelationInfluenceModel | relationship_id FK, hook_id FK, to_intensity (-1…+1), note: a hook that changes a relation's attitude when it resolves (S3c) |
 | JournalModel | name, description, kind (session_report\|in_world_diary\|lore\|handout\|note\|manuscript\|prose\|chapter), campaign_id (opt), location_id (opt), author_person_id (opt), session_number, occurred_at |
 | JournalPageModel | journal_id FK, ordinal, kind (text\|image\|pdf\|video), content, asset_id FK (opt) |
 | PlotModel | name, description, campaign_id (opt), kind (main\|subplot\|arc), parent_plot_id (self-FK for sub-plots) |
@@ -463,7 +465,7 @@ Chronicles (World Anvil's map+timeline fusion) is not a separate model — it's 
 |-------|------------|
 | FactionModel | name, description, parent_id (self-FK tree), campaign_id (opt), kind (political\|military\|religious\|criminal\|guild\|family\|...), location_id (opt — HQ) |
 | @extension_model(RelationshipModel) | faction_id, target_faction_id (XOR with person endpoints) |
-| DispositionModel | person_id FK, target_person_id or target_faction_id, attitude, is_default, trigger_event_id FK (opt → world_narrative.EventModel), notes |
+| ~~DispositionModel~~ | **Moved to world_narrative** (S3c, 2026-11-21): its trigger is a hook, and world_social → world_narrative would close a cycle (world_narrative already depends on world_social). See world_narrative above. |
 
 Covers: Kanka Organisations + Families + Relations. World Anvil Organisation + Military Formation + Rank/Title + Diplomacy Webs. dh-campaign dispositions + event-driven attitude shifts + superiors.
 

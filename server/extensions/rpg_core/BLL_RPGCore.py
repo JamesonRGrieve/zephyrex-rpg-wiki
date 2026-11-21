@@ -36,7 +36,15 @@ from zephyrex.extensions.wiki_shared.Contract import ENTITY_TYPES, LIMITS  # typ
 from zephyrex.extensions.wiki_shared.Report import report_entry  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Summary import summary  # type: ignore[import-not-found]
 from zephyrex.extensions.world_inventory.BLL_WorldInventory import ItemManager, ItemModel  # type: ignore[import-not-found]
-from zephyrex.extensions.world_narrative.BLL_WorldNarrative import HookManager, HookModel, JournalManager, JournalModel  # type: ignore[import-not-found]
+from zephyrex.extensions.world_narrative.BLL_WorldNarrative import (  # type: ignore[import-not-found]
+    HookDependencyManager,
+    HookManager,
+    HookModel,
+    JournalManager,
+    JournalModel,
+    requirement_of,
+)
+from zephyrex.extensions.wiki_shared.Requirements import hook_state  # type: ignore[import-not-found]
 from zephyrex.extensions.world_taxonomy.BLL_WorldTaxonomy import (  # type: ignore[import-not-found]
     StatusManager,
     StatusModel,
@@ -595,3 +603,47 @@ class WorldEntityManager(AbstractBLLManager[Any], RouterMixin):
             after=after,
             limit=limit,
         )
+
+
+
+# ---------------------------------------------------------------------------
+# Plot state (W57): every hook in a campaign with its state, for a GM's board, VTT and rpg-ai
+# ---------------------------------------------------------------------------
+
+
+class HookStateOut(PlainModel):
+    id: str
+    name: str
+    kind: Optional[str]
+    state: str
+    excuse: Optional[str]
+    requires: Optional[Any]
+    resolved_at: Optional[datetime]
+
+
+def plot_state(model_registry: Any, requester_id: str, campaign_id: str) -> list[HookStateOut]:
+    """Each of the campaign's hooks with its state: resolved, available, needs_check (a game-system
+    check VTT decides) or blocked (with the GM's excuse). A hook with no requirement expression
+    waits on all its dependency parents."""
+    _manager(model_registry, requester_id, CampaignManager).get(id=campaign_id)
+    hooks = _manager(model_registry, requester_id, HookManager).list(campaign_id=campaign_id) or []
+    dependencies = _manager(model_registry, requester_id, HookDependencyManager)
+    resolved = [str(hook.id) for hook in hooks if hook.resolved_at is not None]
+    out: list[HookStateOut] = []
+    for hook in hooks:
+        requires = requirement_of(hook)
+        if requires is None:
+            parents = [str(edge.parent_hook_id) for edge in dependencies.list(child_hook_id=str(hook.id)) or []]
+            requires = {"all": parents} if parents else None
+        out.append(
+            HookStateOut(
+                id=str(hook.id),
+                name=str(hook.name or ""),
+                kind=hook.kind,
+                state=hook_state(requires, resolved, hook.resolved_at is not None),
+                excuse=hook.excuse,
+                requires=requires,
+                resolved_at=hook.resolved_at,
+            )
+        )
+    return out

@@ -84,6 +84,11 @@ export default function WorldKindPage(): ReactElement {
             Taxonomy
           </Link>
         )}
+        {can.hooks && (
+          <Link href={`/w/${params.world}/plot`} className='underline-offset-4 hover:underline'>
+            Plot board
+          </Link>
+        )}
       </nav>
       {!can.loaded ? (
         <SkeletonRows rows={3} label='Loading' />

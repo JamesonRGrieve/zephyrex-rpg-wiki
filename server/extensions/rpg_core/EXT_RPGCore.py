@@ -119,3 +119,11 @@ class RPGCoreExtension(AbstractStaticExtension):
 
         return world_entities(model_registry, requester_id, campaign_id, since, kinds, after, limit).model_dump(mode="json")
 
+    @classmethod
+    @ability("plot_state")
+    def plot_state(cls, model_registry: Any, requester_id: str, campaign_id: str) -> list[dict[str, Any]]:
+        """Each of a campaign's hooks with its state (W57): resolved, available, needs_check or blocked."""
+        from zephyrex.extensions.rpg_core.BLL_RPGCore import plot_state  # type: ignore[import-not-found]
+
+        return [hook.model_dump(mode="json") for hook in plot_state(model_registry, requester_id, campaign_id)]
+

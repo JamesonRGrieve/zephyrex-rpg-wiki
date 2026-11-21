@@ -148,6 +148,10 @@ export const hookSchema = z.object({
   kind: kindIn(HOOK_KINDS),
   giver_person_id: z.string().nullable(),
   giver_faction_id: z.string().nullable(),
+  requires: z.string().nullable(),
+  excuse: z.string().nullable(),
+  resolved_at: z.string().nullable(),
+  resolved_journal_id: z.string().nullable(),
   campaign_id: z.string().nullable(),
 });
 export type Hook = z.infer<typeof hookSchema>;
@@ -215,6 +219,28 @@ export const relationshipSchema = z.object({
   mirror_relationship_id: z.string().nullable(),
 });
 export type Relationship = z.infer<typeof relationshipSchema>;
+
+export const dispositionSchema = z.object({
+  ...versioned,
+  person_id: z.string(),
+  target_kind: z.string(),
+  target_person_id: z.string().nullable(),
+  target_faction_id: z.string().nullable(),
+  attitude: z.string(),
+  is_default: z.boolean().nullable(),
+  trigger_hook_id: z.string().nullable(),
+  note: z.string().nullable(),
+});
+export type Disposition = z.infer<typeof dispositionSchema>;
+
+export const relationInfluenceSchema = z.object({
+  ...versioned,
+  relationship_id: z.string(),
+  hook_id: z.string(),
+  to_intensity: z.number(),
+  note: z.string().nullable(),
+});
+export type RelationInfluence = z.infer<typeof relationInfluenceSchema>;
 
 type Versioned = { id: string; created_at: string; updated_at: string | null };
 /** What a write may set: a record's own fields (and, for write-only fields, `Extra`). */
@@ -354,3 +380,11 @@ export const entityStatuses = resource<EntityStatus, Pick<EntityStatus, 'status_
   entityStatusSchema,
 );
 export const relationships = resource<Relationship, Fields<Relationship>>('relationship', 'relationships', relationshipSchema);
+export const dispositions = resource<
+  Disposition,
+  Pick<Disposition, 'person_id' | 'target_kind' | 'attitude'> & Fields<Disposition>
+>('disposition', 'dispositions', dispositionSchema);
+export const relationInfluences = resource<
+  RelationInfluence,
+  Pick<RelationInfluence, 'relationship_id' | 'hook_id' | 'to_intensity'> & Fields<RelationInfluence>
+>('relation_influence', 'relation_influences', relationInfluenceSchema);

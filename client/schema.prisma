@@ -206,6 +206,12 @@ model Hook {
   kind           String?
   giverPersonId  String?
   giverFactionId String?
+  /// The requirement as JSON: a hook id, all, any or a game-system check (W57).
+  requires       String?
+  /// GM-facing: why it's blocked.
+  excuse         String?
+  resolvedAt     DateTime?
+  resolvedJournalId String?
   campaignId     String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime
@@ -363,4 +369,40 @@ model Relationship {
   @@index([factionId])
   @@index([targetPersonId])
   @@index([targetFactionId])
+}
+
+/// How a person regards the party, a person or an organisation, and the hook that changes it (W56).
+model Disposition {
+  id              String   @id @default(uuid())
+  createdById     String
+  personId        String
+  targetKind      String
+  targetPersonId  String?
+  targetFactionId String?
+  attitude        String
+  isDefault       Boolean  @default(false)
+  triggerHookId   String?
+  note            String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime
+  updatedById     String?
+
+  @@index([personId])
+  @@index([triggerHookId])
+}
+
+/// A hook that changes a relation's attitude when it resolves (W56).
+model RelationInfluence {
+  id             String   @id @default(uuid())
+  createdById    String
+  relationshipId String
+  hookId         String
+  toIntensity    Float
+  note           String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime
+  updatedById    String?
+
+  @@index([relationshipId])
+  @@index([hookId])
 }

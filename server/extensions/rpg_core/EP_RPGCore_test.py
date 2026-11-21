@@ -494,3 +494,66 @@ class TestRelations:
         gone = server.delete(f"/v1/relationship/{serves['id']}", headers=_headers(person, **{"If-Match": current.headers["ETag"]}))
         assert gone.status_code in (200, 204), gone.text
         assert server.get(f"/v1/relationship/{employs['id']}", headers=_headers(person)).status_code == 404
+
+
+class TestNarrativeState:
+    """W56, W57, from dh-campaign's tracker: requirements, resolution, dispositions, influences."""
+
+    def test_a_requirement_is_an_expression_and_its_hooks_become_the_edges(self, server: TestClient, person: Any, world: dict[str, Any]) -> None:
+        approach, null, vox = (_create(server, person, "hook", name=name, campaign_id=world["id"]) for name in ("Approach", "Discover the null", "Vox ghost"))
+        requires = {"all": [approach["id"], {"any": [{"char": {"skill": ["psyniscience", "forbidden-lore"]}}, null["id"]]}]}
+        assert _put(server, person, "hook", vox, requires=requires, excuse="Only a psyker or a scholar hears it").status_code == 200
+        parents = server.get(f"/v1/hook_dependency?child_hook_id={vox['id']}", headers=_headers(person)).json()["hook_dependencies"]
+        assert {edge["parent_hook_id"] for edge in parents} == {approach["id"], null["id"]}
+        by_hand = {"parent_hook_id": null["id"], "child_hook_id": vox["id"]}
+        assert server.post("/v1/hook_dependency", json={"hook_dependency": by_hand}, headers=_headers(person)).status_code == 422
+        assert _put(server, person, "hook", vox, requires=approach["id"]).status_code == 200
+        parents = server.get(f"/v1/hook_dependency?child_hook_id={vox['id']}", headers=_headers(person)).json()["hook_dependencies"]
+        assert [edge["parent_hook_id"] for edge in parents] == [approach["id"]]
+        for bad in ({"all": "x"}, {"char": {"skill": 3}}, "no-such-hook", {"any": [vox["id"]]}):
+            assert _put(server, person, "hook", approach if bad != "no-such-hook" else vox, requires=bad).status_code == 422, bad
+
+    def test_the_plot_state_follows_resolution_and_checks(self, server: TestClient, person: Any) -> None:
+        from zephyrex.extensions.AbstractExtensionProvider import loaded_ability
+
+        world_id = _create(server, person, "campaign", name="Plot World")["id"]
+        first = _create(server, person, "hook", name="Arrive", campaign_id=world_id)
+        second = _create(server, person, "hook", name="Hear the story", campaign_id=world_id, requires=first["id"], excuse="Renn won't talk to strangers")
+        heard = _create(server, person, "hook", name="Hear the ghost", campaign_id=world_id, requires={"all": [first["id"], {"char": {"skill": "psyniscience"}}]})
+        registry = server.app.state.model_registry  # type: ignore[attr-defined]
+        plot = loaded_ability(registry, "rpg_core", "plot_state")
+        states = {hook["name"]: (hook["state"], hook["excuse"]) for hook in plot(registry, str(person.id), world_id)}
+        assert states == {"Arrive": ("available", None), "Hear the story": ("blocked", "Renn won't talk to strangers"), "Hear the ghost": ("blocked", None)}
+        report = _create(server, person, "journal", name="Session 1", kind="session_report", campaign_id=world_id)
+        assert _put(server, person, "hook", first, resolved_at="2026-11-21T10:00:00", resolved_journal_id=report["id"]).status_code == 200
+        states = {hook["name"]: hook["state"] for hook in plot(registry, str(person.id), world_id)}
+        assert states == {"Arrive": "resolved", "Hear the story": "available", "Hear the ghost": "needs_check"}
+        assert second["requires"] is not None and heard["requires"] is not None
+
+    def test_dispositions_have_one_default_a_target_and_an_attitude_from_the_scale(self, server: TestClient, person: Any) -> None:
+        brae = _create(server, person, "person", name="Brae Edric")
+        story = _create(server, person, "hook", name="Hear the dock story")
+        _create(server, person, "disposition", person_id=brae["id"], target_kind="party", attitude="cautious-neutral", is_default=True)
+        _create(server, person, "disposition", person_id=brae["id"], target_kind="party", attitude="wary", trigger_hook_id=story["id"], note="She knows what they're circling")
+        _create(server, person, "disposition", person_id=brae["id"], target_kind="party", attitude="guarded", trigger_hook_id=story["id"])
+        for bad in (
+            {"target_kind": "party", "attitude": "neutral", "is_default": True},
+            {"target_kind": "party", "attitude": "smug", "is_default": True},
+            {"target_kind": "person", "attitude": "neutral", "is_default": True},
+            {"target_kind": "party", "attitude": "neutral"},
+            {"target_kind": "crowd", "attitude": "neutral", "is_default": True},
+        ):
+            response = server.post("/v1/disposition", json={"disposition": {"person_id": brae["id"], **bad}}, headers=_headers(person))
+            assert response.status_code == 422, (bad, response.text)
+        rows = server.get(f"/v1/disposition?person_id={brae['id']}", headers=_headers(person)).json()["dispositions"]
+        assert sorted(row["attitude"] for row in rows) == ["cautious-neutral", "guarded", "wary"]
+
+    def test_a_hook_can_change_a_relation(self, server: TestClient, person: Any) -> None:
+        osric = _create(server, person, "person", name="Pell Osric")
+        corvyn = _create(server, person, "person", name="Corvyn Edric")
+        tie = _create(server, person, "relationship", person_id=osric["id"], target_person_id=corvyn["id"], kind="subordinate", intensity=-1)
+        found = _create(server, person, "hook", name="Find Osric")
+        loosened = _create(server, person, "relation_influence", relationship_id=tie["id"], hook_id=found["id"], to_intensity=-0.4, note="The conditioning loosens")
+        assert loosened["to_intensity"] == -0.4
+        bad = {"relationship_id": tie["id"], "hook_id": found["id"], "to_intensity": 2}
+        assert server.post("/v1/relation_influence", json={"relation_influence": bad}, headers=_headers(person)).status_code == 422

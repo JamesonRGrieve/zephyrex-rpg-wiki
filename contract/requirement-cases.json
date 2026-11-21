@@ -1,0 +1,269 @@
+{
+  "$comment": "A hook's state from its requirement (W57, from dh-campaign's tracker). A requirement is a hook id, {\"all\": [...]}, {\"any\": [...]} or {\"char\": {dimension: value or [values]}, \"who\": \"any\"|\"all\"} (a game-system check VTT's rpg_systems evaluates; the wiki never decides it). A node evaluates to met, unmet or check: an id is met when that hook is resolved; a char node is check; all is unmet if any child is unmet, else check if any is check, else met (empty all: met); any is met if any child is met, else check if any is check, else unmet (empty any: unmet). A hook's state: resolved if it is; else from its requirement (none: met): met is available, check is needs_check, unmet is blocked. Held on the server (server/extensions/wiki_shared/Requirements.py) and in the lite edition (client/src/lib/requirements.ts).",
+  "cases": [
+    {
+      "name": "no requirement is available",
+      "requires": null,
+      "resolved": [],
+      "self_resolved": false,
+      "state": "available"
+    },
+    {
+      "name": "resolved wins over everything",
+      "requires": "FIND_MAP",
+      "resolved": [],
+      "self_resolved": true,
+      "state": "resolved"
+    },
+    {
+      "name": "one hook, not yet",
+      "requires": "FIND_MAP",
+      "resolved": [],
+      "self_resolved": false,
+      "state": "blocked"
+    },
+    {
+      "name": "one hook, done",
+      "requires": "FIND_MAP",
+      "resolved": [
+        "FIND_MAP"
+      ],
+      "self_resolved": false,
+      "state": "available"
+    },
+    {
+      "name": "all needs every one",
+      "requires": {
+        "all": [
+          "A",
+          "B"
+        ]
+      },
+      "resolved": [
+        "A"
+      ],
+      "self_resolved": false,
+      "state": "blocked"
+    },
+    {
+      "name": "all, every one done",
+      "requires": {
+        "all": [
+          "A",
+          "B"
+        ]
+      },
+      "resolved": [
+        "A",
+        "B"
+      ],
+      "self_resolved": false,
+      "state": "available"
+    },
+    {
+      "name": "any needs one",
+      "requires": {
+        "any": [
+          "A",
+          "B"
+        ]
+      },
+      "resolved": [
+        "B"
+      ],
+      "self_resolved": false,
+      "state": "available"
+    },
+    {
+      "name": "any, none done",
+      "requires": {
+        "any": [
+          "A",
+          "B"
+        ]
+      },
+      "resolved": [],
+      "self_resolved": false,
+      "state": "blocked"
+    },
+    {
+      "name": "a check alone needs the table",
+      "requires": {
+        "char": {
+          "skill": "psyniscience"
+        }
+      },
+      "resolved": [],
+      "self_resolved": false,
+      "state": "needs_check"
+    },
+    {
+      "name": "all with a check: blocked until the hooks are done",
+      "requires": {
+        "all": [
+          "APPROACH",
+          {
+            "any": [
+              {
+                "char": {
+                  "skill": "psyniscience"
+                }
+              },
+              {
+                "char": {
+                  "skill": "forbidden-lore"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "resolved": [],
+      "self_resolved": false,
+      "state": "blocked"
+    },
+    {
+      "name": "all with a check: then the table decides",
+      "requires": {
+        "all": [
+          "APPROACH",
+          {
+            "any": [
+              {
+                "char": {
+                  "skill": "psyniscience"
+                }
+              },
+              {
+                "char": {
+                  "skill": "forbidden-lore"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "resolved": [
+        "APPROACH"
+      ],
+      "self_resolved": false,
+      "state": "needs_check"
+    },
+    {
+      "name": "any: a done hook beats a check",
+      "requires": {
+        "any": [
+          {
+            "char": {
+              "homeworld": "voidborn"
+            }
+          },
+          "DISCOVER_NULL"
+        ]
+      },
+      "resolved": [
+        "DISCOVER_NULL"
+      ],
+      "self_resolved": false,
+      "state": "available"
+    },
+    {
+      "name": "empty all is met",
+      "requires": {
+        "all": []
+      },
+      "resolved": [],
+      "self_resolved": false,
+      "state": "available"
+    },
+    {
+      "name": "empty any is not",
+      "requires": {
+        "any": []
+      },
+      "resolved": [],
+      "self_resolved": false,
+      "state": "blocked"
+    }
+  ],
+  "leaves": [
+    {
+      "requires": {
+        "all": [
+          "APPROACH",
+          {
+            "any": [
+              {
+                "char": {
+                  "skill": [
+                    "psyniscience",
+                    "forbidden-lore"
+                  ]
+                },
+                "who": "all"
+              },
+              "DISCOVER_NULL",
+              "APPROACH"
+            ]
+          }
+        ]
+      },
+      "hooks": [
+        "APPROACH",
+        "DISCOVER_NULL"
+      ]
+    }
+  ],
+  "invalid": [
+    {
+      "name": "two keys",
+      "requires": {
+        "all": [
+          "A"
+        ],
+        "any": [
+          "B"
+        ]
+      }
+    },
+    {
+      "name": "unknown key",
+      "requires": {
+        "none": [
+          "A"
+        ]
+      }
+    },
+    {
+      "name": "all not a list",
+      "requires": {
+        "all": "A"
+      }
+    },
+    {
+      "name": "char value not text",
+      "requires": {
+        "char": {
+          "skill": 3
+        }
+      }
+    },
+    {
+      "name": "who outside any or all",
+      "requires": {
+        "char": {
+          "skill": "x"
+        },
+        "who": "some"
+      }
+    },
+    {
+      "name": "empty id",
+      "requires": ""
+    },
+    {
+      "name": "a number",
+      "requires": 7
+    }
+  ]
+}
