@@ -24,6 +24,8 @@ export interface EntityRow {
   name: string;
   description: string | null;
   kind: string | null;
+  /** A template (S4b, W7): copied into worlds, never a world fact. */
+  is_template?: boolean | null;
 }
 
 /** A kind as people read it ("body_part" → "body part"). */
@@ -155,6 +157,12 @@ export function EntityList<T extends EntityRow>({
                       <>
                         {' '}
                         <span className='shrink-0 text-xs text-muted-foreground'>{kindLabel(row.kind)}</span>
+                      </>
+                    )}
+                    {row.is_template === true && (
+                      <>
+                        {' '}
+                        <span className='shrink-0 rounded-md border px-1.5 text-xs font-medium'>Template</span>
                       </>
                     )}
                   </span>

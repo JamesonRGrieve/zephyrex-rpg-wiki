@@ -34,6 +34,7 @@ function KindList({ world, kind }: { world: string; kind: EntityKind }): ReactEl
   const writes = useWrites(() => list.mutate());
   const hrefOf = (row: { id: string }) => `/w/${world}/${kind}/${row.id}`;
   const label = TREE_LABELS[kind];
+  const facts = list.data?.filter((row) => row.is_template !== true);
   return (
     <EntityList
       {...words}
@@ -47,9 +48,8 @@ function KindList({ world, kind }: { world: string; kind: EntityKind }): ReactEl
       onDelete={(row) => void writes.run(remove(row), `The ${words.what} could not be deleted`)}
       problem={writes.problem}
       aside={
-        label !== undefined && list.data !== undefined && list.data.length > 0 ? (
-          <ParentTree rows={list.data} label={label} hrefOf={hrefOf} />
-        ) : undefined
+        // The world's own tree: a template (S4b) is copied into worlds, never one of its places.
+        label !== undefined && facts !== undefined && facts.length > 0 ? <ParentTree rows={facts} label={label} hrefOf={hrefOf} /> : undefined
       }
     />
   );

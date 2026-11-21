@@ -18,6 +18,9 @@ describe('capabilitiesOf', () => {
       taxonomy: true,
       relations: true,
       posts: true,
+      // Lite lists neither until its record_metadata routes land (the next prebuilt set).
+      properties: false,
+      kits: false,
       accounts: false,
     });
   });
@@ -35,8 +38,15 @@ describe('capabilitiesOf', () => {
       taxonomy: false,
       relations: false,
       posts: false,
+      properties: false,
+      kits: false,
       accounts: false,
     });
+  });
+
+  it('turns properties on with metadata, and kits with world_properties as well', () => {
+    expect(capabilitiesOf(new Set(['metadata']), true)).toMatchObject({ properties: true, kits: false });
+    expect(capabilitiesOf(new Set(['metadata', 'world_properties']), true)).toMatchObject({ properties: true, kits: true });
   });
 
   it('turns accounts on when the hosted server lists auth_session', () => {

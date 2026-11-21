@@ -57,6 +57,8 @@ export const placeSchema = z.object({
   parent_id: z.string().nullable(),
   campaign_id: z.string().nullable(),
   associated_person_id: z.string().nullable(),
+  /** A template (S4b, W7): copied into worlds, never a world fact. */
+  is_template: z.boolean().nullish(),
 });
 export type Place = z.infer<typeof placeSchema>;
 
@@ -68,6 +70,8 @@ export const personSchema = z.object({
   kind: kindIn(PERSON_KINDS),
   campaign_id: z.string().nullable(),
   location_id: z.string().nullable(),
+  /** A template (S4b, W7): copied into worlds, never a world fact. */
+  is_template: z.boolean().nullish(),
 });
 export type Person = z.infer<typeof personSchema>;
 
@@ -79,6 +83,8 @@ export const factionSchema = z.object({
   kind: kindIn(FACTION_KINDS),
   parent_id: z.string().nullable(),
   campaign_id: z.string().nullable(),
+  /** A template (S4b, W7): copied into worlds, never a world fact. */
+  is_template: z.boolean().nullish(),
 });
 export type Faction = z.infer<typeof factionSchema>;
 
@@ -92,6 +98,8 @@ export const itemSchema = z.object({
   base_value: z.number().nullable(),
   stack_size: z.number().nullable(),
   campaign_id: z.string().nullable(),
+  /** A template (S4b, W7): copied into worlds, never a world fact. */
+  is_template: z.boolean().nullish(),
 });
 export type Item = z.infer<typeof itemSchema>;
 
@@ -125,6 +133,8 @@ export const journalSchema = z.object({
   session_number: z.number().nullable(),
   occurred_at: z.string().nullable(),
   campaign_id: z.string().nullable(),
+  /** A template (S4b, W7): copied into worlds, never a world fact. */
+  is_template: z.boolean().nullish(),
 });
 export type Journal = z.infer<typeof journalSchema>;
 
@@ -153,6 +163,8 @@ export const hookSchema = z.object({
   resolved_at: z.string().nullable(),
   resolved_journal_id: z.string().nullable(),
   campaign_id: z.string().nullable(),
+  /** A template (S4b, W7): copied into worlds, never a world fact. */
+  is_template: z.boolean().nullish(),
 });
 export type Hook = z.infer<typeof hookSchema>;
 

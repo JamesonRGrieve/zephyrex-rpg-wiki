@@ -30,6 +30,10 @@ export interface Capabilities {
   relations: boolean;
   /** Posts on any record (entity_posts). */
   posts: boolean;
+  /** A record's own key/values (the framework's metadata extension, S4b). */
+  properties: boolean;
+  /** Property kits, applied to a record's properties (world_properties, S4b). */
+  kits: boolean;
   /** Accounts: the same records on every device the person signs in on. */
   accounts: boolean;
 }
@@ -47,6 +51,8 @@ export function capabilitiesOf(names: ReadonlySet<string>, loaded: boolean): Cap
     taxonomy: names.has('world_taxonomy'),
     relations: names.has('world_social') && names.has('genealogy'),
     posts: names.has('entity_posts'),
+    properties: names.has('metadata'),
+    kits: names.has('world_properties') && names.has('metadata'),
     accounts: names.has('auth_session'),
   };
 }

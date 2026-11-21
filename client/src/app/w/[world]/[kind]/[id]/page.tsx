@@ -11,19 +11,21 @@ import type { ReactElement, ReactNode } from 'react';
 import { LoadProblem } from 'zephyrex/ui/load-problem';
 import { PageHeader } from 'zephyrex/ui/page-header';
 import { SkeletonRows } from 'zephyrex/ui/skeleton';
-import { useWrites } from 'zephyrex/hooks/useWrites';
+import { useHidden, useWrites } from 'zephyrex/hooks/useWrites';
 import { type DispositionLine, DispositionList } from '~/components/world/DispositionList';
 import { EntityPage, type EntityPageProps } from '~/components/world/EntityPage';
 import { HookState } from '~/components/world/HookState';
 import { HookLinks, type LinkedHook, type Taker } from '~/components/world/HookLinks';
 import { type CarriedLine, InventoryList } from '~/components/world/InventoryList';
 import { PostList } from '~/components/world/PostList';
+import { PropertyList } from '~/components/world/PropertyList';
 import { type RelationLine, RelationList } from '~/components/world/RelationList';
 import { type Chip, TaxonChips } from '~/components/world/TaxonChips';
 import { ENTITY_KINDS, type EntityKind, isEntityKind } from '~/components/world/kinds';
 import { Unavailable } from '~/components/world/Unavailable';
 import { type Capabilities, useCapabilities } from '~/features/capabilities';
 import { usePlot } from '~/features/data/plot';
+import { type Property, useProperties, usePropertyActions } from '~/features/data/properties';
 import {
   carried,
   dispositions,
@@ -53,6 +55,39 @@ interface Shown {
   kind: string | null;
   entry: string | null;
   description: string | null;
+  is_template?: boolean | null;
+}
+
+const propertyId = (row: Property): string => row.id;
+
+/** The record's properties (S4b): read by type, changed where they stand, removed with an undo. */
+function Properties({ type, id }: { type: EntityKind; id: string }): ReactElement {
+  const rows = useProperties(type, id);
+  const actions = usePropertyActions(type, id);
+  const writes = useWrites(() => rows.mutate());
+  const { shown, hide, show } = useHidden(rows.data ?? [], propertyId);
+  const saved = async (write: Promise<unknown>, fallback: string): Promise<string | null> =>
+    (await writes.run(write, fallback)) ? null : fallback;
+  return (
+    <PropertyList
+      rows={rows.data === undefined ? undefined : shown}
+      error={rows.error}
+      onRetry={() => rows.mutate()}
+      canEdit
+      problem={writes.problem}
+      onSave={async (row, value) => saved(actions.save(row, value), 'The property could not be saved')}
+      onAdd={async (key, valueType) => saved(actions.add(key, valueType, rows.data?.length ?? 0), 'The property could not be added')}
+      onRemove={(row) =>
+        writes.remove({
+          message: `${row.key} removed`,
+          write: () => actions.remove(row),
+          fallback: 'The property could not be removed',
+          hide: () => hide([row.id]),
+          show: () => show([row.id]),
+        })
+      }
+    />
+  );
 }
 
 /** What `target` carries, each line named by its item. */
@@ -256,8 +291,12 @@ function Record({
       {record === undefined && error === undefined && <SkeletonRows rows={4} label='Loading' />}
       {record !== undefined && (
         <>
+          {record.is_template === true && (
+            <p className='rounded-md border px-3 py-2 text-sm'>A template: copied into worlds, never one of a world&rsquo;s facts.</p>
+          )}
           <EntityPage kind={record.kind} entry={record.entry} description={record.description} where={where} />
           {extra}
+          {can.properties && <Properties type={kind} id={id} />}
           {can.taxonomy && <Classification world={world} type={kind} id={id} />}
           {can.relations && (kind === 'person' || kind === 'faction') && <Relations world={world} type={kind} id={id} />}
           {canPost && <Posts type={kind} id={id} />}

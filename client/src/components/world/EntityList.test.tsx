@@ -36,6 +36,12 @@ describe('EntityList', () => {
     expect(screen.getByRole('link', { name: /^Saltmarsh city/ })).toHaveAttribute('href', '/w/w1/location/l2');
   });
 
+  it('marks a template, so it is never taken for a world fact', () => {
+    render(<EntityList {...props} rows={[{ ...PLACES[1]!, is_template: true }, PLACES[3]!]} />);
+    expect(screen.getByRole('link', { name: /^Saltmarsh city Template/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /^Brine city$/ })).toBeInTheDocument();
+  });
+
   it('finds rows by a search, and says when nothing matches', async () => {
     render(<EntityList {...props} rows={PLACES} />);
     const search = screen.getByRole('searchbox', { name: 'Find places' });
