@@ -1,0 +1,24 @@
+{
+  // The package's dist (S7c): what an app composing the wiki installs. scripts/compile.mjs stages
+  // src/ with the contract's JSON beside it (build/), compiles that here into dist/, then gives every
+  // relative import its file extension, as Node's ESM resolver needs.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "declaration": true,
+    "noEmit": false,
+    "incremental": false,
+    "rootDir": "build",
+    "outDir": "dist",
+    "lib": ["dom", "dom.iterable", "esnext"]
+  },
+  "include": ["build/**/*"],
+  "exclude": ["build/**/*.test.ts", "build/**/*.test.tsx", "build/**/*.stories.tsx"]
+}

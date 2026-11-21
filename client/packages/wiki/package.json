@@ -7,7 +7,11 @@
   "private": true,
   "sideEffects": false,
   "exports": {
-    "./*": "./src/*.ts"
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    },
+    "./package.json": "./package.json"
   },
   "peerDependencies": {
     "lucide-react": "*",
@@ -16,5 +20,12 @@
     "swr": "*",
     "zephyrex": "*",
     "zod": "*"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "compile": "node scripts/compile.mjs",
+    "verify:dist": "node scripts/verify-dist.mjs"
   }
 }

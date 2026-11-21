@@ -13,7 +13,7 @@ export default defineConfig({
     pool: 'forks',
     // A runner job sets VITEST_MAX_WORKERS to its granted cores (standards page Gates).
     globals: true,
-    exclude: ['**/node_modules/**', '.next/**', 'e2e/**', '**/*.stories.{ts,tsx}'],
+    exclude: ['**/node_modules/**', '.next/**', 'e2e/**', '**/*.stories.{ts,tsx}', 'packages/*/dist/**', 'packages/*/build/**'],
     // Inline the framework, so this app's module mocks (next/navigation in setup.ts) also reach the
     // compiled framework code that imports them (standards page Testing).
     // A RegExp is tested against the module's full path, so it matches the folder, not the name.
