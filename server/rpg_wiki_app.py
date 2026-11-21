@@ -23,8 +23,10 @@ from zephyrex import run
 # categories and statuses), entity_posts (posts on any record) and rpg_core (worlds, and the
 # character and campaign fields it adds to people and places). rpg_log stays in the repo but
 # isn't loaded until its dependencies (rpg_core's successors rpg_traits, world_inventory) are
-# in this repo; it depended on zephyrex-vtt's rpg_state (2026-11-20).
-EXTENSIONS = "auth_session,genealogy,world_spatial,world_social,world_inventory,world_narrative,world_taxonomy,entity_posts,rpg_core"
+# in this repo; it depended on zephyrex-vtt's rpg_state (2026-11-20). cloud and attachments (the
+# framework's: files in cloud storage, attached to any record) give records their pictures (S2c);
+# a deployment configures a cloud provider (CLOUD_LOCAL_DIRECTORY for a directory on disk).
+EXTENSIONS = "auth_session,genealogy,cloud,attachments,world_spatial,world_social,world_inventory,world_narrative,world_taxonomy,entity_posts,rpg_core"
 
 if __name__ == "__main__":
     run(

@@ -36,6 +36,11 @@ optional = false
 name = "world_taxonomy"
 optional = false
 
+# A record's picture (world_entities.picture) is its primary_image attachment, when attachments is loaded.
+[[extension_dependencies]]
+name = "attachments"
+optional = true
+
 [[extension_dependencies]]
 name = "acl_rbac"
 optional = true

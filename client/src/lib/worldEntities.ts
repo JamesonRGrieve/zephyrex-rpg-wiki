@@ -27,7 +27,7 @@ export interface WorldEntity {
   name: string;
   aliases: string[];
   summary: string;
-  /** A picture the caller can load (rpg-ai A31); null until the wiki has media (slice S2c). */
+  /** A picture the caller can load (rpg-ai A31): the newest primary_image's content path on the server; null in lite until its attachments twin lands (S2c). */
   picture: string | null;
   updated_at: string;
   deleted: boolean;

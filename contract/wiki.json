@@ -153,6 +153,12 @@
     "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
     "max_characters": 64
   },
+  "attachment_roles": [
+    "primary_image",
+    "header_image",
+    "gallery",
+    "document"
+  ],
   "seed_settings": [
     { "slug": "warhammer-40000", "name": "Warhammer 40,000" },
     { "slug": "age-of-sigmar", "name": "Age of Sigmar" },

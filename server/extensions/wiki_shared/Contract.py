@@ -29,6 +29,8 @@ ATTITUDE_NUANCES: dict[str, str] = dict(CONTRACT["attitude_nuances"])
 DISPOSITION_TARGETS: tuple[str, ...] = tuple(CONTRACT["disposition_targets"])
 CANON_LEVELS: tuple[str, ...] = tuple(CONTRACT["canon_levels"])
 POST_POSITIONS: tuple[str, ...] = tuple(CONTRACT["post_positions"])
+# What a file is to a record (S2c, the framework's attachments): the first is its own picture.
+ATTACHMENT_ROLES: tuple[str, ...] = tuple(CONTRACT["attachment_roles"])
 SETTING_SLUG_PATTERN: str = CONTRACT["setting_slug"]["pattern"]
 SETTING_SLUG_CHARACTERS: int = CONTRACT["setting_slug"]["max_characters"]
 # The settings every wiki has (S6b): SYSTEM's, so everyone reads them and nobody else changes them.

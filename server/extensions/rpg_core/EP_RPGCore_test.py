@@ -638,3 +638,71 @@ class TestSettings:
         assert [entity["name"] for entity in canon["world_entities"]] == ["Terra"]
         synced = loaded_ability(registry, "rpg_core", "world_entities")(registry, str(person.id), campaign["id"], include_setting=True)
         assert {entity["name"] for entity in synced["world_entities"]} == {"Terra", "Hive Dunmarch"}
+
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"a small map" * 4
+
+
+class TestPictures:
+    """S2c (rpg-ai A31): a record's picture is its newest primary_image attachment (the framework's
+    attachments, on cloud storage), read wherever the record is."""
+
+    @pytest.fixture(autouse=True)
+    def store(self, monkeypatch: pytest.MonkeyPatch) -> dict[str, bytes]:
+        """The cloud extension's storage, kept in memory (its own tests cover its providers)."""
+        from zephyrex.extensions.cloud.EXT_Cloud import EXT_Cloud
+
+        files: dict[str, bytes] = {}
+
+        async def upload_file(cls: Any, path: str, content: bytes, provider: Any = None) -> dict[str, Any]:
+            files[path] = content
+            return {"provider": "memory", "path": path}
+
+        async def download_file(cls: Any, provider: str, path: str) -> bytes:
+            return files[path]
+
+        monkeypatch.setattr(EXT_Cloud, "upload_file", classmethod(upload_file))
+        monkeypatch.setattr(EXT_Cloud, "download_file", classmethod(download_file))
+        return files
+
+    @staticmethod
+    def _upload(server: TestClient, user: Any, name: str) -> dict[str, Any]:
+        made = server.post(
+            "/v1/asset/upload", params={"name": name}, content=PNG, headers=_headers(user, **{"Content-Type": "image/png"})
+        )
+        assert made.status_code == 201, made.text
+        asset: dict[str, Any] = made.json()["asset"]
+        return asset
+
+    @staticmethod
+    def _attach(server: TestClient, user: Any, asset: dict[str, Any], kind: str, record: dict[str, Any]) -> Any:
+        body = {"attachment": {"asset_id": asset["id"], "target_entity_type": kind, "target_entity_id": record["id"], "role": "primary_image"}}
+        return server.post("/v1/attachment", json=body, headers=_headers(user))
+
+    @staticmethod
+    def _pictures(server: TestClient, user: Any, campaign: dict[str, Any]) -> dict[str, Any]:
+        listed = server.get(f"/v1/world_entity?campaign_id={campaign['id']}", headers=_headers(user))
+        assert listed.status_code == 200, listed.text
+        return {entity["name"]: entity["picture"] for entity in listed.json()["world_entities"]}
+
+    def test_world_entities_carry_each_records_newest_picture(self, server: TestClient, person: Any, other: Any) -> None:
+        from zephyrex.testing.factories import if_match_of
+
+        campaign = _create(server, person, "campaign", name="Pictured")
+        terra = _create(server, person, "location", name="Terra", kind="planet", campaign_id=campaign["id"])
+        _create(server, person, "person", name="Magos Rech", campaign_id=campaign["id"])
+        first, second = self._upload(server, person, "terra.png"), self._upload(server, person, "terra-night.png")
+        for asset in (first, second):
+            assert self._attach(server, person, asset, "location", terra).status_code == 201
+        pictures = self._pictures(server, person, campaign)
+        assert pictures == {"Terra": f"/v1/asset/{second['id']}/content", "Magos Rech": None}
+        content = server.get(pictures["Terra"], headers=_headers(person))
+        assert (content.status_code, content.content) == (200, PNG)
+        # Someone who can't see Terra can't attach to it or read its picture.
+        assert server.get(pictures["Terra"], headers=_headers(other)).status_code == 404
+        assert self._attach(server, other, self._upload(server, other, "mine.png"), "location", terra).status_code == 404
+        # A deleted picture gives way to the one before, then to none.
+        assert server.delete(f"/v1/asset/{second['id']}", headers=_headers(person, **if_match_of(second))).status_code == 204
+        assert self._pictures(server, person, campaign)["Terra"] == f"/v1/asset/{first['id']}/content"
+        assert server.delete(f"/v1/asset/{first['id']}", headers=_headers(person, **if_match_of(first))).status_code == 204
+        assert self._pictures(server, person, campaign)["Terra"] is None

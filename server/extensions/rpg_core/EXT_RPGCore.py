@@ -54,6 +54,12 @@ class RPGCoreExtension(AbstractStaticExtension):
                 reason="rpg_core scopes tags, categories and statuses to a campaign",
             ),
             EXT_Dependency(
+                name="attachments",
+                friendly_name="Attachments",
+                optional=True,
+                reason="A record's picture (world_entities.picture) is its primary_image attachment",
+            ),
+            EXT_Dependency(
                 name="acl_rbac",
                 friendly_name="ACL / RBAC",
                 optional=True,

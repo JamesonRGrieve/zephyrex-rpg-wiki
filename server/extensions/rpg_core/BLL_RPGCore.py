@@ -35,7 +35,7 @@ from zephyrex.extensions.wiki_shared.Records import (  # type: ignore[import-not
     slugify,
     with_entry_text,
 )
-from zephyrex.extensions.wiki_shared.Contract import CANON_LEVELS, ENTITY_TYPES, LIMITS  # type: ignore[import-not-found]
+from zephyrex.extensions.wiki_shared.Contract import ATTACHMENT_ROLES, CANON_LEVELS, ENTITY_TYPES, LIMITS  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Report import report_entry  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Summary import summary  # type: ignore[import-not-found]
 from zephyrex.extensions.world_inventory.BLL_WorldInventory import ItemManager, ItemModel  # type: ignore[import-not-found]
@@ -707,6 +707,8 @@ WORLD_ENTITY_MANAGERS: dict[str, Any] = {
     "journal": JournalManager,
 }
 DEFAULT_LIMIT = 100
+# The role a record's own picture takes (contract/wiki.json attachment_roles).
+PRIMARY_IMAGE = ATTACHMENT_ROLES[0]
 MAX_LIMIT = 500
 
 
@@ -812,9 +814,45 @@ def _gather(
     return found
 
 
-def _paged(found: list[WorldEntity], limit: int) -> WorldEntitiesPage:
+def _with_pictures(model_registry: Any, shown: list[WorldEntity]) -> list[WorldEntity]:
+    """S2c (rpg-ai A31): each record's picture, its newest primary_image attachment's content path,
+    in one query for the page (as SYSTEM: the caller already sees each record, and so its picture).
+    None for a record without one, for a deleted asset, and where the attachments extension isn't
+    loaded."""
+    if "attachments" not in model_registry.loaded_extension_names() or not shown:
+        return shown
+    from zephyrex.extensions.attachments.BLL_Attachments import (  # type: ignore[import-not-found]
+        AssetManager,
+        AssetModel,
+        AttachmentManager,
+        AttachmentModel,
+    )
+    from zephyrex.logic.AbstractLogicManager.models import FieldComparison
+
+    system = env("SYSTEM_ID")
+    links = AttachmentManager(requester_id=system, model_registry=model_registry).list(
+        role=PRIMARY_IMAGE,
+        filters=[FieldComparison(AttachmentModel, "target_entity_id", "in", sorted({entity.id for entity in shown}))],
+    )
+    present = {
+        str(asset.id)
+        for asset in AssetManager(requester_id=system, model_registry=model_registry).list(
+            filters=[FieldComparison(AssetModel, "id", "in", sorted({str(link.asset_id) for link in links}))]
+        )
+    } if links else set()
+    newest: dict[tuple[str, str], str] = {}
+    for link in sorted(links, key=lambda link: str(link.created_at)):
+        if str(link.asset_id) in present:
+            newest[(link.target_entity_type, link.target_entity_id)] = str(link.asset_id)
+    for entity in shown:
+        asset_id = newest.get((entity.kind, entity.id))
+        entity.picture = None if asset_id is None or entity.deleted else f"/v1/asset/{asset_id}/content"
+    return shown
+
+
+def _paged(found: list[WorldEntity], limit: int, model_registry: Any) -> WorldEntitiesPage:
     found.sort(key=lambda entity: (entity.updated_at, entity.id))
-    shown = found[:limit]
+    shown = _with_pictures(model_registry, found[:limit])
     return WorldEntitiesPage(world_entities=shown, next=_cursor_of(shown[-1]) if len(found) > limit else None)
 
 
@@ -845,7 +883,7 @@ def world_entities(
     setting_id = getattr(campaign, "setting_id", None)
     if include_setting and setting_id:
         found += _gather(model_registry, requester_id, wanted, {"setting_id": setting_id}, True, start, floor, limit)
-    return _paged(found, limit)
+    return _paged(found, limit, model_registry)
 
 
 def setting_canon(
@@ -862,7 +900,7 @@ def setting_canon(
     wanted = _checked_page(kinds, limit)
     _manager(model_registry, requester_id, SettingManager).get(id=setting_id)
     start, floor = _window(since, after)
-    return _paged(_gather(model_registry, requester_id, wanted, {"setting_id": setting_id}, True, start, floor, limit), limit)
+    return _paged(_gather(model_registry, requester_id, wanted, {"setting_id": setting_id}, True, start, floor, limit), limit, model_registry)
 
 
 class WorldEntityManager(AbstractBLLManager[Any], RouterMixin):
