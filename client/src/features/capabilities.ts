@@ -24,6 +24,10 @@ export interface Capabilities {
   journals: boolean;
   /** Plot hooks, their prerequisites and who is on them (world_narrative). */
   hooks: boolean;
+  /** Tags, categories, races and statuses on any record (world_taxonomy). */
+  taxonomy: boolean;
+  /** Relations between people and organisations (genealogy's, widened by world_social). */
+  relations: boolean;
   /** Posts on any record (entity_posts). */
   posts: boolean;
   /** Accounts: the same records on every device the person signs in on. */
@@ -40,6 +44,8 @@ export function capabilitiesOf(names: ReadonlySet<string>, loaded: boolean): Cap
     items: names.has('world_inventory'),
     journals: names.has('world_narrative'),
     hooks: names.has('world_narrative'),
+    taxonomy: names.has('world_taxonomy'),
+    relations: names.has('world_social') && names.has('genealogy'),
     posts: names.has('entity_posts'),
     accounts: names.has('auth_session'),
   };

@@ -37,6 +37,12 @@ from zephyrex.extensions.wiki_shared.Report import report_entry  # type: ignore[
 from zephyrex.extensions.wiki_shared.Summary import summary  # type: ignore[import-not-found]
 from zephyrex.extensions.world_inventory.BLL_WorldInventory import ItemManager, ItemModel  # type: ignore[import-not-found]
 from zephyrex.extensions.world_narrative.BLL_WorldNarrative import HookManager, HookModel, JournalManager, JournalModel  # type: ignore[import-not-found]
+from zephyrex.extensions.world_taxonomy.BLL_WorldTaxonomy import (  # type: ignore[import-not-found]
+    StatusManager,
+    StatusModel,
+    TaxonManager,
+    TaxonModel,
+)
 from zephyrex.extensions.world_social.BLL_WorldSocial import FactionManager, FactionModel  # type: ignore[import-not-found]
 from zephyrex.extensions.world_spatial.BLL_WorldSpatial import LocationManager, LocationModel  # type: ignore[import-not-found]
 from zephyrex.logic.AbstractLogicManager import (
@@ -217,7 +223,7 @@ def _world_stays(context: HookContext) -> None:
         raise HTTPException(status_code=422, detail="A record's world is fixed once set: copy it to another world instead")
 
 
-for _manager in (PersonManager, LocationManager, FactionManager, ItemManager, JournalManager, HookManager):
+for _manager in (PersonManager, LocationManager, FactionManager, ItemManager, JournalManager, HookManager, TaxonManager, StatusManager):
     hook_bll(_manager, timing=HookTiming.BEFORE, priority=20)(_world_stays)
 
 
@@ -252,6 +258,31 @@ class RPG_HookModel(BaseModel):
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
+
+
+class _Campaign(BaseModel):
+    """A taxonomy record's campaign: none = shared across campaigns (a tag set reused everywhere)."""
+
+    campaign_id: Optional[str] = Field(None, description="FK → campaigns.id; none = shared across campaigns")
+
+    class Create(BaseModel):
+        campaign_id: Optional[str] = None
+
+    class Update(BaseModel):
+        campaign_id: Optional[str] = None
+
+    class Search(BaseModel):
+        campaign_id: Optional[StringSearchModel] = None
+
+
+@extension_model(TaxonModel)
+class RPG_TaxonModel(_Campaign):
+    """A taxon's campaign."""
+
+
+@extension_model(StatusModel)
+class RPG_StatusModel(_Campaign):
+    """A status's campaign."""
 
 
 # ---------------------------------------------------------------------------

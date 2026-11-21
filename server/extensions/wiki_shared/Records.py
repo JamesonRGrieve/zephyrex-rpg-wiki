@@ -3,6 +3,7 @@
 a trimmed name within the contract's length, a kind from the contract's list, an entry stored with
 its plain text as the description, and a parent that never closes a cycle (422, as lite answers)."""
 
+import re
 from typing import Any, Callable, Optional
 
 from fastapi import HTTPException
@@ -77,3 +78,13 @@ def refuse_parent_cycle(context: HookContext, what: str) -> None:
         raise HTTPException(status_code=422, detail=str(error)) from error
     if cycle:
         raise HTTPException(status_code=422, detail=f"A {what} can't sit under itself or its own descendants")
+
+
+COLOUR = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def checked_colour(value: Any) -> Any:
+    """A colour is #rrggbb (the lite edition's rule too), or none."""
+    if value is not None and not COLOUR.match(value):
+        raise ValueError("A colour is # and six hex digits, like #a83232")
+    return value

@@ -267,3 +267,100 @@ model FactionHook {
   @@unique([factionId, hookId])
   @@index([hookId])
 }
+
+/// A tag, category, race or other classification, in a tree (world_taxonomy's TaxonModel, with
+/// rpg_core's campaign). Soft-deleted, like the other world records; its links go with it.
+model Taxon {
+  id          String    @id @default(uuid())
+  createdById String
+  name        String
+  description String    @default("")
+  parentId    String?
+  kind        String?
+  colour      String?
+  campaignId  String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime
+  updatedById String?
+  deletedAt   DateTime?
+
+  @@index([createdById])
+  @@index([campaignId])
+  @@index([deletedAt])
+}
+
+/// A taxon on any record; once per taxon and record.
+model EntityTaxon {
+  id               String   @id @default(uuid())
+  createdById      String
+  taxonId          String
+  targetEntityType String
+  targetEntityId   String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime
+  updatedById      String?
+
+  @@unique([taxonId, targetEntityType, targetEntityId])
+  @@index([targetEntityId])
+}
+
+/// A status a record can be in (world_taxonomy's StatusModel, with rpg_core's campaign).
+model Status {
+  id          String    @id @default(uuid())
+  createdById String
+  name        String
+  description String    @default("")
+  kind        String?
+  colour      String?
+  campaignId  String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime
+  updatedById String?
+  deletedAt   DateTime?
+
+  @@index([createdById])
+  @@index([deletedAt])
+}
+
+/// A record's status; one per record.
+model EntityStatus {
+  id               String   @id @default(uuid())
+  createdById      String
+  statusId         String
+  targetEntityType String
+  targetEntityId   String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime
+  updatedById      String?
+
+  @@unique([targetEntityType, targetEntityId])
+}
+
+/// A relation (genealogy's RelationshipModel with world_social's organisation endpoints, colour and
+/// mirror): one person or organisation a side; attitude is intensity, -1 to +1.
+model Relationship {
+  id                   String    @id @default(uuid())
+  createdById          String
+  personId             String?
+  factionId            String?
+  targetPersonId       String?
+  targetFactionId      String?
+  kind                 String?
+  discriminator        String?
+  intensity            Float?
+  qualifier            String?
+  validFrom            DateTime?
+  validTo              DateTime?
+  notes                String?
+  colour               String?
+  mirrorRelationshipId String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime
+  updatedById          String?
+
+  @@index([createdById])
+  @@index([personId])
+  @@index([factionId])
+  @@index([targetPersonId])
+  @@index([targetFactionId])
+}

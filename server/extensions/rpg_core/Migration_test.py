@@ -21,6 +21,9 @@ INJECTED = {
     "items": {"campaign_id"},
     "journals": {"campaign_id"},
     "hooks": {"campaign_id"},
+    "taxons": {"campaign_id"},
+    "statuses": {"campaign_id"},
+    "relationships": {"faction_id", "target_faction_id", "colour", "mirror_relationship_id"},
 }
 FOREIGN_KEYS = {
     ("persons", "campaign_id"): "campaigns",
@@ -40,6 +43,14 @@ FOREIGN_KEYS = {
     ("person_hooks", "hook_id"): "hooks",
     ("faction_hooks", "faction_id"): "factions",
     ("faction_hooks", "hook_id"): "hooks",
+    ("taxons", "campaign_id"): "campaigns",
+    ("taxons", "parent_id"): "taxons",
+    ("entity_taxons", "taxon_id"): "taxons",
+    ("statuses", "campaign_id"): "campaigns",
+    ("entity_statuses", "status_id"): "statuses",
+    ("relationships", "faction_id"): "factions",
+    ("relationships", "target_faction_id"): "factions",
+    ("relationships", "mirror_relationship_id"): "relationships",
 }
 
 
@@ -69,7 +80,7 @@ def test_the_injected_references_are_real_foreign_keys(database: sqlite3.Connect
 
 def test_each_extension_owns_its_tables(database: sqlite3.Connection) -> None:
     tables = {row[0] for row in database.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-    assert {"campaigns", "locations", "factions", "items", "item_instances", "entity_inventories", "journals", "entity_posts", "hooks", "hook_dependencies", "person_hooks", "faction_hooks"} <= tables
+    assert {"campaigns", "locations", "factions", "items", "item_instances", "entity_inventories", "journals", "entity_posts", "hooks", "hook_dependencies", "person_hooks", "faction_hooks", "taxons", "entity_taxons", "statuses", "entity_statuses"} <= tables
 
 
 def test_hooks_002_keeps_a_create_all_table_and_adds_its_missing_columns() -> None:

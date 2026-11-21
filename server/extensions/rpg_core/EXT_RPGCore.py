@@ -48,6 +48,12 @@ class RPGCoreExtension(AbstractStaticExtension):
                 reason="rpg_core scopes journals to a campaign and writes session reports",
             ),
             EXT_Dependency(
+                name="world_taxonomy",
+                friendly_name="World: taxonomy",
+                optional=False,
+                reason="rpg_core scopes tags, categories and statuses to a campaign",
+            ),
+            EXT_Dependency(
                 name="acl_rbac",
                 friendly_name="ACL / RBAC",
                 optional=True,

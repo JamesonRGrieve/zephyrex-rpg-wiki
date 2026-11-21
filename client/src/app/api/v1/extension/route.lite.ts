@@ -12,9 +12,10 @@ import { NextResponse } from 'next/server';
 export const LITE_EXTENSIONS = [
   { id: 'lite-genealogy', name: 'genealogy', friendly_name: 'People', description: 'People and creatures' },
   { id: 'lite-world_spatial', name: 'world_spatial', friendly_name: 'Places', description: 'Locations as a tree, at every scale' },
-  { id: 'lite-world_social', name: 'world_social', friendly_name: 'Organisations', description: 'Organisations and families as a tree' },
+  { id: 'lite-world_social', name: 'world_social', friendly_name: 'Organisations', description: 'Organisations and families as a tree, and relations' },
   { id: 'lite-world_inventory', name: 'world_inventory', friendly_name: 'Items', description: 'Items, and what anyone carries' },
   { id: 'lite-world_narrative', name: 'world_narrative', friendly_name: 'Journals and hooks', description: 'Session reports, diaries, lore, notes and the plot-hook DAG' },
+  { id: 'lite-world_taxonomy', name: 'world_taxonomy', friendly_name: 'Taxonomy', description: 'Tags, categories, races and statuses' },
   { id: 'lite-entity_posts', name: 'entity_posts', friendly_name: 'Posts', description: 'Pinnable posts on any record' },
   { id: 'lite-rpg_core', name: 'rpg_core', friendly_name: 'Worlds', description: 'Worlds, and who and what is in each' },
 ] as const;

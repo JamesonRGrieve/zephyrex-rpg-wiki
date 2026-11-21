@@ -15,11 +15,15 @@ import { EntityPage, type EntityPageProps } from '~/components/world/EntityPage'
 import { HookLinks, type LinkedHook, type Taker } from '~/components/world/HookLinks';
 import { type CarriedLine, InventoryList } from '~/components/world/InventoryList';
 import { PostList } from '~/components/world/PostList';
+import { type RelationLine, RelationList } from '~/components/world/RelationList';
+import { type Chip, TaxonChips } from '~/components/world/TaxonChips';
 import { ENTITY_KINDS, type EntityKind, isEntityKind } from '~/components/world/kinds';
 import { Unavailable } from '~/components/world/Unavailable';
 import { type Capabilities, useCapabilities } from '~/features/capabilities';
 import {
   carried,
+  entityStatuses,
+  entityTaxa,
   factionHooks,
   factions,
   hookDependencies,
@@ -31,6 +35,9 @@ import {
   personHooks,
   places,
   posts,
+  relationships,
+  statuses,
+  taxa,
 } from '~/features/data/records';
 
 interface Shown {
@@ -53,6 +60,72 @@ function Carries({ world, type, id }: { world: string; type: EntityKind; id: str
     return { id: row.id, name, href: itemId === null ? null : `/w/${world}/item/${itemId}`, quantity: row.quantity ?? 1 };
   });
   return <InventoryList lines={lines} error={rows.error} onRetry={() => rows.mutate()} />;
+}
+
+/** The record's status and taxa (W6), each named, coloured and linked to the world's taxonomy. */
+function Classification({ world, type, id }: { world: string; type: EntityKind; id: string }): ReactElement {
+  const on = entityTaxa.useList({ target_entity_type: type, target_entity_id: id });
+  const held = entityStatuses.useList({ target_entity_type: type, target_entity_id: id });
+  const allTaxa = taxa.useList({ campaign_id: world });
+  const allStatuses = statuses.useList({ campaign_id: world });
+  const taxonOf = new Map((allTaxa.data ?? []).map((row) => [row.id, row]));
+  const statusOf = new Map((allStatuses.data ?? []).map((row) => [row.id, row]));
+  const chips: Chip[] | undefined = on.data?.map((link) => {
+    const taxon = taxonOf.get(link.taxon_id);
+    return {
+      id: link.id,
+      name: taxon?.name ?? null,
+      colour: taxon?.colour ?? null,
+      kind: taxon?.kind ?? null,
+      href: `/w/${world}/taxonomy?taxon=${link.taxon_id}`,
+    };
+  });
+  const first = held.data?.[0];
+  const current = first === undefined ? undefined : statusOf.get(first.status_id);
+  const status: Chip | null | undefined =
+    held.data === undefined
+      ? undefined
+      : first === undefined
+        ? null
+        : { id: first.id, name: current?.name ?? null, colour: current?.colour ?? null, kind: null, href: null };
+  return (
+    <TaxonChips status={status} taxa={chips} error={on.error ?? held.error} onRetry={() => Promise.all([on.mutate(), held.mutate()])} />
+  );
+}
+
+/** A person's or organisation's relations (W5), both directions, each end named and linked. */
+function Relations({ world, type, id }: { world: string; type: 'person' | 'faction'; id: string }): ReactElement {
+  const from = relationships.useList(type === 'person' ? { person_id: id } : { faction_id: id });
+  const to = relationships.useList(type === 'person' ? { target_person_id: id } : { target_faction_id: id });
+  const allPeople = people.useList({ campaign_id: world });
+  const allFactions = factions.useList({ campaign_id: world });
+  const personName = new Map((allPeople.data ?? []).map((row) => [row.id, row.name]));
+  const factionName = new Map((allFactions.data ?? []).map((row) => [row.id, row.name]));
+  const end = (personId: string | null, factionId: string | null) =>
+    personId !== null
+      ? { name: personName.get(personId) ?? null, href: `/w/${world}/person/${personId}` }
+      : factionId !== null
+        ? { name: factionName.get(factionId) ?? null, href: `/w/${world}/faction/${factionId}` }
+        : { name: null, href: null };
+  // A mirrored pair would show twice from either end; the outgoing half stands for both.
+  const outgoing = from.data ?? [];
+  const shown = new Set(outgoing.map((row) => row.id));
+  const incoming = (to.data ?? []).filter((row) => row.mirror_relationship_id === null || !shown.has(row.mirror_relationship_id));
+  const lines: RelationLine[] | undefined =
+    from.data === undefined || to.data === undefined
+      ? undefined
+      : [
+          ...outgoing.map((row) => ({ row, other: end(row.target_person_id, row.target_faction_id) })),
+          ...incoming.map((row) => ({ row, other: end(row.person_id, row.faction_id) })),
+        ].map(({ row, other }) => ({
+          id: row.id,
+          ...other,
+          kind: row.kind,
+          intensity: row.intensity,
+          colour: row.colour,
+          mirrored: row.mirror_relationship_id !== null,
+        }));
+  return <RelationList lines={lines} error={from.error ?? to.error} onRetry={() => Promise.all([from.mutate(), to.mutate()])} />;
 }
 
 /** The posts on the record (W3), pinned first. */
@@ -86,6 +159,7 @@ function Record({
   extra?: ReactNode;
 }): ReactElement {
   const words = ENTITY_KINDS[kind];
+  const can = useCapabilities();
   return (
     <>
       <PageHeader title={record?.name ?? 'Loading'} />
@@ -98,6 +172,8 @@ function Record({
         <>
           <EntityPage kind={record.kind} entry={record.entry} description={record.description} where={where} />
           {extra}
+          {can.taxonomy && <Classification world={world} type={kind} id={id} />}
+          {can.relations && (kind === 'person' || kind === 'faction') && <Relations world={world} type={kind} id={id} />}
           {canPost && <Posts type={kind} id={id} />}
           {canCarry && <Carries world={world} type={kind} id={id} />}
         </>

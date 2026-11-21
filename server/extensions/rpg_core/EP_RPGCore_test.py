@@ -411,3 +411,86 @@ class TestHooks:
         page = server.get(f"/v1/world_entity?campaign_id={secret_world['id']}", headers=_headers(person)).json()
         assert page["world_entities"] == []
         assert server.get(f"/v1/world_entity?campaign_id={secret_world['id']}&kinds=hook", headers=_headers(person)).status_code == 422
+
+
+class TestTaxonomy:
+    """W6: tags, categories, races and the rest in a tree, and statuses, on any record."""
+
+    def test_taxa_form_a_tree_with_kinds_colours_and_a_world(self, server: TestClient, person: Any, world: dict[str, Any]) -> None:
+        nobility = _create(server, person, "taxon", name="Nobility", kind="tag", colour="#a83232", campaign_id=world["id"])
+        house = _create(server, person, "taxon", name="House Vell", kind="tag", parent_id=nobility["id"], campaign_id=world["id"])
+        assert (house["parent_id"], house["campaign_id"], nobility["colour"]) == (nobility["id"], world["id"], "#a83232")
+        assert _put(server, person, "taxon", nobility, parent_id=house["id"]).status_code == 422
+        for bad in ({"kind": "flavour"}, {"colour": "red"}):
+            response = server.post("/v1/taxon", json={"taxon": {"name": "Odd", **bad}}, headers=_headers(person))
+            assert response.status_code == 422, (bad, response.text)
+        assert _put(server, person, "taxon", house, campaign_id=None).status_code == 422
+
+    def test_a_record_takes_a_taxon_once_and_loses_it_when_the_taxon_goes(self, server: TestClient, person: Any) -> None:
+        elf = _create(server, person, "taxon", name="Elf", kind="race")
+        ilse = _create(server, person, "person", name="Ilse Moonbrook")
+        _create(server, person, "entity_taxon", taxon_id=elf["id"], target_entity_type="person", target_entity_id=ilse["id"])
+        body = {"taxon_id": elf["id"], "target_entity_type": "person", "target_entity_id": ilse["id"]}
+        again = server.post("/v1/entity_taxon", json={"entity_taxon": body}, headers=_headers(person))
+        assert again.status_code == 422, again.text
+        odd = server.post("/v1/entity_taxon", json={"entity_taxon": {**body, "target_entity_type": "planet"}}, headers=_headers(person))
+        assert odd.status_code == 422, odd.text
+        current = server.get(f"/v1/taxon/{elf['id']}", headers=_headers(person))
+        gone = server.delete(f"/v1/taxon/{elf['id']}", headers=_headers(person, **{"If-Match": current.headers["ETag"]}))
+        assert gone.status_code in (200, 204), gone.text
+        left = server.get(f"/v1/entity_taxon?target_entity_id={ilse['id']}", headers=_headers(person)).json()["entity_taxons"]
+        assert left == []
+
+    def test_a_record_has_one_status_at_a_time(self, server: TestClient, person: Any) -> None:
+        alive = _create(server, person, "status", name="Alive", kind="entity_status", colour="#32a852")
+        dead = _create(server, person, "status", name="Dead", kind="entity_status")
+        bran = _create(server, person, "person", name="Bran the Old")
+        held = _create(server, person, "entity_status", status_id=alive["id"], target_entity_type="person", target_entity_id=bran["id"])
+        body = {"status_id": dead["id"], "target_entity_type": "person", "target_entity_id": bran["id"]}
+        second = server.post("/v1/entity_status", json={"entity_status": body}, headers=_headers(person))
+        assert second.status_code == 422, second.text
+        changed = _put(server, person, "entity_status", held, status_id=dead["id"])
+        assert changed.status_code == 200, changed.text
+        assert changed.json()["entity_status"]["status_id"] == dead["id"]
+
+
+class TestRelations:
+    """W5: relations between people and organisations, with attitude, colour and a mirror."""
+
+    def test_people_and_organisations_relate_with_one_end_a_side(self, server: TestClient, person: Any) -> None:
+        guard = _create(server, person, "faction", name="City Guard", kind="military")
+        thieves = _create(server, person, "faction", name="Thieves' Guild", kind="criminal")
+        vex = _create(server, person, "person", name="Vex")
+        rivalry = _create(
+            server, person, "relationship", faction_id=guard["id"], target_faction_id=thieves["id"], kind="rival", intensity=-0.8, colour="#ff0000",
+        )
+        assert (rivalry["faction_id"], rivalry["target_faction_id"], rivalry["intensity"]) == (guard["id"], thieves["id"], -0.8)
+        member = _create(server, person, "relationship", person_id=vex["id"], target_faction_id=thieves["id"], kind="member_of")
+        assert member["target_faction_id"] == thieves["id"]
+        for bad in (
+            {"person_id": vex["id"], "faction_id": guard["id"], "target_faction_id": thieves["id"]},
+            {"faction_id": guard["id"]},
+            {"faction_id": guard["id"], "target_faction_id": guard["id"]},
+            {"faction_id": guard["id"], "target_faction_id": thieves["id"], "colour": "crimson"},
+        ):
+            response = server.post("/v1/relationship", json={"relationship": {"kind": "rival", **bad}}, headers=_headers(person))
+            assert response.status_code == 422, (bad, response.text)
+
+    def test_a_mirror_reads_the_other_way_and_stays_in_step(self, server: TestClient, person: Any) -> None:
+        mira = _create(server, person, "person", name="Mira")
+        guild = _create(server, person, "faction", name="Lantern Guild", kind="guild")
+        serves = _create(server, person, "relationship", person_id=mira["id"], target_faction_id=guild["id"], kind="serves", intensity=0.5)
+        wrong = {"person_id": mira["id"], "target_faction_id": guild["id"], "kind": "serves", "mirror_relationship_id": serves["id"]}
+        assert server.post("/v1/relationship", json={"relationship": wrong}, headers=_headers(person)).status_code == 422
+        employs = _create(
+            server, person, "relationship", faction_id=guild["id"], target_person_id=mira["id"], kind="serves", intensity=0.5,
+            mirror_relationship_id=serves["id"],
+        )
+        assert server.get(f"/v1/relationship/{serves['id']}", headers=_headers(person)).json()["relationship"]["mirror_relationship_id"] == employs["id"]
+        assert _put(server, person, "relationship", serves, intensity=-0.2, colour="#123456").status_code == 200
+        mirrored = server.get(f"/v1/relationship/{employs['id']}", headers=_headers(person)).json()["relationship"]
+        assert (mirrored["intensity"], mirrored["colour"]) == (-0.2, "#123456")
+        current = server.get(f"/v1/relationship/{serves['id']}", headers=_headers(person))
+        gone = server.delete(f"/v1/relationship/{serves['id']}", headers=_headers(person, **{"If-Match": current.headers["ETag"]}))
+        assert gone.status_code in (200, 204), gone.text
+        assert server.get(f"/v1/relationship/{employs['id']}", headers=_headers(person)).status_code == 404

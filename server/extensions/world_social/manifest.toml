@@ -1,10 +1,15 @@
 name = "world_social"
 version = "0.1.0"
-description = "Organisations and families as a tree"
+description = "Organisations and families as a tree, and relations between people and organisations"
 entry_module = "EXT_WorldSocial"
 minimum_framework_version = "0.0.1"
 # Where this extension's source is offered (AGPL-3.0 section 13).
 repository = "https://github.com/JamesonRGrieve/zephyrex-rpg-wiki"
+
+# Relations widen genealogy's relationships with organisation endpoints.
+[[extension_dependencies]]
+name = "genealogy"
+optional = false
 
 [[extension_dependencies]]
 name = "acl_rbac"

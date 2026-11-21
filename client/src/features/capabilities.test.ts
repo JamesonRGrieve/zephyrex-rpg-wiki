@@ -15,6 +15,8 @@ describe('capabilitiesOf', () => {
       items: true,
       journals: true,
       hooks: true,
+      taxonomy: true,
+      relations: true,
       posts: true,
       accounts: false,
     });
@@ -30,6 +32,8 @@ describe('capabilitiesOf', () => {
       items: false,
       journals: false,
       hooks: false,
+      taxonomy: false,
+      relations: false,
       posts: false,
       accounts: false,
     });

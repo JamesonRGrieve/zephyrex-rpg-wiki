@@ -1,0 +1,11 @@
+name = "world_taxonomy"
+version = "0.1.0"
+description = "Tags, categories, races and other classifications, and statuses"
+entry_module = "EXT_WorldTaxonomy"
+minimum_framework_version = "0.0.1"
+# Where this extension's source is offered (AGPL-3.0 section 13).
+repository = "https://github.com/JamesonRGrieve/zephyrex-rpg-wiki"
+
+[[extension_dependencies]]
+name = "acl_rbac"
+optional = true

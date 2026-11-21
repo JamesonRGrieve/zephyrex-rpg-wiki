@@ -19,6 +19,8 @@ import {
   LOCATION_KINDS,
   PERSON_KINDS,
   POST_POSITIONS,
+  STATUS_KINDS,
+  TAXON_KINDS,
 } from '~/contract';
 import { type Columns, columnsOf, fieldsOf, plain } from '~/lib/columns';
 import { EntryError, parseEntry } from '~/lib/entry';
@@ -1078,4 +1080,375 @@ export const factionHooks: ResourceSpec<FactionHookRow, z.infer<typeof factionHo
     await prisma.factionHook.delete({ where: { id } });
   },
   fields: (row) => ({ ...fieldsOf(FACTION_HOOK_COLUMNS, row), ...isoOf(row) }),
+};
+
+// ---- taxon, entity_taxon, status, entity_status (W6) -----------------------------------------
+
+const colour = z
+  .string()
+  .regex(/^#[0-9a-fA-F]{6}$/, 'A colour is # and six hex digits, like #a83232')
+  .nullable();
+const targetType = z.enum(ENTITY_TYPES as [string, ...string[]]);
+const taxonParent: ParentOf = async (id) => (await prisma.taxon.findUnique({ where: { id }, select: { parentId: true } }))?.parentId ?? null;
+const liveTaxon = (where: { id: string; createdById: string }) => prisma.taxon.count({ where: { ...where, deletedAt: null } });
+const liveStatus = (where: { id: string; createdById: string }) => prisma.status.count({ where: { ...where, deletedAt: null } });
+
+const TAXON_COLUMNS: Columns = {
+  name: plain('name'),
+  description: plain('description'),
+  parent_id: plain('parentId'),
+  kind: plain('kind'),
+  colour: plain('colour'),
+  campaign_id: plain('campaignId'),
+};
+const taxonFields = {
+  name,
+  description: z.string(),
+  parent_id: reference,
+  kind: kindOf(TAXON_KINDS),
+  colour,
+  campaign_id: reference,
+};
+const taxonCreate = z.object({
+  ...taxonFields,
+  description: z.string().default(''),
+  parent_id: reference.default(null),
+  kind: kindOf(TAXON_KINDS).default(null),
+  colour: colour.default(null),
+  campaign_id: reference.default(null),
+});
+const taxonUpdate = z.object(taxonFields).partial();
+type TaxonRow = Prisma.TaxonGetPayload<object>;
+
+async function checkTaxonRefs(ownerId: string, input: Record<string, unknown>): Promise<void> {
+  await checkWorld(ownerId, input.campaign_id);
+  await checkOwned(ownerId, input.parent_id, liveTaxon, 'That taxon is not one of yours', 'parent_id');
+}
+
+export const taxa: ResourceSpec<TaxonRow, z.infer<typeof taxonCreate>, z.infer<typeof taxonUpdate>> = {
+  resource: 'taxon',
+  plural: 'taxons',
+  modelName: 'TaxonModel',
+  createSchema: taxonCreate,
+  updateSchema: taxonUpdate,
+  list: (ownerId, query) =>
+    prisma.taxon.findMany({
+      where: {
+        createdById: ownerId,
+        deletedAt: null,
+        ...filters(query, [
+          ['campaign_id', 'campaignId'],
+          ['kind', 'kind'],
+          ['parent_id', 'parentId'],
+        ]),
+      },
+      orderBy: { name: 'asc' },
+    }),
+  find: (id, ownerId) => prisma.taxon.findFirst({ where: { id, createdById: ownerId, deletedAt: null } }),
+  async insert(ownerId, input, stamp) {
+    await checkTaxonRefs(ownerId, input);
+    return prisma.taxon.create({ data: { createdById: ownerId, ...written(TAXON_COLUMNS, input, stamp) } as Prisma.TaxonUncheckedCreateInput });
+  },
+  async updateIfCurrent(id, version, input, stamp, userId) {
+    const owner = await prisma.taxon.findUnique({ where: { id }, select: { createdById: true, campaignId: true } });
+    checkWorldStays(owner?.campaignId, input.campaign_id);
+    if (owner !== null) await checkTaxonRefs(owner.createdById, input);
+    await checkNoCycle(id, input.parent_id, taxonParent, 'taxon');
+    const { count } = await prisma.taxon.updateMany({
+      where: { id, updatedAt: version },
+      data: written(TAXON_COLUMNS, input, stamp, userId) as Prisma.TaxonUncheckedUpdateManyInput,
+    });
+    return count === 0 ? null : prisma.taxon.findUnique({ where: { id } });
+  },
+  async remove(id) {
+    // Taken off every record, as on the server.
+    await prisma.$transaction([prisma.entityTaxon.deleteMany({ where: { taxonId: id } }), prisma.taxon.update({ where: { id }, data: tombstone() })]);
+  },
+  fields: (row) => fieldsOf(TAXON_COLUMNS, row),
+};
+
+const ENTITY_TAXON_COLUMNS: Columns = {
+  taxon_id: plain('taxonId'),
+  target_entity_type: plain('targetEntityType'),
+  target_entity_id: plain('targetEntityId'),
+};
+const entityTaxonCreate = z.object({ taxon_id: z.string().min(1), target_entity_type: targetType, target_entity_id: z.string().min(1) });
+const nothing = z.object({}).partial();
+type EntityTaxonRow = Prisma.EntityTaxonGetPayload<object>;
+
+export const entityTaxa: ResourceSpec<EntityTaxonRow, z.infer<typeof entityTaxonCreate>, z.infer<typeof nothing>> = {
+  resource: 'entity_taxon',
+  plural: 'entity_taxons',
+  modelName: 'EntityTaxonModel',
+  createSchema: entityTaxonCreate,
+  updateSchema: nothing,
+  list: (ownerId, query) =>
+    prisma.entityTaxon.findMany({
+      where: {
+        createdById: ownerId,
+        ...filters(query, [
+          ['taxon_id', 'taxonId'],
+          ['target_entity_type', 'targetEntityType'],
+          ['target_entity_id', 'targetEntityId'],
+        ]),
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
+  find: (id, ownerId) => prisma.entityTaxon.findFirst({ where: { id, createdById: ownerId } }),
+  async insert(ownerId, input, stamp) {
+    await checkOwned(ownerId, input.taxon_id, liveTaxon, 'That taxon is not one of yours', 'taxon_id');
+    const where = { taxonId: input.taxon_id, targetEntityType: input.target_entity_type, targetEntityId: input.target_entity_id };
+    if ((await prisma.entityTaxon.count({ where })) > 0) throw validationError('That record already has that taxon', 'taxon_id');
+    return prisma.entityTaxon.create({
+      data: { createdById: ownerId, ...written(ENTITY_TAXON_COLUMNS, input, stamp) } as Prisma.EntityTaxonUncheckedCreateInput,
+    });
+  },
+  async updateIfCurrent(id, version, input, stamp, userId) {
+    const { count } = await prisma.entityTaxon.updateMany({
+      where: { id, updatedAt: version },
+      data: written(ENTITY_TAXON_COLUMNS, input, stamp, userId) as Prisma.EntityTaxonUncheckedUpdateManyInput,
+    });
+    return count === 0 ? null : prisma.entityTaxon.findUnique({ where: { id } });
+  },
+  async remove(id) {
+    await prisma.entityTaxon.delete({ where: { id } });
+  },
+  fields: (row) => fieldsOf(ENTITY_TAXON_COLUMNS, row),
+};
+
+const STATUS_COLUMNS: Columns = {
+  name: plain('name'),
+  description: plain('description'),
+  kind: plain('kind'),
+  colour: plain('colour'),
+  campaign_id: plain('campaignId'),
+};
+const statusFields = { name, description: z.string(), kind: kindOf(STATUS_KINDS), colour, campaign_id: reference };
+const statusCreate = z.object({
+  ...statusFields,
+  description: z.string().default(''),
+  kind: kindOf(STATUS_KINDS).default(null),
+  colour: colour.default(null),
+  campaign_id: reference.default(null),
+});
+const statusUpdate = z.object(statusFields).partial();
+type StatusRow = Prisma.StatusGetPayload<object>;
+
+export const statuses: ResourceSpec<StatusRow, z.infer<typeof statusCreate>, z.infer<typeof statusUpdate>> = {
+  resource: 'status',
+  plural: 'statuses',
+  modelName: 'StatusModel',
+  createSchema: statusCreate,
+  updateSchema: statusUpdate,
+  list: (ownerId, query) =>
+    prisma.status.findMany({
+      where: {
+        createdById: ownerId,
+        deletedAt: null,
+        ...filters(query, [
+          ['campaign_id', 'campaignId'],
+          ['kind', 'kind'],
+        ]),
+      },
+      orderBy: { name: 'asc' },
+    }),
+  find: (id, ownerId) => prisma.status.findFirst({ where: { id, createdById: ownerId, deletedAt: null } }),
+  async insert(ownerId, input, stamp) {
+    await checkWorld(ownerId, input.campaign_id);
+    return prisma.status.create({ data: { createdById: ownerId, ...written(STATUS_COLUMNS, input, stamp) } as Prisma.StatusUncheckedCreateInput });
+  },
+  async updateIfCurrent(id, version, input, stamp, userId) {
+    const owner = await prisma.status.findUnique({ where: { id }, select: { createdById: true, campaignId: true } });
+    checkWorldStays(owner?.campaignId, input.campaign_id);
+    if (owner !== null) await checkWorld(owner.createdById, input.campaign_id);
+    const { count } = await prisma.status.updateMany({
+      where: { id, updatedAt: version },
+      data: written(STATUS_COLUMNS, input, stamp, userId) as Prisma.StatusUncheckedUpdateManyInput,
+    });
+    return count === 0 ? null : prisma.status.findUnique({ where: { id } });
+  },
+  async remove(id) {
+    // Cleared from every record that had it, as on the server.
+    await prisma.$transaction([prisma.entityStatus.deleteMany({ where: { statusId: id } }), prisma.status.update({ where: { id }, data: tombstone() })]);
+  },
+  fields: (row) => fieldsOf(STATUS_COLUMNS, row),
+};
+
+const ENTITY_STATUS_COLUMNS: Columns = {
+  status_id: plain('statusId'),
+  target_entity_type: plain('targetEntityType'),
+  target_entity_id: plain('targetEntityId'),
+};
+const entityStatusCreate = z.object({ status_id: z.string().min(1), target_entity_type: targetType, target_entity_id: z.string().min(1) });
+const entityStatusUpdate = z.object({ status_id: z.string().min(1) }).partial();
+type EntityStatusRow = Prisma.EntityStatusGetPayload<object>;
+
+export const entityStatuses: ResourceSpec<EntityStatusRow, z.infer<typeof entityStatusCreate>, z.infer<typeof entityStatusUpdate>> = {
+  resource: 'entity_status',
+  plural: 'entity_statuses',
+  modelName: 'EntityStatusModel',
+  createSchema: entityStatusCreate,
+  updateSchema: entityStatusUpdate,
+  list: (ownerId, query) =>
+    prisma.entityStatus.findMany({
+      where: {
+        createdById: ownerId,
+        ...filters(query, [
+          ['status_id', 'statusId'],
+          ['target_entity_type', 'targetEntityType'],
+          ['target_entity_id', 'targetEntityId'],
+        ]),
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
+  find: (id, ownerId) => prisma.entityStatus.findFirst({ where: { id, createdById: ownerId } }),
+  async insert(ownerId, input, stamp) {
+    await checkOwned(ownerId, input.status_id, liveStatus, 'That status is not one of yours', 'status_id');
+    if ((await prisma.entityStatus.count({ where: { targetEntityType: input.target_entity_type, targetEntityId: input.target_entity_id } })) > 0)
+      throw validationError('That record already has a status: change it instead', 'status_id');
+    return prisma.entityStatus.create({
+      data: { createdById: ownerId, ...written(ENTITY_STATUS_COLUMNS, input, stamp) } as Prisma.EntityStatusUncheckedCreateInput,
+    });
+  },
+  async updateIfCurrent(id, version, input, stamp, userId) {
+    const owner = await prisma.entityStatus.findUnique({ where: { id }, select: { createdById: true } });
+    if (owner !== null) await checkOwned(owner.createdById, input.status_id, liveStatus, 'That status is not one of yours', 'status_id');
+    const { count } = await prisma.entityStatus.updateMany({
+      where: { id, updatedAt: version },
+      data: written(ENTITY_STATUS_COLUMNS, input, stamp, userId) as Prisma.EntityStatusUncheckedUpdateManyInput,
+    });
+    return count === 0 ? null : prisma.entityStatus.findUnique({ where: { id } });
+  },
+  async remove(id) {
+    await prisma.entityStatus.delete({ where: { id } });
+  },
+  fields: (row) => fieldsOf(ENTITY_STATUS_COLUMNS, row),
+};
+
+// ---- relationship (W5: people and organisations, attitude, colour, mirror) --------------------
+
+const RELATION_COLUMNS: Columns = {
+  person_id: plain('personId'),
+  faction_id: plain('factionId'),
+  target_person_id: plain('targetPersonId'),
+  target_faction_id: plain('targetFactionId'),
+  kind: plain('kind'),
+  discriminator: plain('discriminator'),
+  intensity: plain('intensity'),
+  qualifier: plain('qualifier'),
+  valid_from: plain('validFrom'),
+  valid_to: plain('validTo'),
+  notes: plain('notes'),
+  colour: plain('colour'),
+  mirror_relationship_id: plain('mirrorRelationshipId'),
+};
+/** What a mirror shares with its relation; the ends are swapped, not shared (as the server's MIRRORED). */
+const MIRRORED = ['kind', 'discriminator', 'intensity', 'qualifier', 'valid_from', 'valid_to', 'notes', 'colour'] as const;
+const sharedFields = {
+  kind: z.string().nullable(),
+  discriminator: z.string().nullable(),
+  intensity: z.number().min(-1, 'Attitude is -1 to +1').max(1, 'Attitude is -1 to +1').nullable(),
+  qualifier: z.string().nullable(),
+  valid_from: z.coerce.date().nullable(),
+  valid_to: z.coerce.date().nullable(),
+  notes: z.string().nullable(),
+  colour,
+};
+const relationCreate = z.object({
+  person_id: reference.default(null),
+  faction_id: reference.default(null),
+  target_person_id: reference.default(null),
+  target_faction_id: reference.default(null),
+  kind: sharedFields.kind.default(null),
+  discriminator: sharedFields.discriminator.default(null),
+  intensity: sharedFields.intensity.default(null),
+  qualifier: sharedFields.qualifier.default(null),
+  valid_from: sharedFields.valid_from.default(null),
+  valid_to: sharedFields.valid_to.default(null),
+  notes: sharedFields.notes.default(null),
+  colour: colour.default(null),
+  mirror_relationship_id: reference.default(null),
+});
+const relationUpdate = z.object(sharedFields).partial();
+type RelationRow = Prisma.RelationshipGetPayload<object>;
+
+async function checkRelationEnds(ownerId: string, input: z.infer<typeof relationCreate>): Promise<void> {
+  const one = (a: string | null, b: string | null) => (a === null) !== (b === null);
+  if (!one(input.person_id, input.faction_id) || !one(input.target_person_id, input.target_faction_id))
+    throw validationError('Each side of a relation is one person or one organisation', 'target_person_id');
+  if (input.faction_id !== null && input.faction_id === input.target_faction_id)
+    throw validationError('A relation needs two different organisations', 'target_faction_id');
+  for (const [field, value] of [
+    ['person_id', input.person_id],
+    ['target_person_id', input.target_person_id],
+  ] as const)
+    await checkOwned(ownerId, value, livePerson, 'That person is not one of yours', field);
+  for (const [field, value] of [
+    ['faction_id', input.faction_id],
+    ['target_faction_id', input.target_faction_id],
+  ] as const)
+    await checkOwned(ownerId, value, liveFaction, 'That organisation is not one of yours', field);
+  if (input.mirror_relationship_id === null) return;
+  const other = await prisma.relationship.findFirst({ where: { id: input.mirror_relationship_id, createdById: ownerId } });
+  if (other === null) throw validationError('That mirror relation is not one of yours', 'mirror_relationship_id');
+  const swapped =
+    other.personId === input.target_person_id &&
+    other.targetPersonId === input.person_id &&
+    other.factionId === input.target_faction_id &&
+    other.targetFactionId === input.faction_id;
+  if (!swapped) throw validationError('A mirror has the same two ends, the other way round', 'mirror_relationship_id');
+  if (other.mirrorRelationshipId !== null) throw validationError('That relation already has a mirror', 'mirror_relationship_id');
+}
+
+export const relationships: ResourceSpec<RelationRow, z.infer<typeof relationCreate>, z.infer<typeof relationUpdate>> = {
+  resource: 'relationship',
+  plural: 'relationships',
+  modelName: 'RelationshipModel',
+  createSchema: relationCreate,
+  updateSchema: relationUpdate,
+  list: (ownerId, query) =>
+    prisma.relationship.findMany({
+      where: {
+        createdById: ownerId,
+        ...filters(query, [
+          ['person_id', 'personId'],
+          ['faction_id', 'factionId'],
+          ['target_person_id', 'targetPersonId'],
+          ['target_faction_id', 'targetFactionId'],
+          ['kind', 'kind'],
+        ]),
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
+  find: (id, ownerId) => prisma.relationship.findFirst({ where: { id, createdById: ownerId } }),
+  async insert(ownerId, input, stamp) {
+    await checkRelationEnds(ownerId, input);
+    const row = await prisma.relationship.create({
+      data: { createdById: ownerId, ...written(RELATION_COLUMNS, input, stamp) } as Prisma.RelationshipUncheckedCreateInput,
+    });
+    if (input.mirror_relationship_id !== null)
+      await prisma.relationship.update({ where: { id: input.mirror_relationship_id }, data: { mirrorRelationshipId: row.id, updatedAt: stamp } });
+    return row;
+  },
+  async updateIfCurrent(id, version, input, stamp, userId) {
+    const data = written(RELATION_COLUMNS, input, stamp, userId) as Prisma.RelationshipUncheckedUpdateManyInput;
+    const { count } = await prisma.relationship.updateMany({ where: { id, updatedAt: version }, data });
+    if (count === 0) return null;
+    const row = await prisma.relationship.findUnique({ where: { id } });
+    if (row?.mirrorRelationshipId) {
+      const shared = Object.fromEntries(MIRRORED.filter((field) => field in input).map((field) => [field, input[field]]));
+      if (Object.keys(shared).length > 0)
+        await prisma.relationship.update({ where: { id: row.mirrorRelationshipId }, data: written(RELATION_COLUMNS, shared, stamp, userId) });
+    }
+    return row;
+  },
+  async remove(id) {
+    // A relation takes its mirror with it, as on the server.
+    await prisma.relationship.deleteMany({ where: { OR: [{ id }, { mirrorRelationshipId: id }] } });
+  },
+  fields: (row) => ({
+    ...fieldsOf(RELATION_COLUMNS, row),
+    valid_from: row.validFrom?.toISOString() ?? null,
+    valid_to: row.validTo?.toISOString() ?? null,
+  }),
 };

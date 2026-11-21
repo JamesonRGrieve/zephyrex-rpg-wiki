@@ -12,7 +12,18 @@
 import useSWR, { type SWRResponse, useSWRConfig } from 'swr';
 import { useClient } from 'zephyrex';
 import { z } from 'zod';
-import { ENTITY_TYPES, FACTION_KINDS, HOOK_KINDS, ITEM_KINDS, JOURNAL_KINDS, LOCATION_KINDS, PERSON_KINDS, POST_POSITIONS } from '~/contract';
+import {
+  ENTITY_TYPES,
+  FACTION_KINDS,
+  HOOK_KINDS,
+  ITEM_KINDS,
+  JOURNAL_KINDS,
+  LOCATION_KINDS,
+  PERSON_KINDS,
+  POST_POSITIONS,
+  STATUS_KINDS,
+  TAXON_KINDS,
+} from '~/contract';
 
 const JSON_BODY = z.json();
 
@@ -161,6 +172,50 @@ export type PersonHook = z.infer<typeof personHookSchema>;
 export const factionHookSchema = z.object({ ...versioned, faction_id: z.string(), ...progress });
 export type FactionHook = z.infer<typeof factionHookSchema>;
 
+export const taxonSchema = z.object({
+  ...versioned,
+  name: z.string(),
+  description: z.string().nullable(),
+  parent_id: z.string().nullable(),
+  kind: kindIn(TAXON_KINDS),
+  colour: z.string().nullable(),
+  campaign_id: z.string().nullable(),
+});
+export type Taxon = z.infer<typeof taxonSchema>;
+
+const target = { target_entity_type: z.enum(ENTITY_TYPES as [string, ...string[]]), target_entity_id: z.string() };
+export const entityTaxonSchema = z.object({ ...versioned, taxon_id: z.string(), ...target });
+export type EntityTaxon = z.infer<typeof entityTaxonSchema>;
+
+export const statusSchema = z.object({
+  ...versioned,
+  name: z.string(),
+  description: z.string().nullable(),
+  kind: kindIn(STATUS_KINDS),
+  colour: z.string().nullable(),
+  campaign_id: z.string().nullable(),
+});
+export type Status = z.infer<typeof statusSchema>;
+
+export const entityStatusSchema = z.object({ ...versioned, status_id: z.string(), ...target });
+export type EntityStatus = z.infer<typeof entityStatusSchema>;
+
+export const relationshipSchema = z.object({
+  ...versioned,
+  person_id: z.string().nullable(),
+  faction_id: z.string().nullable(),
+  target_person_id: z.string().nullable(),
+  target_faction_id: z.string().nullable(),
+  kind: z.string().nullable(),
+  discriminator: z.string().nullable(),
+  intensity: z.number().nullable(),
+  qualifier: z.string().nullable(),
+  notes: z.string().nullable(),
+  colour: z.string().nullable(),
+  mirror_relationship_id: z.string().nullable(),
+});
+export type Relationship = z.infer<typeof relationshipSchema>;
+
 type Versioned = { id: string; created_at: string; updated_at: string | null };
 /** What a write may set: a record's own fields (and, for write-only fields, `Extra`). */
 export type Fields<T extends Versioned, Extra = object> = Partial<Omit<T, keyof Versioned>> & Extra;
@@ -284,3 +339,16 @@ export const factionHooks = resource<FactionHook, Pick<FactionHook, 'faction_id'
   'faction_hooks',
   factionHookSchema,
 );
+export const taxa = resource<Taxon, Fields<Taxon> & { name: string }>('taxon', 'taxons', taxonSchema);
+export const entityTaxa = resource<EntityTaxon, Pick<EntityTaxon, 'taxon_id' | 'target_entity_type' | 'target_entity_id'>>(
+  'entity_taxon',
+  'entity_taxons',
+  entityTaxonSchema,
+);
+export const statuses = resource<Status, Fields<Status> & { name: string }>('status', 'statuses', statusSchema);
+export const entityStatuses = resource<EntityStatus, Pick<EntityStatus, 'status_id' | 'target_entity_type' | 'target_entity_id'>>(
+  'entity_status',
+  'entity_statuses',
+  entityStatusSchema,
+);
+export const relationships = resource<Relationship, Fields<Relationship>>('relationship', 'relationships', relationshipSchema);

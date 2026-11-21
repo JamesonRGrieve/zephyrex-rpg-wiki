@@ -177,7 +177,12 @@ first-class. A parchment-warm light theme is the default for reading.
   model, so the framework gives it a real foreign key. (OBJECT_PLAN's §3 and §7 otherwise made
   `world_spatial` and `rpg_core` depend on each other.)
 - **Per-entity property values (W4)** live in the framework's `metadata` key-value store, keyed by
-  `target_entity_type` and `target_entity_id`. Property kits (`world_taxonomy`) are the templates.
+  `target_entity_type` and `target_entity_id` (a polymorphic target the framework gains for this;
+  operator, 2026-11-21). Property kits (`world_taxonomy`) are the templates.
+- **Tags (W6) are `world_taxonomy`'s own taxa**, not the framework's `meta_labels` (flat kebab ids
+  with no kind or campaign); Kanka's tags are display names in a tree.
+- **Relations (W5) are genealogy's relationships**, widened by `world_social` with organisation
+  endpoints, a colour and a mirror; attitude is genealogy's `intensity` (-1 to +1).
 - **An entry is a Plate value** (decision 16), stored as JSON text, with its plain-text copy kept as
   the record's `description` for search. Both back ends derive it by one rule, held to
   `contract/entry-text-cases.json`. An `@` mention is an inline node carrying
@@ -191,6 +196,16 @@ first-class. A parchment-warm light theme is the default for reading.
   `campaign_id` away from a world is refused (422); moving is copy and delete.
 - **Every wiki extension ships its own Alembic migrations**, and rpg_core's adds its injected
   columns to other extensions' tables with real foreign keys.
+
+### Database-level guarantees
+
+What the database enforces, and what only the BLL does (a 422) until it can:
+
+- Unique pairs are unique indexes: a taxon once per record, one status per record, one progress
+  row per actor and hook, one hook dependency per pair.
+- One endpoint a side on a relation (a person or an organisation, never both) is the BLL's rule
+  only. The CHECK waits for genealogy's existing rows to be cleaned: a row with neither person end
+  would fail it, and SQLite adds a CHECK by rebuilding the table (Zephyrex RPG, 2026-11-21).
 
 ## Campaigns, frames and scenarios
 
@@ -224,8 +239,9 @@ records.
 | S2b | rpg-ai A15: world_entities (a world's changes since a time, tombstones included), the summary rule, a record's world fixed once set, lite soft delete | Done, on the framework's changes() (a4d6a3ec); committed with S3 |
 | S3 | Journals, notes, lore and session reports (`world_narrative`; rpg-ai A24's session_report and session_report_get), posts (`entity_posts`, W3) | Done: both editions, server 51/51 and client checks on 58137; committed with S2b |
 | S3b | The plot-hook DAG in `world_narrative` (hooks, hook_dependencies with a cycle guard, person_hooks, faction_hooks; OBJECT_PLAN §6, moved from vtt's rpg_state), rpg_core's campaign on hooks; hooks kept out of world_entities (GM secrets until W9) | Done: both editions, server 57/57 and client checks on 58137 |
-| S2c | Pictures: the framework's media extension (assets, attachments with role primary_image) on any record; world_entities.picture (rpg-ai A31) | Waits on the framework's new attachments extension (operator's choice, 2026-11-21) |
-| S4 | Tags, statuses, categories (W6), property kits and values (W4), templates (W7), relations (W5) | Not started |
+| S4a | Tags, categories, races and statuses (`world_taxonomy`, W6); relations between people and organisations with attitude, colour and mirror (`world_social` on genealogy's relationships, W5) | Done in both editions; server 61/62 on 58137, the one red waiting on the framework's status/statuses fix |
+| S4b | Property kits and values (W4, on the framework's metadata with a polymorphic target), templates (W7) | Waits on that framework change |
+| S2c | Pictures: the framework's new attachments extension (an asset over storage, a polymorphic attachment with role primary_image) on any record; world_entities.picture (rpg-ai A31) | Waits on the framework's new attachments extension (operator's choice, 2026-11-21) |
 | S5 | Cross-kind search, the mention editor (W2), Kanka import | Not started |
 
 ## Phases

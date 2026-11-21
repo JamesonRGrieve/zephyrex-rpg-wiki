@@ -80,6 +80,23 @@
     "hint",
     "background"
   ],
+  "taxon_kinds": [
+    "tag",
+    "category",
+    "race",
+    "species",
+    "creature_type",
+    "culture",
+    "ethnicity",
+    "language_family",
+    "religion",
+    "condition_type",
+    "material_type"
+  ],
+  "status_kinds": [
+    "entity_status",
+    "quest_status"
+  ],
   "entity_types": [
     "person",
     "location",

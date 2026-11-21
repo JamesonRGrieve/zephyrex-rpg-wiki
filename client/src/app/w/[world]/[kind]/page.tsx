@@ -79,6 +79,11 @@ export default function WorldKindPage(): ReactElement {
             {one.title}
           </Link>
         ))}
+        {can.taxonomy && (
+          <Link href={`/w/${params.world}/taxonomy`} className='underline-offset-4 hover:underline'>
+            Taxonomy
+          </Link>
+        )}
       </nav>
       {!can.loaded ? (
         <SkeletonRows rows={3} label='Loading' />
