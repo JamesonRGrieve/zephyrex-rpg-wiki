@@ -1,0 +1,462 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""The import itself, in two passes over the notes.
+
+1. Each note's record, found in its scope by name (or by the vault path it was imported from) or
+   created: a note with ``campaign: X`` belongs to campaign X (made in ``--setting`` when missing);
+   one with ``setting_wide: true`` is that setting's canon (no campaign). Identity is per campaign
+   by name (operator, 2026-11-21).
+2. What each record says once every record exists: its entry (the Markdown, [[links]] as mentions),
+   its parent or place, a journal's session, its tags, race and status, a person's organisation and
+   dispositions, a hook's prerequisites, an item's holder, and the rest as properties.
+
+Everything goes through the wiki's API, so its rules hold (a cycle, a wrong setting, an unknown
+kind are refused and reported). A value already as the vault says is left alone, so a second run
+changes nothing.
+"""
+
+import json
+from dataclasses import dataclass, field
+from datetime import date, datetime, timezone
+from typing import Any, Callable, Optional
+
+from vault_import.api import Api, ApiError
+from vault_import.markdown import to_plate
+from vault_import.notes import ENTITY_TYPES, Note, link_name
+
+VAULT_PATH = "vault_path"
+# Frontmatter kept as a record's properties: key in the vault → (property key, value type).
+PROPERTIES: dict[str, tuple[str, str]] = {
+    "gender": ("Gender", "text"),
+    "age": ("Age", "text"),
+    "role": ("Role", "text"),
+    "player": ("Player", "text"),
+    "in_world_days": ("In-world days", "text"),
+}
+# Handled elsewhere, or the note's identity; anything else in frontmatter is reported as unread.
+READ = {
+    "entity_type", "kind", "name", "campaign", "setting_wide", "is_private", "tags", "aliases", "status",
+    "race", "faction", "location", "relations", "parent_location", "parent", "parent_hook", "depends_on",
+    "holder", "quantity", "session_number", "session_date", "maps", *PROPERTIES,
+}
+STATUS_KIND = {"hook": "quest_status"}
+
+
+@dataclass
+class Report:
+    created: list[str] = field(default_factory=list)
+    updated: list[str] = field(default_factory=list)
+    unchanged: list[str] = field(default_factory=list)
+    skipped: list[tuple[str, str]] = field(default_factory=list)
+    refused: list[tuple[str, str]] = field(default_factory=list)
+    unresolved: dict[str, list[str]] = field(default_factory=dict)
+    unread: dict[str, list[str]] = field(default_factory=dict)
+
+    def text(self, dry_run: bool) -> str:
+        made = "would create" if dry_run else "created"
+        lines = [
+            f"{made}: {len(self.created)}, updated: {len(self.updated)}, unchanged: {len(self.unchanged)}, "
+            f"skipped: {len(self.skipped)}, refused: {len(self.refused)}, notes with unresolved links: {len(self.unresolved)}"
+        ]
+        lines += [f"  skipped {path}: {why}" for path, why in self.skipped]
+        lines += [f"  refused {path}: {why}" for path, why in self.refused]
+        lines += [f"  unresolved in {path}: {', '.join(sorted(set(names)))}" for path, names in sorted(self.unresolved.items())]
+        lines += [f"  unread in {path}: {', '.join(keys)}" for path, keys in sorted(self.unread.items())]
+        return "\n".join(lines)
+
+
+@dataclass
+class Placed:
+    """A note's record: where it lives and what it is."""
+
+    note: Note
+    kind: str
+    scope: dict[str, Optional[str]]
+    record: dict[str, Any]
+
+
+def _text(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _instant(value: Any) -> Optional[datetime]:
+    """A stamp as an instant in UTC, however it was written (the server answers without a zone)."""
+    if not value:
+        return None
+    moment = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    return moment.astimezone(timezone.utc) if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+
+def _aliases_of(row: dict[str, Any]) -> list[str]:
+    try:
+        loaded = json.loads(row.get("aliases") or "[]")
+    except json.JSONDecodeError:
+        return []
+    return [str(one) for one in loaded] if isinstance(loaded, list) else []
+
+
+def _list(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    return value if isinstance(value, list) else [value]
+
+
+class Importer:
+    def __init__(self, api: Api, setting_slug: Optional[str] = None, dry_run: bool = False, log: Callable[[str], None] = print) -> None:
+        self.api = api
+        self.setting_slug = setting_slug
+        self.dry_run = dry_run
+        self.log = log
+        self.report = Report()
+        self.setting_id: Optional[str] = None
+        self.campaigns: dict[str, str] = {}
+        # Per scope key ("campaign:<id>" or "setting:<id>"): name → (kind, record).
+        self.names: dict[str, dict[str, tuple[str, dict[str, Any]]]] = {}
+        self._taxa: dict[tuple[str, str, str], str] = {}
+        self._statuses: dict[tuple[str, str, str], str] = {}
+        self._fresh = 0
+        self._aliases: dict[str, list[tuple[str, tuple[str, dict[str, Any]]]]] = {}
+
+    # ---- scope -----------------------------------------------------------------------------
+
+    def _setting(self) -> str:
+        if self.setting_id is None:
+            if not self.setting_slug:
+                raise ValueError("Name the setting these campaigns belong to: --setting <slug>")
+            found = [one for one in self.api.list("setting") if one.get("slug") == self.setting_slug]
+            if not found:
+                raise ValueError(f"No setting has the slug {self.setting_slug!r}")
+            self.setting_id = str(found[0]["id"])
+        return self.setting_id
+
+    def _campaign(self, name: str) -> str:
+        if not self.campaigns:
+            self.campaigns = {str(one["name"]): str(one["id"]) for one in self.api.list("campaign")}
+        if name not in self.campaigns:
+            if self.dry_run:
+                self.campaigns[name] = self._placeholder()
+            else:
+                made = self.api.create("campaign", name=name, setting_id=self._setting() if self.setting_slug else None)
+                self.campaigns[name] = str(made["id"])
+            self.report.created.append(f"campaign {name}")
+        return self.campaigns[name]
+
+    def _scope(self, note: Note) -> Optional[dict[str, Optional[str]]]:
+        campaign = _text(note.meta.get("campaign"))
+        if note.meta.get("setting_wide") is True:
+            return {"campaign_id": None, "setting_id": self._setting()}
+        if campaign is None:
+            return None
+        return {"campaign_id": self._campaign(campaign), "setting_id": self._setting() if self.setting_slug else None}
+
+    @staticmethod
+    def _key(scope: dict[str, Optional[str]]) -> str:
+        return f"campaign:{scope['campaign_id']}" if scope["campaign_id"] else f"setting:{scope['setting_id']}"
+
+    def _index(self, scope: dict[str, Optional[str]]) -> dict[str, tuple[str, dict[str, Any]]]:
+        key = self._key(scope)
+        if key not in self.names:
+            names: dict[str, tuple[str, dict[str, Any]]] = {}
+            self._aliases[key] = []
+            if not str(scope["campaign_id"] or "").startswith("(new"):
+                filters = {"campaign_id": scope["campaign_id"]} if scope["campaign_id"] else {"setting_id": scope["setting_id"]}
+                for kind in ENTITY_TYPES:
+                    for row in self.api.list(kind, **filters):
+                        if scope["campaign_id"] or row.get("campaign_id") is None:
+                            names.setdefault(str(row["name"]), (kind, row))
+                            self._aliases[key].extend((alias, (kind, row)) for alias in _aliases_of(row))
+            self.names[key] = names
+        return self.names[key]
+
+    def _alias_index(self, scope: dict[str, Optional[str]]) -> dict[str, tuple[str, dict[str, Any]]]:
+        """The scope's records by the other names they go by (S4c), after their own names."""
+        self._index(scope)
+        return dict(reversed(self._aliases[self._key(scope)]))
+
+    def _placeholder(self) -> str:
+        self._fresh += 1
+        return f"(new {self._fresh})"
+
+    def _resolver(self, scope: dict[str, Optional[str]]) -> Callable[[str], Optional[tuple[str, str]]]:
+        """A link's target: by name in the note's campaign, then in its setting's canon."""
+        own = self._index(scope)
+        canon = self._index({"campaign_id": None, "setting_id": scope["setting_id"]}) if scope["campaign_id"] and scope["setting_id"] else {}
+
+        aliases = self._alias_index(scope)
+        canon_aliases = self._alias_index({"campaign_id": None, "setting_id": scope["setting_id"]}) if canon else {}
+
+        def resolve(name: str) -> Optional[tuple[str, str]]:
+            found = own.get(name) or aliases.get(name) or canon.get(name) or canon_aliases.get(name)
+            return None if found is None else (found[0], str(found[1]["id"]))
+
+        return resolve
+
+    # ---- pass 1 ----------------------------------------------------------------------------
+
+    def _place(self, note: Note) -> Optional[Placed]:
+        kind = note.entity_type
+        if kind not in ENTITY_TYPES:
+            self.report.skipped.append((note.path, f"entity_type {kind!r} isn't one of {', '.join(ENTITY_TYPES)}"))
+            return None
+        scope = self._scope(note)
+        if scope is None:
+            self.report.skipped.append((note.path, "no campaign: and not setting_wide: true"))
+            return None
+        names = self._index(scope)
+        held = names.get(note.name)
+        placed_aliases = [str(one).strip() for one in _list(note.meta.get("aliases")) if _text(one)]
+        if held is not None and held[0] == kind:
+            self._aliases[self._key(scope)].extend((alias, (kind, held[1])) for alias in placed_aliases)
+            return Placed(note, kind, scope, held[1])
+        if held is not None:
+            self.report.refused.append((note.path, f"{note.name!r} is already a {held[0]} in this campaign"))
+            return None
+        fields = {"name": note.name, "kind": _text(note.meta.get("kind")), **scope}
+        if self.dry_run:
+            record: dict[str, Any] = {"id": self._placeholder(), **fields}
+        else:
+            record = self.api.create(kind, **fields)
+            self._property(kind, str(record["id"]), VAULT_PATH, note.path, private=True)
+        names[note.name] = (kind, record)
+        self._aliases[self._key(scope)].extend((alias, (kind, record)) for alias in placed_aliases)
+        self.report.created.append(f"{kind} {note.name}")
+        return Placed(note, kind, scope, record)
+
+    # ---- pass 2 ----------------------------------------------------------------------------
+
+    def _property(self, kind: str, record_id: str, key: str, value: str, value_type: str = "text", private: bool = False) -> bool:
+        """Sets a property; True when it changed something."""
+        if self.dry_run or record_id.startswith("(new"):
+            return False
+        held = {row["key"]: row for row in self.api.properties(kind, record_id)}
+        if key not in held:
+            self.api.add_property(kind, record_id, key, value, value_type, private)
+            return True
+        if held[key].get("value") != value:
+            self.api.change_property(held[key], value)
+            return True
+        return False
+
+    def _taxon(self, scope: dict[str, Optional[str]], name: str, kind: str) -> str:
+        key = (self._key(scope), kind, name)
+        if key not in self._taxa:
+            found = [one for one in self.api.list("taxon", **{k: v for k, v in scope.items() if v}) if one["name"] == name and one.get("kind") == kind]
+            self._taxa[key] = str(found[0]["id"]) if found else str(self.api.create("taxon", name=name, kind=kind, **scope)["id"])
+        return self._taxa[key]
+
+    def _status(self, scope: dict[str, Optional[str]], name: str, kind: str) -> str:
+        key = (self._key(scope), kind, name)
+        if key not in self._statuses:
+            found = [one for one in self.api.list("status", **{k: v for k, v in scope.items() if v}) if one["name"] == name and one.get("kind") == kind]
+            self._statuses[key] = str(found[0]["id"]) if found else str(self.api.create("status", name=name, kind=kind, **scope)["id"])
+        return self._statuses[key]
+
+    def _fields(self, placed: Placed, resolve: Callable[[str], Optional[tuple[str, str]]]) -> dict[str, Any]:
+        """The record's own fields as the note gives them."""
+        meta, kind = placed.note.meta, placed.kind
+        unresolved: list[str] = []
+        fields: dict[str, Any] = {"entry": to_plate(placed.note.body, resolve, unresolved)}
+        aliases = [str(one).strip() for one in _list(meta.get("aliases")) if _text(one)]
+        if aliases:
+            # S4c: other names the record goes by, which link resolution and the AI's lorebook use.
+            fields["aliases"] = aliases
+        if unresolved:
+            self.report.unresolved[placed.note.path] = unresolved
+
+        def ref(key: str, want: str) -> Optional[str]:
+            name = link_name(meta.get(key))
+            target = resolve(name) if name else None
+            if name and (target is None or target[0] != want):
+                self.report.unresolved.setdefault(placed.note.path, []).append(name)
+                return None
+            return target[1] if target else None
+
+        if kind == "location":
+            fields["parent_id"] = ref("parent_location", "location")
+        elif kind == "faction":
+            fields["parent_id"] = ref("parent", "faction")
+        elif kind == "person":
+            fields["location_id"] = ref("location", "location")
+        elif kind == "journal":
+            if meta.get("session_number") is not None:
+                fields["session_number"] = int(meta["session_number"])
+            when = meta.get("session_date")
+            if isinstance(when, (date, datetime)):
+                fields["occurred_at"] = datetime(when.year, when.month, when.day, tzinfo=timezone.utc).isoformat()
+        elif kind == "hook" and _text(meta.get("status")) == "resolved" and not placed.record.get("resolved_at"):
+            fields["resolved_at"] = datetime.now(timezone.utc).isoformat()
+        return fields
+
+    def _changed(self, placed: Placed, fields: dict[str, Any]) -> dict[str, Any]:
+        record = placed.record
+        changed: dict[str, Any] = {}
+        for name, value in fields.items():
+            if name in ("entry", "aliases"):
+                held = record.get(name)
+                if (json.loads(held) if isinstance(held, str) and held else None) != value:
+                    changed[name] = value
+            elif name in ("occurred_at", "resolved_at"):
+                if value is not None and _instant(record.get(name)) != _instant(value):
+                    changed[name] = value
+            elif value is not None and record.get(name) != value:
+                changed[name] = value
+        return changed
+
+    def _links(self, placed: Placed, resolve: Callable[[str], Optional[tuple[str, str]]]) -> bool:
+        """Tags, race, status, organisation, dispositions, prerequisites, holder and properties."""
+        meta, kind, scope = placed.note.meta, placed.kind, placed.scope
+        record_id = str(placed.record["id"])
+        changed = self._property(kind, record_id, VAULT_PATH, placed.note.path, private=True)
+        for key, (label, value_type) in PROPERTIES.items():
+            value = _text(meta.get(key))
+            if value is not None:
+                changed |= self._property(kind, record_id, label, value, value_type)
+        if meta.get("is_private") is True:
+            changed |= self._property(kind, record_id, "GM only", "true", "boolean", private=True)
+        if self.dry_run or record_id.startswith("(new"):
+            return changed
+        tagged = {one["taxon_id"] for one in self.api.list("entity_taxon", target_entity_type=kind, target_entity_id=record_id)}
+        wanted = [(str(tag), "tag") for tag in _list(meta.get("tags")) if _text(tag) and str(tag) != kind]
+        if _text(meta.get("race")):
+            wanted.append((str(meta["race"]).strip(), "race"))
+        for name, taxon_kind in wanted:
+            taxon = self._taxon(scope, name, taxon_kind)
+            if taxon not in tagged:
+                self.api.create("entity_taxon", taxon_id=taxon, target_entity_type=kind, target_entity_id=record_id)
+                tagged.add(taxon)
+                changed = True
+        status = _text(meta.get("status"))
+        if status is not None:
+            wanted_status = self._status(scope, status, STATUS_KIND.get(kind, "entity_status"))
+            held = self.api.list("entity_status", target_entity_type=kind, target_entity_id=record_id)
+            if not held:
+                self.api.create("entity_status", status_id=wanted_status, target_entity_type=kind, target_entity_id=record_id)
+                changed = True
+            elif held[0]["status_id"] != wanted_status:
+                self.api.update("entity_status", str(held[0]["id"]), status_id=wanted_status)
+                changed = True
+        if kind == "person":
+            changed |= self._person_links(placed, resolve)
+        elif kind == "hook":
+            changed |= self._hook_links(placed, resolve)
+        elif kind == "item":
+            changed |= self._holder(placed, resolve)
+        return changed
+
+    def _person_links(self, placed: Placed, resolve: Callable[[str], Optional[tuple[str, str]]]) -> bool:
+        meta, record_id, changed = placed.note.meta, str(placed.record["id"]), False
+        for name in [link_name(one) for one in _list(meta.get("faction"))]:
+            target = resolve(name) if name else None
+            if target is None or target[0] != "faction":
+                if name:
+                    self.report.unresolved.setdefault(placed.note.path, []).append(name)
+                continue
+            members = self.api.list("relationship", person_id=record_id, target_faction_id=target[1])
+            if not members:
+                self.api.create("relationship", person_id=record_id, target_faction_id=target[1], kind="member")
+                changed = True
+        held = self.api.list("disposition", person_id=record_id)
+        for relation in _list(meta.get("relations")):
+            if not isinstance(relation, dict):
+                continue
+            name = link_name(relation.get("target"))
+            target = resolve(name) if name else None
+            if target is None or target[0] not in ("person", "faction"):
+                if name:
+                    self.report.unresolved.setdefault(placed.note.path, []).append(name)
+                continue
+            target_key = "target_person_id" if target[0] == "person" else "target_faction_id"
+            if any(one.get(target_key) == target[1] and one.get("is_default") for one in held):
+                continue
+            try:
+                self.api.create(
+                    "disposition",
+                    person_id=record_id,
+                    target_kind=target[0],
+                    **{target_key: target[1]},
+                    attitude=_text(relation.get("attitude")) or "neutral",
+                    note=_text(relation.get("note")),
+                    is_default=True,
+                )
+                changed = True
+            except ApiError as error:
+                self.report.refused.append((placed.note.path, f"disposition toward {name}: {error.detail}"))
+        return changed
+
+    def _hook_links(self, placed: Placed, resolve: Callable[[str], Optional[tuple[str, str]]]) -> bool:
+        """A hook waits on what it depends on; a quest waits on the objectives that name it as parent."""
+        meta, record_id, changed = placed.note.meta, str(placed.record["id"]), False
+        edges = [(link_name(one), "prerequisite") for one in _list(meta.get("depends_on"))]
+        edges.append((link_name(meta.get("parent_hook")), "parent"))
+        for name, role in edges:
+            target = resolve(name) if name else None
+            if target is None or target[0] != "hook":
+                if name:
+                    self.report.unresolved.setdefault(placed.note.path, []).append(name)
+                continue
+            parent, child = (target[1], record_id) if role == "prerequisite" else (record_id, target[1])
+            if not self.api.list("hook_dependency", parent_hook_id=parent, child_hook_id=child):
+                try:
+                    self.api.create("hook_dependency", parent_hook_id=parent, child_hook_id=child)
+                    changed = True
+                except ApiError as error:
+                    self.report.refused.append((placed.note.path, f"{role} {name}: {error.detail}"))
+        return changed
+
+    def _holder(self, placed: Placed, resolve: Callable[[str], Optional[tuple[str, str]]]) -> bool:
+        meta, record_id = placed.note.meta, str(placed.record["id"])
+        name = link_name(meta.get("holder"))
+        target = resolve(name) if name else None
+        if target is None:
+            if name:
+                self.report.unresolved.setdefault(placed.note.path, []).append(name)
+            return False
+        quantity = int(meta.get("quantity") or 1)
+        instances = {str(one["id"]) for one in self.api.list("item_instance", item_id=record_id)}
+        held = [one for one in self.api.list("entity_inventory", target_entity_type=target[0], target_entity_id=target[1]) if one.get("item_instance_id") in instances]
+        if held:
+            if held[0].get("quantity") != quantity:
+                self.api.update("entity_inventory", str(held[0]["id"]), quantity=quantity)
+                return True
+            return False
+        owner = target[1] if target[0] == "person" else None
+        instance = self.api.create("item_instance", item_id=record_id, owner_person_id=owner, quantity=quantity)
+        self.api.create("entity_inventory", item_instance_id=str(instance["id"]), target_entity_type=target[0], target_entity_id=target[1], quantity=quantity)
+        return True
+
+    # ---- the run ---------------------------------------------------------------------------
+
+    def run(self, notes: list[Note]) -> Report:
+        placed: list[Placed] = []
+        for note in notes:
+            for problem in note.problems:
+                self.report.skipped.append((note.path, problem))
+            if note.problems:
+                continue
+            unread = sorted(key for key in note.meta if key not in READ)
+            if unread:
+                self.report.unread[note.path] = unread
+            try:
+                found = self._place(note)
+            except ApiError as error:
+                self.report.refused.append((note.path, str(error.detail)))
+                continue
+            if found is not None:
+                placed.append(found)
+        created = {f"{one.kind} {one.note.name}" for one in placed}
+        newly = set(self.report.created)
+        for one in placed:
+            label = f"{one.kind} {one.note.name}"
+            try:
+                resolve = self._resolver(one.scope)
+                fields = self._changed(one, self._fields(one, resolve))
+                if fields and not self.dry_run and not str(one.record["id"]).startswith("(new"):
+                    one.record = self.api.update(one.kind, str(one.record["id"]), **fields)
+                linked = self._links(one, resolve)
+                if label not in newly and label in created:
+                    (self.report.updated if (fields or linked) else self.report.unchanged).append(label)
+            except ApiError as error:
+                self.report.refused.append((one.note.path, str(error.detail)))
+        return self.report
