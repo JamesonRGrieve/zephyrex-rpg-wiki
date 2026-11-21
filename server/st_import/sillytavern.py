@@ -171,6 +171,14 @@ def _talkativeness(value: Any) -> Any:
         return None
 
 
+def avatar_url_of(card: Card) -> Optional[str]:
+    """A V3 card's icon asset when it's an https link (its other forms are the card's own image)."""
+    for asset in card.data.get("assets") or []:
+        if isinstance(asset, dict) and asset.get("type") == "icon" and str(asset.get("uri") or "").startswith("https://"):
+            return str(asset["uri"])
+    return None
+
+
 def voice_of(card: Card) -> dict[str, Any]:
     """A card's personality, first message and example lines (split at <START>), its system prompt,
     post-history instructions, Character's Note (extensions.depth_prompt) and talkativeness;

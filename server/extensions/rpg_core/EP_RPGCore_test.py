@@ -942,3 +942,21 @@ class TestPlayStyles:
         current = server.get(f"/v1/taxon/{mystery['id']}", headers=_headers(person))
         changed = server.put(f"/v1/taxon/{mystery['id']}", json={"taxon": {"name": "whodunit"}}, headers=_headers(person, **{"If-Match": current.headers["ETag"]}))
         assert changed.status_code == 404, changed.text
+
+
+class TestPictureLinks:
+    """A record's picture by https link (fandom, wikis…), before an uploaded one, cleared with ""."""
+
+    def test_a_linked_picture_is_the_records_and_can_be_cleared(self, server: TestClient, person: Any) -> None:
+        campaign = _create(server, person, "campaign", name="Linked")
+        link = "https://static.wikia.nocookie.net/warhammer40k/images/a/a1/Inquisitor.jpg"
+        ilsa = _create(server, person, "person", name="Ilsa", kind="npc", campaign_id=campaign["id"], picture_url=f" {link} ")
+        assert ilsa["picture_url"] == link
+        synced = server.get(f"/v1/world_entity?ids={ilsa['id']}", headers=_headers(person)).json()["world_entities"]
+        assert synced[0]["picture"] == link
+        for bad in ("http://example.com/a.png", "javascript:alert(1)"):
+            refused = server.post("/v1/person", json={"person": {"name": "Bad", "picture_url": bad}}, headers=_headers(person))
+            assert refused.status_code == 422, (bad, refused.text)
+        cleared = _put(server, person, "person", ilsa, picture_url="").json()["person"]
+        assert not cleared["picture_url"]
+        assert server.get(f"/v1/world_entity?ids={ilsa['id']}", headers=_headers(person)).json()["world_entities"][0]["picture"] is None

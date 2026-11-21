@@ -31,6 +31,7 @@ from zephyrex.extensions.wiki_shared.Contract import (  # type: ignore[import-no
     PERSON_KINDS,
 )
 from zephyrex.extensions.wiki_shared.Names import names, voice  # type: ignore[import-not-found]
+from zephyrex.extensions.wiki_shared.Pictures import picture_url  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Provenance import HOMEBREW, provenance  # type: ignore[import-not-found]
 from vault_import.markdown import to_plate
 from vault_import.notes import ENTITY_TYPES, PICTURE_TYPES, Note, link_name
@@ -71,7 +72,8 @@ KIND_SYNONYMS = {
 READ = {
     "entity_type", "kind", "name", "campaign", "setting_wide", "is_private", "tags", "aliases", "status",
     "race", "faction", "location", "relations", "parent_location", "parent", "parent_hook", "depends_on",
-    "holder", "quantity", "session_number", "session_date", "maps", "keywords", "voice", "provenance", "source", *PROPERTIES,
+    "holder", "quantity", "session_number", "session_date", "maps", "keywords", "voice", "provenance", "source", "image", "picture",
+    *PROPERTIES,
     *KIND_FIELDS.values(),
 }
 STATUS_KIND = {"hook": "quest_status"}
@@ -407,6 +409,13 @@ class Importer:
         meta, kind = placed.note.meta, placed.kind
         unresolved: list[str] = []
         fields: dict[str, Any] = {"entry": to_plate(placed.note.body, resolve, unresolved)}
+        # Its picture by link (image: or picture:, an https address), shown before an uploaded one.
+        link = _text(meta.get("picture")) or _text(meta.get("image"))
+        if link is not None:
+            try:
+                fields["picture_url"] = picture_url(link)
+            except ValueError as error:
+                self.report.refused.append((placed.note.path, str(error)))
         # Where the record came from: its own provenance: and source: (homebrew when neither is given).
         try:
             fields.update(provenance({"provenance": _text(meta.get("provenance")), "source": _text(meta.get("source"))}))
@@ -467,6 +476,9 @@ class Importer:
             elif name == "provenance":
                 if (record.get(name) or HOMEBREW) != value:
                     changed[name] = value
+            elif name == "picture_url":
+                if (record.get(name) or None) != value:
+                    changed[name] = value or ""
             elif name == "source":
                 if record.get(name) != value:
                     # "" clears a source the note no longer gives.

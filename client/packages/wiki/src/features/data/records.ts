@@ -71,6 +71,8 @@ export const placeSchema = z.object({
   /** Where it came from: homebrew, official or adapted, and its source. */
   provenance: z.string().nullish(),
   source: z.string().nullish(),
+  /** Its picture by https link (shown with no referrer). */
+  picture_url: z.string().nullish(),
 });
 export type Place = z.infer<typeof placeSchema>;
 
@@ -92,6 +94,8 @@ export const personSchema = z.object({
   /** Where it came from: homebrew, official or adapted, and its source. */
   provenance: z.string().nullish(),
   source: z.string().nullish(),
+  /** Its picture by https link (shown with no referrer). */
+  picture_url: z.string().nullish(),
   /** S4c: how the AI plays them (JSON text); for the GM. */
   voice: z.string().nullish(),
 });
@@ -115,6 +119,8 @@ export const factionSchema = z.object({
   /** Where it came from: homebrew, official or adapted, and its source. */
   provenance: z.string().nullish(),
   source: z.string().nullish(),
+  /** Its picture by https link (shown with no referrer). */
+  picture_url: z.string().nullish(),
 });
 export type Faction = z.infer<typeof factionSchema>;
 
@@ -138,6 +144,8 @@ export const itemSchema = z.object({
   /** Where it came from: homebrew, official or adapted, and its source. */
   provenance: z.string().nullish(),
   source: z.string().nullish(),
+  /** Its picture by https link (shown with no referrer). */
+  picture_url: z.string().nullish(),
 });
 export type Item = z.infer<typeof itemSchema>;
 
@@ -181,6 +189,8 @@ export const journalSchema = z.object({
   /** Where it came from: homebrew, official or adapted, and its source. */
   provenance: z.string().nullish(),
   source: z.string().nullish(),
+  /** Its picture by https link (shown with no referrer). */
+  picture_url: z.string().nullish(),
 });
 export type Journal = z.infer<typeof journalSchema>;
 
@@ -219,6 +229,8 @@ export const hookSchema = z.object({
   /** Where it came from: homebrew, official or adapted, and its source. */
   provenance: z.string().nullish(),
   source: z.string().nullish(),
+  /** Its picture by https link (shown with no referrer). */
+  picture_url: z.string().nullish(),
 });
 export type Hook = z.infer<typeof hookSchema>;
 

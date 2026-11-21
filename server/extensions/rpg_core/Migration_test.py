@@ -16,14 +16,14 @@ from fastapi.testclient import TestClient
 from rpg_wiki_app import create
 
 INJECTED = {
-    "persons": {"kind", "campaign_id", "user_id", "location_id", "entry", "setting_id", "canon_level", "is_template", "aliases", "keywords", "voice", "lore", "provenance", "source"},
+    "persons": {"kind", "campaign_id", "user_id", "location_id", "entry", "setting_id", "canon_level", "is_template", "aliases", "keywords", "voice", "lore", "provenance", "source", "picture_url"},
     "property_kits": {"campaign_id", "setting_id"},
     "campaigns": {"setting_id", "provenance", "source"},
-    "locations": {"campaign_id", "setting_id", "canon_level", "is_template", "aliases", "keywords", "lore", "provenance", "source"},
-    "factions": {"campaign_id", "setting_id", "canon_level", "is_template", "aliases", "keywords", "lore", "provenance", "source"},
-    "items": {"campaign_id", "setting_id", "canon_level", "is_template", "aliases", "keywords", "lore", "provenance", "source"},
-    "journals": {"campaign_id", "setting_id", "canon_level", "is_template", "aliases", "keywords", "lore", "provenance", "source"},
-    "hooks": {"campaign_id", "setting_id", "canon_level", "is_template", "aliases", "keywords", "lore", "provenance", "source"},
+    "locations": {"campaign_id", "setting_id", "canon_level", "is_template", "aliases", "keywords", "lore", "provenance", "source", "picture_url"},
+    "factions": {"campaign_id", "setting_id", "canon_level", "is_template", "aliases", "keywords", "lore", "provenance", "source", "picture_url"},
+    "items": {"campaign_id", "setting_id", "canon_level", "is_template", "aliases", "keywords", "lore", "provenance", "source", "picture_url"},
+    "journals": {"campaign_id", "setting_id", "canon_level", "is_template", "aliases", "keywords", "lore", "provenance", "source", "picture_url"},
+    "hooks": {"campaign_id", "setting_id", "canon_level", "is_template", "aliases", "keywords", "lore", "provenance", "source", "picture_url"},
     "taxons": {"campaign_id", "setting_id", "canon_level"},
     "statuses": {"campaign_id", "setting_id", "canon_level"},
     "relationships": {"faction_id", "target_faction_id", "colour", "mirror_relationship_id"},

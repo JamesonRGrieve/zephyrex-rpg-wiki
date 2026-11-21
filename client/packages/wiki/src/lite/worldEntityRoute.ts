@@ -37,6 +37,7 @@ const SELECT = {
   lore: true,
   provenance: true,
   source: true,
+  pictureUrl: true,
 } as const;
 
 function rowsOf(kind: WorldEntityKind, where: object): Promise<EntityRow[]> {

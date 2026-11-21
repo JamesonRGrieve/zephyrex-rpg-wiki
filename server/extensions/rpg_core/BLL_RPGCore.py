@@ -38,6 +38,7 @@ from zephyrex.extensions.wiki_shared.Records import (  # type: ignore[import-not
 )
 from zephyrex.extensions.wiki_shared.EntityIds import EntityIdsError, entity_ids  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Lore import lore_text, stored_lore  # type: ignore[import-not-found]
+from zephyrex.extensions.wiki_shared.Pictures import picture_url as checked_picture_url  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Provenance import HOMEBREW, checked_provenance, checked_source, provenance  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Names import names_text, stored_names, stored_voice, voice_text  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Contract import ATTACHMENT_ROLES, CANON_LEVELS, ENTITY_TYPES, GM_ONLY_PROPERTY, LIMITS  # type: ignore[import-not-found]
@@ -290,6 +291,7 @@ class RPG_PersonModel(BaseModel):
     lore: Optional[str] = Field(None, description="Its lorebook activation (SillyTavern World Info's fields), as JSON text (S4d)")
     provenance: Optional[str] = Field(None, description="contract/wiki.json provenances: homebrew, official or adapted")
     source: Optional[str] = Field(None, description="The official title, publisher and product or page; none for homebrew")
+    picture_url: Optional[str] = Field(None, description="Its picture by https link (fandom, wikis…), shown before an uploaded one")
     voice: Optional[str] = Field(None, description="How the AI plays them: personality, speech, first_message, examples, as JSON text (S4c; GM-facing)")
     user_id: Optional[str] = Field(None, description="FK → users.id; the player. None = an NPC")
     location_id: Optional[str] = Field(None, description="FK → locations.id; where they are")
@@ -312,6 +314,8 @@ class RPG_PersonModel(BaseModel):
         source: Optional[str] = None
         _provenance = field_validator("provenance")(lambda value: None if value is None else checked_provenance(value))
         _source = field_validator("source")(checked_source)
+        picture_url: Optional[str] = None
+        _picture_url = field_validator("picture_url")(checked_picture_url)
         voice: Optional[Any] = None
         _voice = field_validator("voice")(voice_text)
         user_id: Optional[str] = None
@@ -340,6 +344,9 @@ class RPG_PersonModel(BaseModel):
         provenance: Optional[str] = None
         source: Optional[str] = None
         _provenance = field_validator("provenance")(lambda value: None if value is None else checked_provenance(value))
+        # "" clears it (none leaves it as it is).
+        picture_url: Optional[str] = None
+        _picture_url = field_validator("picture_url")(lambda value: value if value is None else (checked_picture_url(value) or ""))
         voice: Optional[Any] = None
         _voice = field_validator("voice")(voice_text)
         user_id: Optional[str] = None
@@ -375,6 +382,7 @@ class RPG_LocationModel(BaseModel):
     lore: Optional[str] = Field(None, description="Its lorebook activation (SillyTavern World Info's fields), as JSON text (S4d)")
     provenance: Optional[str] = Field(None, description="contract/wiki.json provenances: homebrew, official or adapted")
     source: Optional[str] = Field(None, description="The official title, publisher and product or page; none for homebrew")
+    picture_url: Optional[str] = Field(None, description="Its picture by https link (fandom, wikis…), shown before an uploaded one")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
@@ -392,6 +400,8 @@ class RPG_LocationModel(BaseModel):
         source: Optional[str] = None
         _provenance = field_validator("provenance")(lambda value: None if value is None else checked_provenance(value))
         _source = field_validator("source")(checked_source)
+        picture_url: Optional[str] = None
+        _picture_url = field_validator("picture_url")(checked_picture_url)
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
@@ -408,6 +418,9 @@ class RPG_LocationModel(BaseModel):
         provenance: Optional[str] = None
         source: Optional[str] = None
         _provenance = field_validator("provenance")(lambda value: None if value is None else checked_provenance(value))
+        # "" clears it (none leaves it as it is).
+        picture_url: Optional[str] = None
+        _picture_url = field_validator("picture_url")(lambda value: value if value is None else (checked_picture_url(value) or ""))
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
@@ -429,6 +442,7 @@ class RPG_FactionModel(BaseModel):
     lore: Optional[str] = Field(None, description="Its lorebook activation (SillyTavern World Info's fields), as JSON text (S4d)")
     provenance: Optional[str] = Field(None, description="contract/wiki.json provenances: homebrew, official or adapted")
     source: Optional[str] = Field(None, description="The official title, publisher and product or page; none for homebrew")
+    picture_url: Optional[str] = Field(None, description="Its picture by https link (fandom, wikis…), shown before an uploaded one")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
@@ -446,6 +460,8 @@ class RPG_FactionModel(BaseModel):
         source: Optional[str] = None
         _provenance = field_validator("provenance")(lambda value: None if value is None else checked_provenance(value))
         _source = field_validator("source")(checked_source)
+        picture_url: Optional[str] = None
+        _picture_url = field_validator("picture_url")(checked_picture_url)
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
@@ -462,6 +478,9 @@ class RPG_FactionModel(BaseModel):
         provenance: Optional[str] = None
         source: Optional[str] = None
         _provenance = field_validator("provenance")(lambda value: None if value is None else checked_provenance(value))
+        # "" clears it (none leaves it as it is).
+        picture_url: Optional[str] = None
+        _picture_url = field_validator("picture_url")(lambda value: value if value is None else (checked_picture_url(value) or ""))
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
@@ -484,6 +503,7 @@ class RPG_ItemModel(BaseModel):
     lore: Optional[str] = Field(None, description="Its lorebook activation (SillyTavern World Info's fields), as JSON text (S4d)")
     provenance: Optional[str] = Field(None, description="contract/wiki.json provenances: homebrew, official or adapted")
     source: Optional[str] = Field(None, description="The official title, publisher and product or page; none for homebrew")
+    picture_url: Optional[str] = Field(None, description="Its picture by https link (fandom, wikis…), shown before an uploaded one")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
@@ -501,6 +521,8 @@ class RPG_ItemModel(BaseModel):
         source: Optional[str] = None
         _provenance = field_validator("provenance")(lambda value: None if value is None else checked_provenance(value))
         _source = field_validator("source")(checked_source)
+        picture_url: Optional[str] = None
+        _picture_url = field_validator("picture_url")(checked_picture_url)
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
@@ -517,6 +539,9 @@ class RPG_ItemModel(BaseModel):
         provenance: Optional[str] = None
         source: Optional[str] = None
         _provenance = field_validator("provenance")(lambda value: None if value is None else checked_provenance(value))
+        # "" clears it (none leaves it as it is).
+        picture_url: Optional[str] = None
+        _picture_url = field_validator("picture_url")(lambda value: value if value is None else (checked_picture_url(value) or ""))
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
@@ -665,6 +690,7 @@ class RPG_JournalModel(BaseModel):
     lore: Optional[str] = Field(None, description="Its lorebook activation (SillyTavern World Info's fields), as JSON text (S4d)")
     provenance: Optional[str] = Field(None, description="contract/wiki.json provenances: homebrew, official or adapted")
     source: Optional[str] = Field(None, description="The official title, publisher and product or page; none for homebrew")
+    picture_url: Optional[str] = Field(None, description="Its picture by https link (fandom, wikis…), shown before an uploaded one")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
@@ -682,6 +708,8 @@ class RPG_JournalModel(BaseModel):
         source: Optional[str] = None
         _provenance = field_validator("provenance")(lambda value: None if value is None else checked_provenance(value))
         _source = field_validator("source")(checked_source)
+        picture_url: Optional[str] = None
+        _picture_url = field_validator("picture_url")(checked_picture_url)
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
@@ -698,6 +726,9 @@ class RPG_JournalModel(BaseModel):
         provenance: Optional[str] = None
         source: Optional[str] = None
         _provenance = field_validator("provenance")(lambda value: None if value is None else checked_provenance(value))
+        # "" clears it (none leaves it as it is).
+        picture_url: Optional[str] = None
+        _picture_url = field_validator("picture_url")(lambda value: value if value is None else (checked_picture_url(value) or ""))
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
@@ -719,6 +750,7 @@ class RPG_HookModel(BaseModel):
     lore: Optional[str] = Field(None, description="Its lorebook activation (SillyTavern World Info's fields), as JSON text (S4d)")
     provenance: Optional[str] = Field(None, description="contract/wiki.json provenances: homebrew, official or adapted")
     source: Optional[str] = Field(None, description="The official title, publisher and product or page; none for homebrew")
+    picture_url: Optional[str] = Field(None, description="Its picture by https link (fandom, wikis…), shown before an uploaded one")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
@@ -736,6 +768,8 @@ class RPG_HookModel(BaseModel):
         source: Optional[str] = None
         _provenance = field_validator("provenance")(lambda value: None if value is None else checked_provenance(value))
         _source = field_validator("source")(checked_source)
+        picture_url: Optional[str] = None
+        _picture_url = field_validator("picture_url")(checked_picture_url)
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
@@ -752,6 +786,9 @@ class RPG_HookModel(BaseModel):
         provenance: Optional[str] = None
         source: Optional[str] = None
         _provenance = field_validator("provenance")(lambda value: None if value is None else checked_provenance(value))
+        # "" clears it (none leaves it as it is).
+        picture_url: Optional[str] = None
+        _picture_url = field_validator("picture_url")(lambda value: value if value is None else (checked_picture_url(value) or ""))
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
@@ -1079,7 +1116,8 @@ def _entity(kind: str, record: Any, changed_at: datetime, deleted: bool) -> Worl
         voice=stored_voice(getattr(record, "voice", None)) if kind == "person" else None,
         lore=stored_lore(getattr(record, "lore", None)),
         summary=summary(getattr(record, "description", None)),
-        picture=None,
+        # Its picture by link, as it is; else _with_pictures fills its newest upload.
+        picture=None if deleted else getattr(record, "picture_url", None) or None,
         updated_at=_naive(changed_at),
         deleted=deleted,
         setting_id=getattr(record, "setting_id", None),
@@ -1158,6 +1196,9 @@ def _with_pictures(model_registry: Any, shown: list[WorldEntity]) -> list[WorldE
         if str(link.asset_id) in present:
             newest[(link.target_entity_type, link.target_entity_id)] = str(link.asset_id)
     for entity in shown:
+        if entity.picture is not None:
+            # A picture by link is the record's choice, before any upload.
+            continue
         asset_id = newest.get((entity.kind, entity.id))
         entity.picture = None if asset_id is None or entity.deleted else f"/v1/asset/{asset_id}/content"
     return shown

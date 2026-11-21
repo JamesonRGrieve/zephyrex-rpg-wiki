@@ -17,6 +17,7 @@ NAME_LIST_CASES_PATH = REPOSITORY_ROOT / "contract" / "name-list-cases.json"
 LORE_CASES_PATH = REPOSITORY_ROOT / "contract" / "lore-cases.json"
 ENTITY_IDS_CASES_PATH = REPOSITORY_ROOT / "contract" / "entity-ids-cases.json"
 PROVENANCE_CASES_PATH = REPOSITORY_ROOT / "contract" / "provenance-cases.json"
+PICTURE_URL_CASES_PATH = REPOSITORY_ROOT / "contract" / "picture-url-cases.json"
 
 CONTRACT: dict[str, Any] = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 LIMITS: dict[str, int] = CONTRACT["limits"]

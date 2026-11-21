@@ -16,8 +16,9 @@ in the scope is updated rather than made twice; a second run changes nothing.
 
 from typing import Any, Optional
 
-from st_import.sillytavern import Card, Entry, book_entries, lore_of, voice_of
+from st_import.sillytavern import Card, Entry, avatar_url_of, book_entries, lore_of, voice_of
 from zephyrex.extensions.wiki_shared.Lore import lore  # type: ignore[import-not-found]
+from zephyrex.extensions.wiki_shared.Pictures import picture_url  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Names import names, voice  # type: ignore[import-not-found]
 from vault_import.api import ApiError
 from vault_import.importer import Importer, Placed, Report
@@ -86,6 +87,12 @@ class StImporter(Importer):
         unresolved: list[str] = []
         # As the server keeps them, so a second run compares like with like.
         fields: dict[str, Any] = {"entry": to_plate(markdown, self._resolver(scope), unresolved), "voice": voice(voice_of(card))}
+        avatar = avatar_url_of(card)
+        if avatar is not None:
+            try:
+                fields["picture_url"] = picture_url(avatar)
+            except ValueError as error:
+                self.report.refused.append((card.path, str(error)))
         changed = self._write(placed, fields)
         changed |= self._property("person", record_id, ST_SOURCE, card.path, private=True)
         greetings = [str(one).strip() for one in card.data.get("alternate_greetings") or [] if str(one).strip()]

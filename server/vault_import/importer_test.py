@@ -67,7 +67,8 @@ def test_the_vault_imports_with_its_links_and_a_second_run_changes_nothing(serve
     # A same-name image beside a note is the record's picture, as world_entities returns it.
     synced = {entity["name"]: entity for entity in server.get(f"/v1/world_entity?campaign_id={world}", headers=api.headers).json()["world_entities"]}
     assert synced["Holst"]["picture"] is not None and synced["Holst"]["picture"].startswith("/v1/asset/")
-    assert synced["Dingus"]["picture"] is None
+    # Or its image: by link, as it is.
+    assert synced["Dingus"]["picture"] == "https://static.wikia.nocookie.net/forgottenrealms/images/d/d1/Halfling.png"
     assert holst["location_id"] == stable["id"]
     assert (json.loads(holst["keywords"]), json.loads(holst["voice"])["first_message"]) == (["stablemaster"], "Stalls are full.")
     properties = {row["key"]: row for row in api.properties("person", holst["id"])}

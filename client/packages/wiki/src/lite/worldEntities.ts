@@ -26,6 +26,7 @@ export interface EntityRow {
   lore: string | null;
   provenance: string;
   source: string | null;
+  pictureUrl: string | null;
   /** A person's AI voice (S4c); other kinds have none. */
   voice?: string | null;
 }
@@ -36,7 +37,10 @@ export interface WorldEntity {
   name: string;
   aliases: string[];
   summary: string;
-  /** A picture the caller can load (rpg-ai A31): the newest primary_image's content path on the server; null in lite until its attachments twin lands (S2c). */
+  /**
+   * A picture the caller can load (rpg-ai A31): its link (an https address, shown as it is, with no
+   * referrer), else on the server its newest primary_image's content path; lite has no uploads yet (S2c).
+   */
   picture: string | null;
   updated_at: string;
   deleted: boolean;
@@ -81,7 +85,7 @@ export function entityOf(kind: WorldEntityKind, row: EntityRow): WorldEntity {
     name: row.name,
     aliases: storedNames(row.aliases),
     summary: summary(row.description),
-    picture: null,
+    picture: row.deletedAt === null ? row.pictureUrl : null,
     updated_at: row.updatedAt.toISOString(),
     deleted: row.deletedAt !== null,
     setting_id: row.settingId,

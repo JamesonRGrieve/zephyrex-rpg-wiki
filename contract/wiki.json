@@ -17,7 +17,8 @@
     "voice_examples": 20,
     "world_entity_ids": 100,
     "depth_prompt_depth": 999,
-    "source_characters": 300
+    "source_characters": 300,
+    "picture_url_characters": 2000
   },
   "gm_only_property": "GM only",
   "taggable_types": [

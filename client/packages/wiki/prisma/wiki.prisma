@@ -65,6 +65,8 @@ model Location {
   /// Where it came from: homebrew, official or adapted, and its source.
   provenance  String   @default("homebrew")
   source      String?
+  /// Its picture by https link (fandom, wikis…), shown before an uploaded one.
+  pictureUrl  String?
   /// The person it belongs to: their equipment slots and body parts (what they wear sits there).
   associatedPersonId String?
   createdAt    DateTime @default(now())
@@ -102,6 +104,8 @@ model Person {
   /// Where it came from: homebrew, official or adapted, and its source.
   provenance  String   @default("homebrew")
   source      String?
+  /// Its picture by https link (fandom, wikis…), shown before an uploaded one.
+  pictureUrl  String?
   /// S4c: how the AI plays them (JSON text: personality, speech, first_message, examples); GM-facing.
   voice       String?
   locationId   String?
@@ -142,6 +146,8 @@ model Faction {
   /// Where it came from: homebrew, official or adapted, and its source.
   provenance  String   @default("homebrew")
   source      String?
+  /// Its picture by https link (fandom, wikis…), shown before an uploaded one.
+  pictureUrl  String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime
   updatedById  String?
@@ -179,6 +185,8 @@ model Item {
   /// Where it came from: homebrew, official or adapted, and its source.
   provenance  String   @default("homebrew")
   source      String?
+  /// Its picture by https link (fandom, wikis…), shown before an uploaded one.
+  pictureUrl  String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime
   updatedById  String?
@@ -250,6 +258,8 @@ model Journal {
   /// Where it came from: homebrew, official or adapted, and its source.
   provenance    String   @default("homebrew")
   source        String?
+  /// Its picture by https link (fandom, wikis…), shown before an uploaded one.
+  pictureUrl    String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime
   updatedById    String?
@@ -310,6 +320,8 @@ model Hook {
   /// Where it came from: homebrew, official or adapted, and its source.
   provenance    String   @default("homebrew")
   source        String?
+  /// Its picture by https link (fandom, wikis…), shown before an uploaded one.
+  pictureUrl    String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime
   updatedById    String?

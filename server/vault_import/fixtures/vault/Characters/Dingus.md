@@ -1,5 +1,6 @@
 ---
 entity_type: person
+image: "https://static.wikia.nocookie.net/forgottenrealms/images/d/d1/Halfling.png"
 kind: pc
 name: Dingus
 campaign: The Split Antler

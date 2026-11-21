@@ -19,6 +19,7 @@ const row = (id: string, updated: string, deleted: string | null = null) => ({
   lore: null as string | null,
   provenance: 'homebrew',
   source: null as string | null,
+  pictureUrl: null as string | null,
 });
 
 describe('entityOf', () => {

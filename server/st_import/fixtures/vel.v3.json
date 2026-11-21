@@ -6,8 +6,16 @@
     "description": "A quiet ranger.",
     "personality": "Watchful.",
     "scenario": "",
-    "first_mes": "…",
+    "first_mes": "\u2026",
     "mes_example": "",
-    "tags": []
+    "tags": [],
+    "assets": [
+      {
+        "type": "icon",
+        "uri": "https://example.org/vel.png",
+        "name": "main",
+        "ext": "png"
+      }
+    ]
   }
 }

@@ -44,7 +44,8 @@ def test_cards_and_world_info_import_and_a_second_run_changes_nothing(tmp_path: 
     assert (holst["voice"]["first_message"], holst["voice"]["examples"]) == ("Stalls are full, User.", ["Holst: No credit.", "Holst: Pay first."])
     assert (holst["voice"]["system_prompt"], holst["voice"]["depth_prompt"]["depth"], holst["voice"]["talkativeness"]) == ("You are Holst, a stablemaster.", 2, 0.3)
     assert (vel["voice"]["talkativeness"], vel["voice"]["depth_prompt"], vel["voice"]["across_chats"]) == (0.5, None, False)
-    assert vel["picture"] is not None and holst["picture"] is None
+    # Its icon by link is its picture (before the uploaded card image); Holst has neither.
+    assert (vel["picture"], holst["picture"]) == ("https://example.org/vel.png", None)
     waystones = synced["The Waystones"]
     assert (waystones["keywords"], waystones["lore"]["position"], waystones["lore"]["selective_logic"]) == (["waystone"], "at_depth", "not_any")
     assert synced["keeper"]["lore"]["always_active"] is True

@@ -37,6 +37,7 @@ import { checkedRequirement, leavesOf, RequirementError } from '../lib/requireme
 import { prisma } from './db';
 import { checkedKit, KitError } from '../lib/properties';
 import { lore } from '../lib/lore';
+import { pictureUrl } from '../lib/pictureUrl';
 import { HOMEBREW, type Provenance, ProvenanceError, provenance } from '../lib/provenance';
 import { names, voice } from '../lib/names';
 import { freeSlug, isSlug, SLUG_RULE, slugify } from '../lib/slug';
@@ -343,6 +344,16 @@ const campaignCreate = z.object({
 // A null provenance or source is "not given"; "" clears the source (as the server's).
 const campaignUpdate = z.object({ name, description: z.string(), setting_id: reference, provenance: z.string().nullable(), source: z.string().nullable() }).partial();
 
+/** A picture by link (an https address; "" or none is none), as a 422 on its field. */
+const pictureLink = z.unknown().transform((value, context) => {
+  try {
+    return pictureUrl(value);
+  } catch (error) {
+    context.addIssue({ code: 'custom', message: error instanceof Error ? error.message : String(error) });
+    return z.NEVER;
+  }
+});
+
 /** A provenance checked, as a 422 on its field. */
 function checkedProvenance(value: { provenance?: unknown; source?: unknown }): Provenance {
   try {
@@ -459,6 +470,7 @@ const LOCATION_COLUMNS: Columns = {
   lore: plain('lore'),
   provenance: plain('provenance'),
   source: plain('source'),
+  picture_url: plain('pictureUrl'),
   associated_person_id: plain('associatedPersonId'),
 };
 const locationFields = {
@@ -476,6 +488,7 @@ const locationFields = {
   lore: loreText,
     provenance: z.string().nullable(),
     source: z.string().nullable(),
+    picture_url: pictureLink,
   associated_person_id: reference,
 };
 const locationCreate = z.object({
@@ -493,6 +506,7 @@ const locationCreate = z.object({
   lore: loreText.optional(),
   provenance: z.string().nullish(),
   source: z.string().nullish(),
+  picture_url: pictureLink.optional(),
   associated_person_id: reference.default(null),
 });
 const locationUpdate = z.object(locationFields).partial();
@@ -596,6 +610,7 @@ const PERSON_COLUMNS: Columns = {
   lore: plain('lore'),
   provenance: plain('provenance'),
   source: plain('source'),
+  picture_url: plain('pictureUrl'),
   voice: plain('voice'),
   location_id: plain('locationId'),
   gender: plain('gender'),
@@ -614,6 +629,7 @@ const personFields = {
   lore: loreText,
     provenance: z.string().nullable(),
     source: z.string().nullable(),
+    picture_url: pictureLink,
   voice: voiceText,
   location_id: reference,
   gender: z.string().max(LIMITS.name_characters).nullable(),
@@ -632,6 +648,7 @@ const personCreate = z.object({
   lore: loreText.optional(),
   provenance: z.string().nullish(),
   source: z.string().nullish(),
+  picture_url: pictureLink.optional(),
   voice: voiceText.optional(),
   location_id: reference.default(null),
   gender: personFields.gender.default(null),
@@ -718,6 +735,7 @@ const FACTION_COLUMNS: Columns = {
   lore: plain('lore'),
   provenance: plain('provenance'),
   source: plain('source'),
+  picture_url: plain('pictureUrl'),
 };
 const factionCreate = z.object({
   name,
@@ -734,9 +752,10 @@ const factionCreate = z.object({
   lore: loreText.optional(),
   provenance: z.string().nullish(),
   source: z.string().nullish(),
+  picture_url: pictureLink.optional(),
 });
 const factionUpdate = z
-  .object({ name, description: z.string(), entry, kind: kindOf(FACTION_KINDS), parent_id: reference, campaign_id: reference, setting_id: reference, canon_level: canonLevel, is_template: z.boolean().nullable(), aliases: nameList, keywords: nameList, lore: loreText, provenance: z.string().nullable(), source: z.string().nullable() })
+  .object({ name, description: z.string(), entry, kind: kindOf(FACTION_KINDS), parent_id: reference, campaign_id: reference, setting_id: reference, canon_level: canonLevel, is_template: z.boolean().nullable(), aliases: nameList, keywords: nameList, lore: loreText, provenance: z.string().nullable(), source: z.string().nullable(), picture_url: pictureLink })
   .partial();
 type FactionRow = Prisma.FactionGetPayload<object>;
 
@@ -827,6 +846,7 @@ const ITEM_COLUMNS: Columns = {
   lore: plain('lore'),
   provenance: plain('provenance'),
   source: plain('source'),
+  picture_url: plain('pictureUrl'),
 };
 const itemCreate = z.object({
   name,
@@ -845,6 +865,7 @@ const itemCreate = z.object({
   lore: loreText.optional(),
   provenance: z.string().nullish(),
   source: z.string().nullish(),
+  picture_url: pictureLink.optional(),
 });
 const itemUpdate = z
   .object({
@@ -864,6 +885,7 @@ const itemUpdate = z
     lore: loreText,
     provenance: z.string().nullable(),
     source: z.string().nullable(),
+    picture_url: pictureLink,
   })
   .partial();
 type ItemRow = Prisma.ItemGetPayload<object>;
@@ -1092,6 +1114,7 @@ const JOURNAL_COLUMNS: Columns = {
   lore: plain('lore'),
   provenance: plain('provenance'),
   source: plain('source'),
+  picture_url: plain('pictureUrl'),
 };
 const sessionNumber = z.number().int().min(1, 'A session number is a whole number of one or more').nullable();
 const moment = z.coerce.date().nullable();
@@ -1113,6 +1136,7 @@ const journalCreate = z.object({
   lore: loreText.optional(),
   provenance: z.string().nullish(),
   source: z.string().nullish(),
+  picture_url: pictureLink.optional(),
 });
 const journalUpdate = z
   .object({
@@ -1133,6 +1157,7 @@ const journalUpdate = z
     lore: loreText,
     provenance: z.string().nullable(),
     source: z.string().nullable(),
+    picture_url: pictureLink,
   })
   .partial();
 type JournalRow = Prisma.JournalGetPayload<object>;
@@ -1352,6 +1377,7 @@ const HOOK_COLUMNS: Columns = {
   lore: plain('lore'),
   provenance: plain('provenance'),
   source: plain('source'),
+  picture_url: plain('pictureUrl'),
 };
 const hookCreate = z.object({
   name,
@@ -1373,6 +1399,7 @@ const hookCreate = z.object({
   lore: loreText.optional(),
   provenance: z.string().nullish(),
   source: z.string().nullish(),
+  picture_url: pictureLink.optional(),
 });
 const hookUpdate = z
   .object({
@@ -1395,6 +1422,7 @@ const hookUpdate = z
     lore: loreText,
     provenance: z.string().nullable(),
     source: z.string().nullable(),
+    picture_url: pictureLink,
   })
   .partial();
 type HookRow = Prisma.HookGetPayload<object>;

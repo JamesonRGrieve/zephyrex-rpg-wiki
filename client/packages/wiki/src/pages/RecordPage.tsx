@@ -19,6 +19,7 @@ import { HookLinks, type LinkedHook, type Taker } from '../components/world/Hook
 import { type CarriedLine, InventoryList } from '../components/world/InventoryList';
 import { PostList } from '../components/world/PostList';
 import { OriginOf } from '../components/world/OriginOf';
+import { PictureOf } from '../components/world/PictureOf';
 import { PropertyList } from '../components/world/PropertyList';
 import { VoicePanel } from '../components/world/VoicePanel';
 import { type RelationLine, RelationList } from '../components/world/RelationList';
@@ -281,6 +282,24 @@ function Standing({ world, id }: { world: string; id: string }): ReactElement | 
   );
 }
 
+/** The record's picture by link, through its own resource. */
+function Picture({ kind, id }: { kind: EntityKind; id: string }): ReactElement {
+  switch (kind) {
+    case 'location':
+      return <PictureOf resource={places} id={id} />;
+    case 'person':
+      return <PictureOf resource={people} id={id} />;
+    case 'faction':
+      return <PictureOf resource={factions} id={id} />;
+    case 'item':
+      return <PictureOf resource={items} id={id} />;
+    case 'journal':
+      return <PictureOf resource={journals} id={id} />;
+    case 'hook':
+      return <PictureOf resource={hooks} id={id} />;
+  }
+}
+
 /** Where the record came from (homebrew, official or adapted), through its own resource. */
 function Origin({ kind, id }: { kind: EntityKind; id: string }): ReactElement {
   switch (kind) {
@@ -346,6 +365,7 @@ function Record({
             <p className='rounded-md border px-3 py-2 text-sm'>A template: copied into worlds, never one of a world&rsquo;s facts.</p>
           )}
           <Names aliases={storedNames(record.aliases ?? null)} keywords={storedNames(record.keywords ?? null)} />
+          <Picture kind={kind} id={id} />
           <Origin kind={kind} id={id} />
           <EntityPage kind={record.kind} entry={record.entry} description={record.description} where={where} />
           {extra}
