@@ -16,6 +16,7 @@ import { Unavailable } from '../components/world/Unavailable';
 import { useCapabilities } from '../features/capabilities';
 import { entityTaxa, factions, hooks, items, journals, people, places, statuses, taxa, worlds } from '../features/data/records';
 import { useWikiBase } from '../base';
+import { kindPath, recordPath, taxonomyPath } from '../lib/paths';
 
 /** The records a taxon is on, each named from its world's lists and linked to its page. */
 function Tagged({ world, taxonId }: { world: string; taxonId: string }): ReactElement {
@@ -39,7 +40,7 @@ function Tagged({ world, taxonId }: { world: string; taxonId: string }): ReactEl
     <ul aria-label='Tagged records' className='divide-y rounded-xl border'>
       {links.data.map((link) => (
         <li key={link.id} className='flex min-h-12 items-center justify-between gap-3 px-3'>
-          <Link href={`${base}/${world}/${link.target_entity_type}/${link.target_entity_id}`} className='underline underline-offset-4'>
+          <Link href={recordPath(base, world, link.target_entity_type, link.target_entity_id)} className='underline underline-offset-4'>
             {nameOf.get(link.target_entity_id) ?? 'A record'}
           </Link>
           <span className='text-sm text-muted-foreground'>
@@ -67,7 +68,7 @@ function Taxonomy({ world }: { world: string }): ReactElement {
         {all.data === undefined && all.error === undefined && <SkeletonRows rows={3} label='Loading the taxonomy' />}
         {all.data !== undefined && all.data.length === 0 && <p className='text-sm text-muted-foreground'>No tags yet.</p>}
         {all.data !== undefined && all.data.length > 0 && (
-          <ParentTree rows={all.data} hrefOf={(row) => `${base}/${world}/taxonomy?taxon=${row.id}`} label='Tags by where they sit' />
+          <ParentTree rows={all.data} hrefOf={(row) => taxonomyPath(base, world, row.id)} label='Tags by where they sit' />
         )}
       </section>
       <div className='space-y-6'>
@@ -109,7 +110,7 @@ export function TaxonomyPage(params: { world: string }): ReactElement {
   return (
     <main className='mx-auto grid w-full max-w-5xl content-start gap-6 px-4 py-8'>
       <PageHeader title={world.data === undefined ? 'Taxonomy' : `Taxonomy of ${world.data.name}`} />
-      <Link href={`${base}/${params.world}/location`} className='text-sm underline-offset-4 hover:underline'>
+      <Link href={kindPath(base, params.world, 'location')} className='text-sm underline-offset-4 hover:underline'>
         Back to the world
       </Link>
       {!can.loaded ? <SkeletonRows rows={3} label='Loading' /> : can.taxonomy ? <Taxonomy world={params.world} /> : <Unavailable what='tags' />}

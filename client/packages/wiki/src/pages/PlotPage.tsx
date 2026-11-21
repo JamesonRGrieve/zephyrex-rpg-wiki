@@ -12,11 +12,12 @@ import { useCapabilities } from '../features/capabilities';
 import { usePlot } from '../features/data/plot';
 import { worlds } from '../features/data/records';
 import { useWikiBase } from '../base';
+import { kindPath, recordPath } from '../lib/paths';
 
 function Board({ world }: { world: string }): ReactElement {
   const base = useWikiBase();
   const plot = usePlot(world);
-  const rows = plot.hooks?.map((hook) => ({ id: hook.id, name: hook.name, href: `${base}/${world}/hook/${hook.id}`, state: plot.stateOf(hook), excuse: hook.excuse }));
+  const rows = plot.hooks?.map((hook) => ({ id: hook.id, name: hook.name, href: recordPath(base, world, 'hook', hook.id), state: plot.stateOf(hook), excuse: hook.excuse }));
   return <PlotBoard hooks={rows} error={plot.error} onRetry={plot.retry} />;
 }
 
@@ -27,7 +28,7 @@ export function PlotPage(params: { world: string }): ReactElement {
   return (
     <main className='mx-auto grid w-full max-w-5xl content-start gap-6 px-4 py-8'>
       <PageHeader title={world.data === undefined ? 'Plot board' : `Plot board of ${world.data.name}`} />
-      <Link href={`${base}/${params.world}/hook`} className='text-sm underline-offset-4 hover:underline'>
+      <Link href={kindPath(base, params.world, 'hook')} className='text-sm underline-offset-4 hover:underline'>
         All hooks
       </Link>
       {!can.loaded ? <SkeletonRows rows={3} label='Loading' /> : can.hooks ? <Board world={params.world} /> : <Unavailable what='hooks' />}

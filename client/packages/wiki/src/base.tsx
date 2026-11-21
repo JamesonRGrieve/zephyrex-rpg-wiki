@@ -6,6 +6,7 @@
  * pages build starts here.
  */
 import { createContext, type ReactElement, type ReactNode, useContext } from 'react';
+import { wikiRoot } from './lib/paths';
 
 const WikiBase = createContext('/w');
 
@@ -16,5 +17,5 @@ export function useWikiBase(): string {
 
 /** Mounts the pages under `base` ("w", "/wiki", …). */
 export function WikiBaseProvider({ base, children }: { base: string; children: ReactNode }): ReactElement {
-  return <WikiBase.Provider value={`/${base.replace(/^\/+|\/+$/g, '')}`}>{children}</WikiBase.Provider>;
+  return <WikiBase.Provider value={wikiRoot(base)}>{children}</WikiBase.Provider>;
 }

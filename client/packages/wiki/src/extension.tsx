@@ -13,6 +13,7 @@ import { PlotPage } from './pages/PlotPage';
 import { RecordPage } from './pages/RecordPage';
 import { TaxonomyPage } from './pages/TaxonomyPage';
 import { WorldsPage } from './pages/WorldsPage';
+import { wikiRoot } from './lib/paths';
 
 type RoutedProps = { params: Record<string, string>; searchParams: Record<string, string> };
 
@@ -32,7 +33,7 @@ export interface WikiExtensionOptions {
 }
 
 export function wikiExtension({ base = 'w' }: WikiExtensionOptions = {}): ZephyrexClientExtension {
-  const root = base.replace(/^\/+|\/+$/g, '');
+  const root = wikiRoot(base).slice(1);
   return {
     name: 'rpg_core',
     serverExtension: 'rpg_core',

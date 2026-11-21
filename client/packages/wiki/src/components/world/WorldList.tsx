@@ -20,6 +20,7 @@ import type { World } from '../../features/data/records';
 import { idOf } from '../../features/data/records';
 import { WriteProblem } from './WriteProblem';
 import { useWikiBase } from '../../base';
+import { kindPath } from '../../lib/paths';
 
 export function WorldList({
   worlds,
@@ -79,7 +80,7 @@ export function WorldList({
           {hidden.shown.map((world) => (
             <li key={world.id} className='group flex items-center gap-3 p-2'>
               <Link
-                href={`${base}/${world.id}/location`}
+                href={kindPath(base, world.id, 'location')}
                 className='flex min-h-12 min-w-0 flex-1 items-center gap-3 rounded-md px-2 hover:bg-accent'
               >
                 <Globe className='size-4 shrink-0 text-muted-foreground' aria-hidden />

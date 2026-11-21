@@ -14,6 +14,7 @@ import { Unavailable } from '../components/world/Unavailable';
 import { useCapabilities } from '../features/capabilities';
 import { factions, hooks, items, journals, people, places, type ResourceHooks, worlds } from '../features/data/records';
 import { useWikiBase } from '../base';
+import { kindPath, plotPath, recordPath, taxonomyPath } from '../lib/paths';
 
 /** The four resources a world lists, each with the hooks the list uses. */
 const RESOURCES = { location: places, person: people, faction: factions, item: items, journal: journals, hook: hooks } as const;
@@ -34,7 +35,7 @@ function KindList({ world, kind }: { world: string; kind: EntityKind }): ReactEl
   const list = resource.useList({ campaign_id: world });
   const { create, remove } = resource.useActions();
   const writes = useWrites(() => list.mutate());
-  const hrefOf = (row: { id: string }) => `${base}/${world}/${kind}/${row.id}`;
+  const hrefOf = (row: { id: string }) => recordPath(base, world, kind, row.id);
   const label = TREE_LABELS[kind];
   const facts = list.data?.filter((row) => row.is_template !== true);
   return (
@@ -74,7 +75,7 @@ export function KindPage(params: { world: string; kind: string }): ReactElement 
         {Object.entries(ENTITY_KINDS).map(([path, one]) => (
           <Link
             key={path}
-            href={`${base}/${params.world}/${path}`}
+            href={kindPath(base, params.world, path)}
             aria-current={path === kind ? 'page' : undefined}
             className='underline-offset-4 hover:underline aria-[current=page]:font-semibold'
           >
@@ -82,12 +83,12 @@ export function KindPage(params: { world: string; kind: string }): ReactElement 
           </Link>
         ))}
         {can.taxonomy && (
-          <Link href={`${base}/${params.world}/taxonomy`} className='underline-offset-4 hover:underline'>
+          <Link href={taxonomyPath(base, params.world)} className='underline-offset-4 hover:underline'>
             Taxonomy
           </Link>
         )}
         {can.hooks && (
-          <Link href={`${base}/${params.world}/plot`} className='underline-offset-4 hover:underline'>
+          <Link href={plotPath(base, params.world)} className='underline-offset-4 hover:underline'>
             Plot board
           </Link>
         )}

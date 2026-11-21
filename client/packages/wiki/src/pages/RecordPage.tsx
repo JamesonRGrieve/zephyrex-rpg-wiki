@@ -52,6 +52,7 @@ import { currentAttitude } from '../lib/dispositions';
 import { storedNames, storedVoice } from '../lib/names';
 import { describeRequirement } from '../lib/requirements';
 import { useWikiBase } from '../base';
+import { kindPath, recordPath, taxonomyPath } from '../lib/paths';
 
 interface Shown {
   name: string;
@@ -127,7 +128,7 @@ function Carries({ world, type, id }: { world: string; type: EntityKind; id: str
   const lines: CarriedLine[] | undefined = rows.data?.map((row) => {
     const itemId = row.item_instance_id === null ? null : (itemOf.get(row.item_instance_id) ?? null);
     const name = itemId === null ? null : (nameOf.get(itemId) ?? null);
-    return { id: row.id, name, href: itemId === null ? null : `${base}/${world}/item/${itemId}`, quantity: row.quantity ?? 1 };
+    return { id: row.id, name, href: itemId === null ? null : recordPath(base, world, 'item', itemId), quantity: row.quantity ?? 1 };
   });
   return <InventoryList lines={lines} error={rows.error} onRetry={() => rows.mutate()} />;
 }
@@ -148,7 +149,7 @@ function Classification({ world, type, id }: { world: string; type: EntityKind; 
       name: taxon?.name ?? null,
       colour: taxon?.colour ?? null,
       kind: taxon?.kind ?? null,
-      href: `${base}/${world}/taxonomy?taxon=${link.taxon_id}`,
+      href: taxonomyPath(base, world, link.taxon_id),
     };
   });
   const first = held.data?.[0];
@@ -175,9 +176,9 @@ function Relations({ world, type, id }: { world: string; type: 'person' | 'facti
   const factionName = new Map((allFactions.data ?? []).map((row) => [row.id, row.name]));
   const end = (personId: string | null, factionId: string | null) =>
     personId !== null
-      ? { name: personName.get(personId) ?? null, href: `${base}/${world}/person/${personId}` }
+      ? { name: personName.get(personId) ?? null, href: recordPath(base, world, 'person', personId) }
       : factionId !== null
-        ? { name: factionName.get(factionId) ?? null, href: `${base}/${world}/faction/${factionId}` }
+        ? { name: factionName.get(factionId) ?? null, href: recordPath(base, world, 'faction', factionId) }
         : { name: null, href: null };
   // A mirrored pair would show twice from either end; the outgoing half stands for both.
   const outgoing = from.data ?? [];
@@ -244,9 +245,9 @@ function Dispositions({ world, id }: { world: string; id: string }): ReactElemen
                   : (factionName.get(first.target_faction_id ?? '') ?? 'An organisation'),
             href:
               first.target_kind === 'person'
-                ? `${base}/${world}/person/${first.target_person_id ?? ''}`
+                ? recordPath(base, world, 'person', first.target_person_id ?? '')
                 : first.target_kind === 'faction'
-                  ? `${base}/${world}/faction/${first.target_faction_id ?? ''}`
+                  ? recordPath(base, world, 'faction', first.target_faction_id ?? '')
                   : null,
             attitude,
             because: because?.trigger_hook_id ? plot.nameOf(because.trigger_hook_id) : null,
@@ -315,7 +316,7 @@ function Record({
   return (
     <>
       <PageHeader title={record?.name ?? 'Loading'} />
-      <Link href={`${base}/${world}/${kind}`} className='text-sm underline-offset-4 hover:underline'>
+      <Link href={kindPath(base, world, kind)} className='text-sm underline-offset-4 hover:underline'>
         {`All ${words.plural}`}
       </Link>
       {error !== undefined && <LoadProblem what='this page' error={error} onRetry={onRetry} />}
@@ -339,7 +340,7 @@ function Record({
   );
 }
 
-const placeHref = (base: string, world: string, id: string) => `${base}/${world}/location/${id}`;
+const placeHref = (base: string, world: string, id: string) => recordPath(base, world, 'location', id);
 
 function PlacePage({ world, id, can }: { world: string; id: string; can: Capabilities }): ReactElement {
   const base = useWikiBase();
@@ -398,7 +399,7 @@ function FactionPage({ world, id, can }: { world: string; id: string; can: Capab
   const one = factions.useOne(id);
   const parent = factions.useOne(one.data?.parent_id ?? null);
   const where =
-    parent.data === undefined ? undefined : { label: 'Part of', name: parent.data.name, href: `${base}/${world}/faction/${parent.data.id}` };
+    parent.data === undefined ? undefined : { label: 'Part of', name: parent.data.name, href: recordPath(base, world, 'faction', parent.data.id) };
   return <Record world={world} kind='faction' id={id} record={one.data} error={one.error} onRetry={() => one.mutate()} where={where} canCarry={can.items} canPost={can.posts} />;
 }
 
@@ -431,7 +432,7 @@ function Plot({ world, id }: { world: string; id: string }): ReactElement {
   const hookName = nameOf(allHooks.data);
   const personName = nameOf(allPeople.data);
   const factionName = nameOf(allFactions.data);
-  const linked = (hookId: string): LinkedHook => ({ id: hookId, name: hookName.get(hookId) ?? null, href: `${base}/${world}/hook/${hookId}` });
+  const linked = (hookId: string): LinkedHook => ({ id: hookId, name: hookName.get(hookId) ?? null, href: recordPath(base, world, 'hook', hookId) });
   const takers: Taker[] | undefined =
     mine.data === undefined || theirs.data === undefined
       ? undefined
@@ -439,14 +440,14 @@ function Plot({ world, id }: { world: string; id: string }): ReactElement {
           ...mine.data.map((row) => ({
             id: row.id,
             name: personName.get(row.person_id) ?? null,
-            href: `${base}/${world}/person/${row.person_id}`,
+            href: recordPath(base, world, 'person', row.person_id),
             status: row.status,
             progress: row.progress,
           })),
           ...theirs.data.map((row) => ({
             id: row.id,
             name: factionName.get(row.faction_id) ?? null,
-            href: `${base}/${world}/faction/${row.faction_id}`,
+            href: recordPath(base, world, 'faction', row.faction_id),
             status: row.status,
             progress: row.progress,
           })),
@@ -467,7 +468,7 @@ function HookPage({ world, id, can }: { world: string; id: string; can: Capabili
   const base = useWikiBase();
   const one = hooks.useOne(id);
   const giver = people.useOne(one.data?.giver_person_id ?? null);
-  const where = giver.data === undefined ? undefined : { label: 'Given by', name: giver.data.name, href: `${base}/${world}/person/${giver.data.id}` };
+  const where = giver.data === undefined ? undefined : { label: 'Given by', name: giver.data.name, href: recordPath(base, world, 'person', giver.data.id) };
   return (
     <Record
       world={world}
