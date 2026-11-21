@@ -434,6 +434,7 @@ class SessionReportManager(AbstractBLLManager[Any], RouterMixin):
         path="",
         input_model=SessionReportEnvelope,
         output_model=SessionReportOutEnvelope,
+        status_code=201,
         authentication_type="jwt",
         expose_in=(ExposeIn.REST,),
         openapi_tags=("Session reports",),

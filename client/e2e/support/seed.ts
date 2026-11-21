@@ -73,6 +73,14 @@ export async function seedWorld(request: APIRequestContext): Promise<Seeded> {
   await create(request, 'relationship', { faction_id: faction, target_person_id: person, kind: 'serves', intensity: 0.6, colour: '#3260a8', mirror_relationship_id: serves });
   const rivalry = await create(request, 'relationship', { person_id: person, target_person_id: rival, kind: 'rival', intensity: -0.7 });
   await create(request, 'relation_influence', { relationship_id: rivalry, hook_id: find, to_intensity: -0.2, note: 'The map made them allies of need.' });
+  // A session report through rpg-ai's route (A24): created, so 201 in both editions, as the server's.
+  await create(request, 'session_report', {
+    campaign_id: world,
+    title: 'Session 5: the lantern goes dark',
+    body: 'Mira keeps the light lit.',
+    session_number: 5,
+    mentions: [{ target_entity_type: 'person', target_entity_id: person }],
+  });
   await create(request, 'entity_post', { target_entity_type: 'person', target_entity_id: person, name: 'Rumour', position: 'pinned_top', entry: entry('She once sailed with pirates.') });
   return { world, location, person, faction, item, journal, hook, taxon };
 }

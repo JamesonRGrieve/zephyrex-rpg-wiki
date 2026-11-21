@@ -269,7 +269,8 @@ class TestSessionReports:
             ],
         }
         written = server.post("/v1/session_report", json={"session_report": report}, headers=_headers(person))
-        assert written.status_code in (200, 201), written.text
+        # It creates a journal: 201 in both editions (custom_route's status_code, server-framework c95b34f4).
+        assert written.status_code == 201, written.text
         saved = written.json()["session_report"]
         assert saved["title"] == "Session 4: the Gull Rock ambush"
         assert "Session 4" not in saved["text"]
