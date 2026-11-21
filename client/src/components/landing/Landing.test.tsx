@@ -12,10 +12,14 @@ describe('Landing', () => {
     expect(screen.getByRole('region', { name: 'Questions' })).toBeInTheDocument();
   });
 
-  it('says nothing is live yet, and points the way in at the plan', () => {
+  it('says what is live and leads into the app', () => {
     render(<Landing />);
-    expect(screen.getByText(/nothing below is live yet/)).toBeInTheDocument();
-    for (const link of screen.getAllByRole('link', { name: 'See what is planned' })) {
+    expect(screen.getByText(/are here now; the rest is being built/)).toBeInTheDocument();
+    for (const link of screen.getAllByRole('link', { name: 'Open your worlds' })) {
+      expect(link).toHaveAttribute('href', '/w');
+    }
+    // The header's nav renders twice (the bar and the phone menu): every copy points at the plan.
+    for (const link of screen.getAllByRole('link', { name: 'What is planned' })) {
       expect(link).toHaveAttribute('href', '#planned');
     }
   });

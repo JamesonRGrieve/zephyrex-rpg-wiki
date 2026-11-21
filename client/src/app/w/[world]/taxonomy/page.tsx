@@ -37,7 +37,7 @@ function Tagged({ world, taxonId }: { world: string; taxonId: string }): ReactEl
     <ul aria-label='Tagged records' className='divide-y rounded-xl border'>
       {links.data.map((link) => (
         <li key={link.id} className='flex min-h-12 items-center justify-between gap-3 px-3'>
-          <Link href={`/w/${world}/${link.target_entity_type}/${link.target_entity_id}`} className='underline-offset-4 hover:underline'>
+          <Link href={`/w/${world}/${link.target_entity_type}/${link.target_entity_id}`} className='underline underline-offset-4'>
             {nameOf.get(link.target_entity_id) ?? 'A record'}
           </Link>
           <span className='text-sm text-muted-foreground'>
@@ -104,7 +104,7 @@ export default function WorldTaxonomyPage(): ReactElement {
   const can = useCapabilities();
   const world = worlds.useOne(params.world);
   return (
-    <main className='mx-auto grid w-full max-w-5xl gap-6 px-4 py-8'>
+    <main className='mx-auto grid w-full max-w-5xl content-start gap-6 px-4 py-8'>
       <PageHeader title={world.data === undefined ? 'Taxonomy' : `Taxonomy of ${world.data.name}`} />
       <Link href={`/w/${params.world}/location`} className='text-sm underline-offset-4 hover:underline'>
         Back to the world

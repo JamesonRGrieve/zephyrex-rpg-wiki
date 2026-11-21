@@ -63,7 +63,7 @@ export default function WorldKindPage(): ReactElement {
   const kind: EntityKind = params.kind;
   const words = ENTITY_KINDS[kind];
   return (
-    <main className='mx-auto grid w-full max-w-5xl gap-6 px-4 py-8'>
+    <main className='mx-auto grid w-full max-w-5xl content-start gap-6 px-4 py-8'>
       <PageHeader title={world.data === undefined ? words.title : `${words.title} of ${world.data.name}`} />
       <nav aria-label='This world' className='flex flex-wrap gap-x-4 gap-y-2 text-sm'>
         <Link href='/w' className='underline-offset-4 hover:underline'>

@@ -29,7 +29,7 @@ function Worlds(): ReactElement {
 export default function WorldsPage(): ReactElement {
   const can = useCapabilities();
   return (
-    <main className='mx-auto grid w-full max-w-3xl gap-6 px-4 py-8'>
+    <main className='mx-auto grid w-full max-w-3xl content-start gap-6 px-4 py-8'>
       <PageHeader title='Your worlds' description='Each world keeps its own places and people.' />
       {!can.loaded ? <SkeletonRows rows={2} label='Loading' /> : can.worlds ? <Worlds /> : <Unavailable what='worlds' />}
     </main>

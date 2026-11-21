@@ -57,7 +57,7 @@ export function RelationList({
                   {line.href === null || line.name === null ? (
                     <span className='text-muted-foreground'>{line.name ?? 'Someone'}</span>
                   ) : (
-                    <Link href={line.href} className='underline-offset-4 hover:underline'>
+                    <Link href={line.href} className='underline underline-offset-4'>
                       {line.name}
                     </Link>
                   )}

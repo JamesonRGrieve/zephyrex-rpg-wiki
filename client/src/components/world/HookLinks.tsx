@@ -32,7 +32,7 @@ function Named({ one, fallback }: { one: LinkedHook; fallback: string }): ReactE
   return one.href === null || one.name === null ? (
     <span className='text-muted-foreground'>{one.name ?? fallback}</span>
   ) : (
-    <Link href={one.href} className='underline-offset-4 hover:underline'>
+    <Link href={one.href} className='underline underline-offset-4'>
       {one.name}
     </Link>
   );

@@ -1,24 +1,25 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * The landing page's words. The layout is @zephyrex/marketing's; what it says is this app's.
- * Nothing here is built yet: every feature is from docs/DESIGN.md, which is proposed, so the page
- * says "planned" and never presents a feature as live. Move a feature out of PLANNED only when
- * it ships.
+ * The way in is the app itself (/w, the worlds); PLANNED lists what docs/DESIGN.md proposes and
+ * never presents a feature as live. Say what's live in the lead and the FAQ, and move a feature
+ * out of PLANNED only when it ships whole.
  */
 import type { Faq, Feature, FooterColumn, Link } from '@zephyrex/marketing';
 
-// The header's call to action (START) already goes to #planned; a second link there would repeat it.
+// The header's call to action (START) opens the app; the plan is one link beside it.
 export const NAV: readonly Link[] = [
+  { label: 'What is planned', href: '#planned' },
   { label: 'How it compares', href: '#compare' },
   { label: 'FAQ', href: '#faq' },
 ];
 
-/** The way in, until the wiki has a screen to start on: the plan itself. */
-export const START: Link = { label: 'See what is planned', href: '#planned' };
+/** The way in: the worlds you keep (the visual audit found the page never led into the app). */
+export const START: Link = { label: 'Open your worlds', href: '/w' };
 
 export const HERO = {
   title: 'Your world, written down',
-  lead: 'A worldbuilding and campaign wiki: who, where, when, what happened and what is secret. It is being built now, and nothing below is live yet.',
+  lead: 'A worldbuilding and campaign wiki: who, where, when, what happened and what is secret. Worlds with their places, people, organisations, items, journals, plot hooks, tags and relations are here now; the rest is being built.',
 };
 
 export const PLANNED: readonly Feature[] = [
@@ -83,7 +84,7 @@ export const COMPARE: readonly { point: string; us: string; them: string }[] = [
 export const FAQS: readonly Faq[] = [
   {
     question: 'Can I use it today?',
-    answer: 'Not yet. The design is written and the build has started; this page will say when each feature arrives.',
+    answer: 'Partly. You can keep worlds with their places, people, organisations, items, journals, plot hooks, tags and relations. Maps, calendars, secrets and import are still being built; this page says when each arrives.',
   },
   {
     question: 'Will it read my Kanka or World Anvil world?',
@@ -97,13 +98,14 @@ export const FAQS: readonly Faq[] = [
 
 export const CLOSING = {
   title: 'A wiki for the world you are building',
-  body: 'See what is planned, and come back as it ships.',
+  body: 'Start a world now, and come back as more ships.',
 };
 
 export const FOOTER: readonly FooterColumn[] = [
   {
     title: 'Learn',
     links: [
+      { label: 'Your worlds', href: '/w' },
       { label: 'Planned features', href: '#planned' },
       { label: 'FAQ', href: '#faq' },
     ],

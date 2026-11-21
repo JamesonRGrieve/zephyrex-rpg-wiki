@@ -294,7 +294,7 @@ export default function EntityRecordPage(): ReactElement {
   const words = ENTITY_KINDS[params.kind];
   const Page = PAGES[params.kind];
   return (
-    <main className='mx-auto grid w-full max-w-3xl gap-6 px-4 py-8'>
+    <main className='mx-auto grid w-full max-w-3xl content-start gap-6 px-4 py-8'>
       {!can.loaded ? (
         <SkeletonRows rows={3} label='Loading' />
       ) : can[words.needs] ? (

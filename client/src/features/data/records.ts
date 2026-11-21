@@ -251,7 +251,9 @@ export function resource<T extends Versioned, Create extends object, Extra = obj
     useList(query, enabled = true) {
       const client = useClient();
       const key = listKey(query);
-      return useSWR(enabled ? key : null, () => client.list(key, plural, schema));
+      // The filter goes to client.list as params, never in the path: list adds its own
+      // ?offset=&limit=, so a path with a query would get a second `?` (and an empty list).
+      return useSWR(enabled ? key : null, () => client.list(path, plural, schema, query ?? {}));
     },
     useOne(id) {
       const client = useClient();
