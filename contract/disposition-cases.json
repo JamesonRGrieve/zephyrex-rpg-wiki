@@ -151,6 +151,18 @@
     {
       "attitude": "missing",
       "band": "missing"
+    },
+    {
+      "attitude": "ally",
+      "band": "helpful"
+    },
+    {
+      "attitude": "rival",
+      "band": "wary"
+    },
+    {
+      "attitude": "enemy",
+      "band": "hostile"
     }
   ]
 }

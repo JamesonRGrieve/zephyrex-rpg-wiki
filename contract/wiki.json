@@ -142,7 +142,10 @@
     "anxious": "wary",
     "distressed": "wary",
     "breaking": "wary",
-    "dismissed": "wary"
+    "dismissed": "wary",
+    "ally": "helpful",
+    "rival": "wary",
+    "enemy": "hostile"
   },
   "disposition_targets": [
     "party",

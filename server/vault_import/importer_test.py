@@ -51,6 +51,7 @@ def test_the_vault_imports_with_its_links_and_a_second_run_changes_nothing(api: 
 
     holst, dingus = _one(api, "person", world, "Holst"), _one(api, "person", world, "Dingus")
     assert holst["location_id"] == stable["id"]
+    assert (json.loads(holst["keywords"]), json.loads(holst["voice"])["first_message"]) == (["stablemaster"], "Stalls are full.")
     properties = {row["key"]: row for row in api.properties("person", holst["id"])}
     assert (properties["Role"]["value"], properties["GM only"]["is_private"], properties["vault_path"]["value"]) == ("Stablemaster", True, "Characters/Holst.md")
     [disposition] = api.list("disposition", person_id=holst["id"])

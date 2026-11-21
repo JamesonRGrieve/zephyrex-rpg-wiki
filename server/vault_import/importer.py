@@ -36,7 +36,7 @@ PROPERTIES: dict[str, tuple[str, str]] = {
 READ = {
     "entity_type", "kind", "name", "campaign", "setting_wide", "is_private", "tags", "aliases", "status",
     "race", "faction", "location", "relations", "parent_location", "parent", "parent_hook", "depends_on",
-    "holder", "quantity", "session_number", "session_date", "maps", *PROPERTIES,
+    "holder", "quantity", "session_number", "session_date", "maps", "keywords", "voice", *PROPERTIES,
 }
 STATUS_KIND = {"hook": "quest_status"}
 
@@ -262,6 +262,18 @@ class Importer:
         if aliases:
             # S4c: other names the record goes by, which link resolution and the AI's lorebook use.
             fields["aliases"] = aliases
+        keywords = [str(one).strip() for one in _list(meta.get("keywords")) if _text(one)]
+        if keywords:
+            fields["keywords"] = keywords
+        if kind == "person" and isinstance(meta.get("voice"), dict):
+            # S4c: how the AI plays them; the server checks and fills the parts.
+            voice = meta["voice"]
+            fields["voice"] = {
+                "personality": str(voice.get("personality") or "").strip(),
+                "speech": str(voice.get("speech") or "").strip(),
+                "first_message": str(voice.get("first_message") or "").strip(),
+                "examples": list(dict.fromkeys(str(one).strip() for one in _list(voice.get("examples")) if _text(one))),
+            }
         if unresolved:
             self.report.unresolved[placed.note.path] = unresolved
 
@@ -293,7 +305,7 @@ class Importer:
         record = placed.record
         changed: dict[str, Any] = {}
         for name, value in fields.items():
-            if name in ("entry", "aliases"):
+            if name in ("entry", "aliases", "keywords", "voice"):
                 held = record.get(name)
                 if (json.loads(held) if isinstance(held, str) and held else None) != value:
                     changed[name] = value
