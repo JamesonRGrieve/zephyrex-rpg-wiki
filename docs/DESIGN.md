@@ -370,8 +370,58 @@ both loaded:
 - a scenario's outcome is written back: events on the timeline, a session report, changed
   relations and dispositions (W52), under the wiki's ACL like any other write.
 
-The wiki adds no schema for this. It is the AI product reading and writing the wiki's own
-records.
+Framing and scenarios are the AI product reading and writing the wiki's own records; the wiki's
+own part since the play tests is in *Play-test rulings* below (a scenario is a campaign copied on
+start).
+
+## Play-test rulings (operator, 2026-11-21)
+
+Decisions from the operator's play tests of rpg-ai on the composed suite, as the wiki implements
+them (rpg-ai `docs/DESIGN.md`, *Play-test rulings*, has the AI side). Each holds in both editions.
+
+- **Copy on start.** A scenario (`campaigns.is_scenario`) is a campaign play never edits. Starting
+  it (`instantiate_campaign`, `POST /v1/campaign/{id}/instantiate`) makes a playthrough: a new
+  campaign (`scenario_id` names its scenario) with its own copy of every record and every link
+  between them, each reference (and each id inside an entry or a requirement) turned to its copy,
+  and an id map back to the caller. The setting's canon is never copied: it stays shared and
+  read-only to play. Templates stay with the scenario; hooks start unresolved. vault_import makes
+  every campaign it imports a scenario. Lists filter `?is_scenario=true` and `?scenario_id=`.
+- **Starting positions.** A person's `location_id` in the scenario is where they start; the copy
+  takes it, then play moves them. Openings tell the player where they are; they never ask.
+- **Provenance.** Campaigns and every record say where they came from: `provenance` homebrew,
+  official or adapted, and a `source` (title, publisher, product or page). Official scenarios are
+  parsed in for personal use; their entities carry the same mark.
+- **Play-style tags.** Campaigns take taxons of kind `play_style`. Eight shared ones are seeded as
+  the system's (freeform, combat-heavy, narrative, mystery, exploration, social, horror,
+  dungeon-crawl); anyone adds their own. A framing note's tags are its campaign's play styles.
+- **GM-only records.** A record whose private "GM only" property is true (the vault's
+  `is_private: true`) is `gm_only` in world_entities and campaign_documents: it reaches the GM
+  and narrator, never a player's prompt.
+- **Pictures.** A record's picture is an uploaded asset or an https link (fandom, wikis…), the link
+  first; links are shown with no referrer. vault_import takes a same-name image beside a note, or
+  `image:`/`picture:`; st_import takes a card's image or icon link.
+- **Campaign documents.** `campaign_documents` gives each record's full text, journals first,
+  `gm_only` marked: rpg-ai's data bank.
+- **Presence and the world tick.** World entities carry a person's `location_id` and a place's
+  `parent_id`, so a scene knows who is present. A person has a `routine` (slots from and to HH:MM on
+  days, at a place, doing something) and `motivations`; a campaign has a clock (`campaign_clock`,
+  `advance_clock`; day 1, 08:00 to start). The GM side moves people (`move_person`, `POST
+  /v1/person_move`), within their campaign or its setting's canon, and each move is kept with where
+  from, when in-world and why. rpg-ai writes none of these tables itself: it calls these abilities
+  as the campaign's GM.
+- **Compendium and SRD import.** `compendium_import` brings the official setting material in as
+  setting-wide canon, provenance official with book and page: the D&D 5e SRD (CC-BY-4.0, with its
+  attribution) into the dnd setting from the dnd5e Foundry system's packs (6.0.5), then the wh40k-rpg
+  system's printed-book records into warhammer-40000, de-duplicated across lines, DH2 first. A
+  record's `compendium_source` is its Foundry compendium UUID, which VTT's rules packs key by too.
+  (Approved; next after the importers batch.)
+- **Narrative character building.** The wiki owns the person, the story half of any character: a
+  guided New character page (concept, appearance, personality, background, goals and fears,
+  relationships, voice, picture), the setting's canon offered as suggestions and never enforced,
+  archetypes from templates, and a hand-off to VTT's RAW builder and back. (Planned; after the
+  importers.)
+- **Batched importers.** Imports and copies write a record type at a time through plural creates
+  (server-framework a5121fa8 runs each entity's hooks), never one request per entity.
 
 ## Editions
 
@@ -393,8 +443,12 @@ records.
 | S6 | Settings (rpg-ai DESIGN b73eb13, the operator, 2026-11-21): a setting encloses campaigns; its campaign-less records are its canon, read by rpg-ai's canon notices (`setting_canon`, `world_entities(include_setting)`); `canon_level` stored, unset until decided; VTT's game systems name a setting | Built in both editions (no UI); the operator's open questions: setting as the top level of /w, canon_level, where a published setting's canon comes from |
 | S6b | Setting slugs and the seeded settings (VTT's game systems name settings by slug, operator-confirmed via VTT, 2026-11-21): `slug` unique, derived from the name when not given (numbered past any taken), fixed once set (contract/wiki.json setting_slug, contract/slug-cases.json); the contract's `seed_settings` (Warhammer 40,000, Age of Sigmar, Warhammer Fantasy, D&D, Fallout, Modern) are the system's: everyone reads them, only the system changes them | Built in both editions (rpg_core 006, lite 20261121060000_s6b) |
 | S4a | Tags, categories, races and statuses (`world_taxonomy`, W6); relations between people and organisations with attitude, colour and mirror (`world_social` on genealogy's relationships, W5) | Done in both editions; server 61/62 on 58137, the one red waiting on the framework's status/statuses fix |
-| S4b | Properties (W4: a record's own key/values, the framework's `/v1/record_metadata`), property kits (`world_properties`: keys with types and defaults; apply adds the keys a record lacks), templates (W7: `is_template` on the six kinds, fixed at creation; `/v1/template/instantiate` copies fields, entry, properties and tags; never in world_entities or setting_canon) | Server done (rpg_core 007, world_properties 001; a template's copy carries its gear); lite: templates and kits (20261121070000_s4b); UI: the properties panel and templates marked. Waiting on the next prebuilt set (@zephyrex/lite's envelope parser): lite record_metadata, a kit's apply and template/instantiate, then the kit picker and New from template |
-| S2c | Pictures and files: the framework's attachments extension (an asset over cloud storage, a polymorphic attachment with a role from contract/wiki.json attachment_roles) on any record; world_entities.picture (rpg-ai A31) | Server half done: the app loads cloud and attachments, picture is the newest primary_image's content path (null once deleted). Waiting on the next prebuilt set: the lite twin (needs @zephyrex/lite's raw-body owner and readBytes), the UI (portrait, banner, Files panel on @zephyrex/attachments), and the file names and types on /v1/attachment/of (Zephyrex Server, patch sent) |
+| S4b | Properties (W4: a record's own key/values, the framework's `/v1/record_metadata`), property kits (`world_properties`: keys with types and defaults; apply adds the keys a record lacks), templates (W7: `is_template` on the six kinds, fixed at creation; `/v1/template/instantiate` copies fields, entry, properties and tags; never in world_entities or setting_canon) | Server done; lite: templates, kits and record properties (the properties panel works in lite); next: lite kit apply and template instantiate, then the kit picker and New from template |
+| S2c | Pictures and files: the framework's attachments extension (an asset over cloud storage, a polymorphic attachment with a role from contract/wiki.json attachment_roles) on any record; world_entities.picture (rpg-ai A31) | Server done (uploads, and pictures by link first); pictures by link in both editions with a picture panel; next: lite uploads and the gallery (@zephyrex/attachments' AttachmentGallery) |
+| S4c–S4d | Aliases, keywords and the AI voice (with SillyTavern's prompt parts); a lorebook activation block on every record | Done in both editions |
+| S7 | The pages as the `@zephyrex-rpg/wiki` package (`wikiExtension`, `lib/paths`), and its lite API as `@zephyrex-rpg/wiki/lite` (one catch-all, a Prisma fragment); VTT and rpg-ai compose it | Done |
+| Imports | vault_import (Obsidian vaults: kinds, pictures, provenance, play styles, scenarios) and st_import (SillyTavern cards and World Info) | Done; batching next |
+| Rulings | Everything in *Play-test rulings* above but the compendium import, the character builder and batching | Done in both editions (main 0885ba1 and after) |
 | S5 | Cross-kind search, the mention editor (W2), Kanka import | Not started |
 
 ## Phases
