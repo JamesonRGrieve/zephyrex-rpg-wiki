@@ -243,6 +243,14 @@ async function expectSeedShows(page: Page, seeded: Seeded): Promise<void> {
     await page.goto(target);
     for (const text of texts) await expect(page.getByText(text, { exact: true }).first(), `${target}: ${text}`).toBeVisible();
   }
+  // The sidebar's Places, People… open the scope last shown: here the campaign, then its setting.
+  await page.goto('/w/last/person');
+  await expect(page).toHaveURL(new RegExp(`${w}/person$`));
+  await page.goto(`/w/setting-${seeded.setting}/faction`);
+  // Shown (and so remembered) before the sidebar is followed.
+  await expect(page.getByText('Adeptus Mechanicus', { exact: true }).first()).toBeVisible();
+  await page.goto('/w/last/journal');
+  await expect(page).toHaveURL(new RegExp(`/w/setting-${seeded.setting}/journal$`));
 }
 
 test.describe.serial('visual audit', () => {

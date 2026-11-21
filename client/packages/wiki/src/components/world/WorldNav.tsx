@@ -5,10 +5,11 @@
  * the taxonomy, and a campaign's plot board (a setting's canon is played in its campaigns).
  */
 import Link from 'next/link';
-import type { ReactElement } from 'react';
+import { type ReactElement, useEffect } from 'react';
 import { useWikiBase } from '../../base';
 import { useCapabilities } from '../../features/capabilities';
 import { aboutPath, kindPath, plotPath, taxonomyPath } from '../../lib/paths';
+import { rememberScope } from '../../lib/lastScope';
 import { settingOf } from '../../lib/scope';
 import { ENTITY_KINDS } from './kinds';
 
@@ -18,6 +19,8 @@ export function WorldNav({ world, current }: { world: string; current: string })
   const base = useWikiBase();
   const can = useCapabilities();
   const isSetting = settingOf(world) !== null;
+  // The sidebar's Places, People… open the setting or campaign last shown.
+  useEffect(() => rememberScope(world), [world]);
   return (
     <nav aria-label={isSetting ? 'This setting' : 'This campaign'} className='flex flex-wrap gap-x-4 gap-y-2 text-sm'>
       <Link href={base} className='underline-offset-4 hover:underline'>

@@ -9,6 +9,7 @@ import type { ComponentType, ReactElement } from 'react';
 import type { ZephyrexClientExtension } from 'zephyrex';
 import { type SettingSections, SettingSectionsProvider, WikiBaseProvider } from './base';
 import { KindPage } from './pages/KindPage';
+import { LastScopePage } from './pages/LastScopePage';
 import { PlotPage } from './pages/PlotPage';
 import { RecordPage } from './pages/RecordPage';
 import { TaxonomyPage } from './pages/TaxonomyPage';
@@ -49,6 +50,7 @@ export function wikiExtension({ base = 'w', settingSections = [] }: WikiExtensio
     // Most specific first: the router takes the first pattern that matches.
     pages: [
       { path: root, component: routed(root, () => <WorldsPage />, settingSections) },
+      { path: `${root}/last/:kind`, component: routed(root, (params) => <LastScopePage kind={of(params, 'kind')} />, settingSections) },
       { path: `${root}/:world/taxonomy`, component: routed(root, (params) => <TaxonomyPage world={of(params, 'world')} />, settingSections) },
       { path: `${root}/:world/plot`, component: routed(root, (params) => <PlotPage world={of(params, 'world')} />, settingSections) },
       { path: `${root}/:world/about`, component: routed(root, (params) => <WorldPage world={of(params, 'world')} />, settingSections) },
@@ -58,6 +60,21 @@ export function wikiExtension({ base = 'w', settingSections = [] }: WikiExtensio
         component: routed(root, (params) => <RecordPage world={of(params, 'world')} kind={of(params, 'kind')} id={of(params, 'id')} />, settingSections),
       },
     ],
-    navItems: [{ title: 'Settings', url: `/${root}` }],
+    // Settings, and under it each kind of page in the setting or campaign last shown (/last/<kind>).
+    navItems: [
+      {
+        title: 'Settings',
+        url: `/${root}`,
+        children: [
+          ['Places', 'location'],
+          ['People', 'person'],
+          ['Organisations', 'faction'],
+          ['Items', 'item'],
+          ['Lore', 'journal'],
+          ['Plot', 'plot'],
+          ['Game systems', 'systems'],
+        ].map(([title, kind]) => ({ title: title ?? '', url: `/${root}/last/${kind ?? ''}` })),
+      },
+    ],
   };
 }
