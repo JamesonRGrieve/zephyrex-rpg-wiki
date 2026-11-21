@@ -6,10 +6,10 @@
  */
 import { recordError, validationError } from '@zephyrex/lite';
 import { z } from 'zod';
-import { ENTITY_TYPES, LIMITS } from '~/contract';
-import { plainText } from '~/lib/entry';
+import { ENTITY_TYPES, LIMITS } from '@zephyrex-rpg/wiki/contract';
+import { plainText } from '@zephyrex-rpg/wiki/lib/entry';
 import { prisma } from '~/lib/prisma';
-import { mentionsIn, type NamedMention, reportEntry } from '~/lib/report';
+import { mentionsIn, type NamedMention, reportEntry } from '@zephyrex-rpg/wiki/lib/report';
 import { journals } from '~/lib/worldRecords';
 
 export const sessionReportSchema = z.object({

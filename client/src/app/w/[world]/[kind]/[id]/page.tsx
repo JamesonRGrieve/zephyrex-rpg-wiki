@@ -12,21 +12,21 @@ import { LoadProblem } from 'zephyrex/ui/load-problem';
 import { PageHeader } from 'zephyrex/ui/page-header';
 import { SkeletonRows } from 'zephyrex/ui/skeleton';
 import { useHidden, useWrites } from 'zephyrex/hooks/useWrites';
-import { type DispositionLine, DispositionList } from '~/components/world/DispositionList';
-import { EntityPage, type EntityPageProps } from '~/components/world/EntityPage';
-import { HookState } from '~/components/world/HookState';
-import { HookLinks, type LinkedHook, type Taker } from '~/components/world/HookLinks';
-import { type CarriedLine, InventoryList } from '~/components/world/InventoryList';
-import { PostList } from '~/components/world/PostList';
-import { PropertyList } from '~/components/world/PropertyList';
-import { VoicePanel } from '~/components/world/VoicePanel';
-import { type RelationLine, RelationList } from '~/components/world/RelationList';
-import { type Chip, TaxonChips } from '~/components/world/TaxonChips';
-import { ENTITY_KINDS, type EntityKind, isEntityKind } from '~/components/world/kinds';
-import { Unavailable } from '~/components/world/Unavailable';
-import { type Capabilities, useCapabilities } from '~/features/capabilities';
-import { usePlot } from '~/features/data/plot';
-import { type Property, useProperties, usePropertyActions } from '~/features/data/properties';
+import { type DispositionLine, DispositionList } from '@zephyrex-rpg/wiki/components/world/DispositionList';
+import { EntityPage, type EntityPageProps } from '@zephyrex-rpg/wiki/components/world/EntityPage';
+import { HookState } from '@zephyrex-rpg/wiki/components/world/HookState';
+import { HookLinks, type LinkedHook, type Taker } from '@zephyrex-rpg/wiki/components/world/HookLinks';
+import { type CarriedLine, InventoryList } from '@zephyrex-rpg/wiki/components/world/InventoryList';
+import { PostList } from '@zephyrex-rpg/wiki/components/world/PostList';
+import { PropertyList } from '@zephyrex-rpg/wiki/components/world/PropertyList';
+import { VoicePanel } from '@zephyrex-rpg/wiki/components/world/VoicePanel';
+import { type RelationLine, RelationList } from '@zephyrex-rpg/wiki/components/world/RelationList';
+import { type Chip, TaxonChips } from '@zephyrex-rpg/wiki/components/world/TaxonChips';
+import { ENTITY_KINDS, type EntityKind, isEntityKind } from '@zephyrex-rpg/wiki/components/world/kinds';
+import { Unavailable } from '@zephyrex-rpg/wiki/components/world/Unavailable';
+import { type Capabilities, useCapabilities } from '@zephyrex-rpg/wiki/features/capabilities';
+import { usePlot } from '@zephyrex-rpg/wiki/features/data/plot';
+import { type Property, useProperties, usePropertyActions } from '@zephyrex-rpg/wiki/features/data/properties';
 import {
   carried,
   dispositions,
@@ -47,10 +47,10 @@ import {
   relationships,
   statuses,
   taxa,
-} from '~/features/data/records';
-import { currentAttitude } from '~/lib/dispositions';
-import { storedNames, storedVoice } from '~/lib/names';
-import { describeRequirement } from '~/lib/requirements';
+} from '@zephyrex-rpg/wiki/features/data/records';
+import { currentAttitude } from '@zephyrex-rpg/wiki/lib/dispositions';
+import { storedNames, storedVoice } from '@zephyrex-rpg/wiki/lib/names';
+import { describeRequirement } from '@zephyrex-rpg/wiki/lib/requirements';
 
 interface Shown {
   name: string;

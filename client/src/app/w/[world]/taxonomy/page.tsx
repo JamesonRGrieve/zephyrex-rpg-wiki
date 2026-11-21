@@ -10,11 +10,11 @@ import type { ReactElement } from 'react';
 import { LoadProblem } from 'zephyrex/ui/load-problem';
 import { PageHeader } from 'zephyrex/ui/page-header';
 import { SkeletonRows } from 'zephyrex/ui/skeleton';
-import { ENTITY_KINDS, isEntityKind } from '~/components/world/kinds';
-import { ParentTree } from '~/components/world/ParentTree';
-import { Unavailable } from '~/components/world/Unavailable';
-import { useCapabilities } from '~/features/capabilities';
-import { entityTaxa, factions, hooks, items, journals, people, places, statuses, taxa, worlds } from '~/features/data/records';
+import { ENTITY_KINDS, isEntityKind } from '@zephyrex-rpg/wiki/components/world/kinds';
+import { ParentTree } from '@zephyrex-rpg/wiki/components/world/ParentTree';
+import { Unavailable } from '@zephyrex-rpg/wiki/components/world/Unavailable';
+import { useCapabilities } from '@zephyrex-rpg/wiki/features/capabilities';
+import { entityTaxa, factions, hooks, items, journals, people, places, statuses, taxa, worlds } from '@zephyrex-rpg/wiki/features/data/records';
 
 /** The records a taxon is on, each named from its world's lists and linked to its page. */
 function Tagged({ world, taxonId }: { world: string; taxonId: string }): ReactElement {

@@ -6,11 +6,11 @@ import { useParams } from 'next/navigation';
 import type { ReactElement } from 'react';
 import { PageHeader } from 'zephyrex/ui/page-header';
 import { SkeletonRows } from 'zephyrex/ui/skeleton';
-import { PlotBoard } from '~/components/world/PlotBoard';
-import { Unavailable } from '~/components/world/Unavailable';
-import { useCapabilities } from '~/features/capabilities';
-import { usePlot } from '~/features/data/plot';
-import { worlds } from '~/features/data/records';
+import { PlotBoard } from '@zephyrex-rpg/wiki/components/world/PlotBoard';
+import { Unavailable } from '@zephyrex-rpg/wiki/components/world/Unavailable';
+import { useCapabilities } from '@zephyrex-rpg/wiki/features/capabilities';
+import { usePlot } from '@zephyrex-rpg/wiki/features/data/plot';
+import { worlds } from '@zephyrex-rpg/wiki/features/data/records';
 
 function Board({ world }: { world: string }): ReactElement {
   const plot = usePlot(world);

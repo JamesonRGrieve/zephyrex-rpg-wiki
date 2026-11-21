@@ -5,10 +5,10 @@ import type { ReactElement } from 'react';
 import { useWrites } from 'zephyrex/hooks/useWrites';
 import { PageHeader } from 'zephyrex/ui/page-header';
 import { SkeletonRows } from 'zephyrex/ui/skeleton';
-import { Unavailable } from '~/components/world/Unavailable';
-import { WorldList } from '~/components/world/WorldList';
-import { useCapabilities } from '~/features/capabilities';
-import { worlds } from '~/features/data/records';
+import { Unavailable } from '@zephyrex-rpg/wiki/components/world/Unavailable';
+import { WorldList } from '@zephyrex-rpg/wiki/components/world/WorldList';
+import { useCapabilities } from '@zephyrex-rpg/wiki/features/capabilities';
+import { worlds } from '@zephyrex-rpg/wiki/features/data/records';
 
 function Worlds(): ReactElement {
   const list = worlds.useList();

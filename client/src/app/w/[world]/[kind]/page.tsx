@@ -7,12 +7,12 @@ import type { ReactElement } from 'react';
 import { useWrites } from 'zephyrex/hooks/useWrites';
 import { PageHeader } from 'zephyrex/ui/page-header';
 import { SkeletonRows } from 'zephyrex/ui/skeleton';
-import { EntityList, type EntityRow } from '~/components/world/EntityList';
-import { ENTITY_KINDS, type EntityKind, isEntityKind } from '~/components/world/kinds';
-import { ParentTree, type TreeRow } from '~/components/world/ParentTree';
-import { Unavailable } from '~/components/world/Unavailable';
-import { useCapabilities } from '~/features/capabilities';
-import { factions, hooks, items, journals, people, places, type ResourceHooks, worlds } from '~/features/data/records';
+import { EntityList, type EntityRow } from '@zephyrex-rpg/wiki/components/world/EntityList';
+import { ENTITY_KINDS, type EntityKind, isEntityKind } from '@zephyrex-rpg/wiki/components/world/kinds';
+import { ParentTree, type TreeRow } from '@zephyrex-rpg/wiki/components/world/ParentTree';
+import { Unavailable } from '@zephyrex-rpg/wiki/components/world/Unavailable';
+import { useCapabilities } from '@zephyrex-rpg/wiki/features/capabilities';
+import { factions, hooks, items, journals, people, places, type ResourceHooks, worlds } from '@zephyrex-rpg/wiki/features/data/records';
 
 /** The four resources a world lists, each with the hooks the list uses. */
 const RESOURCES = { location: places, person: people, faction: factions, item: items, journal: journals, hook: hooks } as const;

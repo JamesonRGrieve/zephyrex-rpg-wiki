@@ -15,6 +15,9 @@
     "paths": {
       "~/*": [
         "./src/*"
+      ],
+      "@zephyrex-rpg/wiki/*": [
+        "./packages/wiki/src/*"
       ]
     },
     "plugins": [

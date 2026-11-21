@@ -5,8 +5,8 @@
  * {id, kind, name, aliases, summary, picture, updated_at, deleted}, paged by (updated_at, id) with an opaque
  * cursor. Deleted ones are tombstones. The paging is pure, here; the lite route reads the rows.
  */
-import { storedNames, storedVoice, type Voice } from '~/lib/names';
-import { summary } from '~/lib/summary';
+import { storedNames, storedVoice, type Voice } from '@zephyrex-rpg/wiki/lib/names';
+import { summary } from '@zephyrex-rpg/wiki/lib/summary';
 
 export const WORLD_ENTITY_KINDS = ['location', 'person', 'faction', 'item', 'journal'] as const;
 export type WorldEntityKind = (typeof WORLD_ENTITY_KINDS)[number];

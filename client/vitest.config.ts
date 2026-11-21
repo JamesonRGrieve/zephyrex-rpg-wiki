@@ -23,6 +23,8 @@ export default defineConfig({
     alias: {
       // Mirrors the tsconfig `~/*` path to this app's source.
       '~': path.resolve(__dirname, './src'),
+      // The wiki's client package (S7), read from its source here; consumers take its dist.
+      '@zephyrex-rpg/wiki': path.resolve(__dirname, './packages/wiki/src'),
     },
   },
 });

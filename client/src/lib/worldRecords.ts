@@ -26,15 +26,15 @@ import {
   SEED_SETTINGS,
   STATUS_KINDS,
   TAXON_KINDS,
-} from '~/contract';
+} from '@zephyrex-rpg/wiki/contract';
 import { type Columns, columnsOf, fieldsOf, plain } from '~/lib/columns';
-import { EntryError, parseEntry } from '~/lib/entry';
-import { wouldCloseCycle } from '~/lib/hookGraph';
-import { checkedRequirement, leavesOf, RequirementError } from '~/lib/requirements';
+import { EntryError, parseEntry } from '@zephyrex-rpg/wiki/lib/entry';
+import { wouldCloseCycle } from '@zephyrex-rpg/wiki/lib/hookGraph';
+import { checkedRequirement, leavesOf, RequirementError } from '@zephyrex-rpg/wiki/lib/requirements';
 import { prisma } from '~/lib/prisma';
-import { checkedKit, KitError } from '~/lib/properties';
-import { names, voice } from '~/lib/names';
-import { freeSlug, isSlug, SLUG_RULE, slugify } from '~/lib/slug';
+import { checkedKit, KitError } from '@zephyrex-rpg/wiki/lib/properties';
+import { names, voice } from '@zephyrex-rpg/wiki/lib/names';
+import { freeSlug, isSlug, SLUG_RULE, slugify } from '@zephyrex-rpg/wiki/lib/slug';
 
 const name = z.string().trim().min(1, 'A name is required').max(LIMITS.name_characters);
 const reference = z.string().min(1).nullable();

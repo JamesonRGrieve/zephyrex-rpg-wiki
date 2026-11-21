@@ -4,11 +4,13 @@ import path from 'path';
 import type { StorybookConfig } from '@storybook/nextjs';
 
 const APP_SRC = path.resolve(import.meta.dirname, '../src');
+// The wiki's client package (S7), read from its source, as the app reads it.
+const WIKI_SRC = path.resolve(import.meta.dirname, '../packages/wiki/src');
 // public/ holds only what is fetched into it , so it may not exist.
 const PUBLIC = path.resolve(import.meta.dirname, '../public');
 
 const config: StorybookConfig = {
-  stories: ['../src/**/*.stories.@(js|jsx|mjs|ts|tsx|mdx)'],
+  stories: ['../src/**/*.stories.@(js|jsx|mjs|ts|tsx|mdx)', '../packages/wiki/src/**/*.stories.@(js|jsx|mjs|ts|tsx|mdx)'],
   // Storybook 10 folds actions/controls/interactions/viewport into core; only
   // links and a11y remain as separate addons here.
   addons: ['@storybook/addon-links', '@storybook/addon-a11y'],
@@ -23,7 +25,7 @@ const config: StorybookConfig = {
   webpackFinal: async (webpackConfig) => {
     webpackConfig.resolve = webpackConfig.resolve || {};
     // This app's `~/*` alias (tsconfig paths); the framework is a compiled package.
-    webpackConfig.resolve.alias = { ...(webpackConfig.resolve.alias || {}), '~': APP_SRC };
+    webpackConfig.resolve.alias = { ...(webpackConfig.resolve.alias || {}), '~': APP_SRC, '@zephyrex-rpg/wiki': WIKI_SRC };
     return webpackConfig;
   },
 };
