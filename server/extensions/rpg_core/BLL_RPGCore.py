@@ -2038,11 +2038,11 @@ def _instantiate(model_registry: Any, requester_id: str, campaigns: Any, source:
     return made
 
 
-# Whether a start's copy runs in a background thread. Off for now: on the runner, with SQLite, a
-# copy in a thread waited on write locks while its progress was polled (a 120-record start: 8 s
-# inline, 50 s in a thread, stalls of 14 to 31 s even in its first step). On when that is solved
-# with Zephyrex Server (the copy's own process, a framework task runner, or the lock found).
-START_IN_BACKGROUND = False
+# Whether a start's copy runs in a background thread (each manager call its own session, so a
+# thread is sound: Zephyrex Server's probe, server-framework 6dc40a64). Its stalls on the runner
+# were the test database on NFS, not the thread: with it on local disk the polled start is quick.
+# False copies before answering (the start comes back done), as lite does.
+START_IN_BACKGROUND = True
 
 
 def start_campaign(model_registry: Any, requester_id: str, source_campaign_id: str, name: Optional[str] = None) -> CampaignStartAccepted:
@@ -2063,6 +2063,10 @@ def start_campaign(model_registry: Any, requester_id: str, source_campaign_id: s
         _manager(model_registry, requester_id, CampaignStartManager).update(id=start_id, step=step, done=done, campaign_id=campaign_id)
 
     def run() -> None:
+        # The finished request's deadline came with its context: the copy has its own time.
+        from zephyrex.lib.RequestContext import set_request_deadline_ms
+
+        set_request_deadline_ms(None)
         try:
             started = instantiate_campaign(model_registry, requester_id, source_campaign_id, name, progress=report)
         except Exception as error:  # noqa: BLE001 - the start's row says why; the copy was undone
