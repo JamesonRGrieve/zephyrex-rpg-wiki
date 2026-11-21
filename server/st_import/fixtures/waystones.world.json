@@ -1,0 +1,7 @@
+{
+  "entries": {
+    "0": { "uid": 0, "key": ["waystone", "Waystone"], "keysecondary": ["gate"], "comment": "The Waystones", "content": "Old stones that take something from those who use them.", "constant": false, "selective": true, "selectiveLogic": 2, "order": 50, "position": 4, "depth": 3, "probability": 70, "useProbability": true, "disable": false, "sticky": 1, "delay": 2, "group": "Omens", "groupWeight": 80 },
+    "1": { "uid": 1, "key": ["keeper"], "comment": "", "content": "The keepers tended the stones.", "constant": true, "order": 10, "position": 0, "disable": false },
+    "2": { "uid": 2, "key": ["secret"], "comment": "Disabled", "content": "Hidden.", "disable": true }
+  }
+}

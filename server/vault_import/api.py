@@ -84,3 +84,30 @@ class Api:
 
     def change_property(self, row: dict[str, Any], value: str) -> None:
         self._call("PATCH", f"/v1/record_metadata/{row['id']}", (200,), json={"record_metadata": {"value": value}})
+
+    # ---- files (S2c, the framework's attachments) ----------------------------------------
+
+    def upload(self, name: str, content_type: str, content: bytes) -> dict[str, Any]:
+        """A file stored as the caller's asset (its raw bytes, its type and its name)."""
+        response = self._call(
+            "POST", "/v1/asset/upload", (200, 201), params={"name": name}, content=content, headers={"Content-Type": content_type}
+        )
+        asset: dict[str, Any] = response.json()["asset"]
+        return asset
+
+    def attachments(self, kind: str, record_id: str, role: str) -> list[dict[str, Any]]:
+        body = self._call(
+            "GET", "/v1/attachment/of", (200,), params={"target_entity_type": kind, "target_entity_id": record_id, "role": role}
+        ).json()
+        rows: list[dict[str, Any]] = body["attachments"]
+        return rows
+
+    def attach(self, asset_id: str, kind: str, record_id: str, role: str) -> None:
+        body = {"asset_id": asset_id, "target_entity_type": kind, "target_entity_id": record_id, "role": role}
+        self._call("POST", "/v1/attachment", (200, 201), json={"attachment": body})
+
+    def extensions(self) -> set[str]:
+        """The extensions the wiki's back end serves (GET /v1/extension)."""
+        body = self._call("GET", "/v1/extension", (200,)).json()
+        rows = body.get("extensions", []) if isinstance(body, dict) else []
+        return {str(row.get("name")) for row in rows if isinstance(row, dict)}

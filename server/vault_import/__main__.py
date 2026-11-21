@@ -11,49 +11,12 @@ before the campaigns that link to it.
 """
 
 import argparse
-import importlib
-import os
 import sys
-from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterator
 
-from vault_import.api import Api
+from vault_import.connect import connection
 from vault_import.importer import Importer
 from vault_import.notes import read_vault
-
-SESSION_HOURS = 1
-
-
-@contextmanager
-def _over_http(base_url: str, lite: bool) -> Iterator[Api]:
-    import httpx
-
-    token = os.environ.get("WIKI_TOKEN")
-    headers = {"Authorization": f"Bearer {token}"} if token else {}
-    if lite:
-        # The lite edition refuses cross-site writes; a same-origin fetch says so.
-        headers["Sec-Fetch-Site"] = "same-origin"
-    with httpx.Client(base_url=base_url, timeout=60) as http:
-        yield Api(http, headers, prefix="/api" if lite else "")
-
-
-@contextmanager
-def _in_process(app_path: str, owner: str) -> Iterator[Api]:
-    from fastapi.testclient import TestClient
-    from zephyrex.lib.Environment import env
-    from zephyrex.logic.BLL_Auth import UserManager
-
-    sys.path.insert(0, os.getcwd())
-    module, _, factory = app_path.partition(":")
-    app: Any = getattr(importlib.import_module(module), factory or "create")()
-    with TestClient(app) as http:
-        registry = app.state.model_registry
-        user = UserManager(requester_id=env("ROOT_ID"), model_registry=registry).get(id=owner)
-        token = UserManager.generate_jwt_token(
-            user_id=str(user.id), email=str(user.email), expiration_hours=SESSION_HOURS, model_registry=registry
-        )
-        yield Api(http, {"Authorization": f"Bearer {token}"})
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -70,7 +33,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("give --base-url (over HTTP) or --app with --owner (in process)")
     if args.app is not None and not args.owner:
         parser.error("--app needs --owner")
-    connect = _in_process(args.app, args.owner) if args.app else _over_http(args.base_url, args.lite)
+    connect = connection(args.base_url, args.lite, args.app, args.owner)
     notes = [note for vault in args.vaults for note in read_vault(vault)]
     with connect as api:
         report = Importer(api, setting_slug=args.setting, dry_run=args.dry_run).run(notes)

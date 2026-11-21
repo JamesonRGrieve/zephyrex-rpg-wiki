@@ -20,6 +20,7 @@ from datetime import date, datetime, timezone
 from typing import Any, Callable, Optional
 
 from vault_import.api import Api, ApiError
+from zephyrex.extensions.wiki_shared.Names import names, voice  # type: ignore[import-not-found]
 from vault_import.markdown import to_plate
 from vault_import.notes import ENTITY_TYPES, Note, link_name
 
@@ -261,19 +262,20 @@ class Importer:
         aliases = [str(one).strip() for one in _list(meta.get("aliases")) if _text(one)]
         if aliases:
             # S4c: other names the record goes by, which link resolution and the AI's lorebook use.
-            fields["aliases"] = aliases
+            fields["aliases"] = names(aliases)
         keywords = [str(one).strip() for one in _list(meta.get("keywords")) if _text(one)]
         if keywords:
-            fields["keywords"] = keywords
+            fields["keywords"] = names(keywords)
         if kind == "person" and isinstance(meta.get("voice"), dict):
             # S4c: how the AI plays them; the server checks and fills the parts.
-            voice = meta["voice"]
-            fields["voice"] = {
-                "personality": str(voice.get("personality") or "").strip(),
-                "speech": str(voice.get("speech") or "").strip(),
-                "first_message": str(voice.get("first_message") or "").strip(),
-                "examples": list(dict.fromkeys(str(one).strip() for one in _list(voice.get("examples")) if _text(one))),
-            }
+            given = meta["voice"]
+            # As the server keeps it, so a second run compares like with like.
+            fields["voice"] = voice({
+                "personality": str(given.get("personality") or ""),
+                "speech": str(given.get("speech") or ""),
+                "first_message": str(given.get("first_message") or ""),
+                "examples": [str(one) for one in _list(given.get("examples")) if _text(one)],
+            })
         if unresolved:
             self.report.unresolved[placed.note.path] = unresolved
 
@@ -305,7 +307,7 @@ class Importer:
         record = placed.record
         changed: dict[str, Any] = {}
         for name, value in fields.items():
-            if name in ("entry", "aliases", "keywords", "voice"):
+            if name in ("entry", "aliases", "keywords", "voice", "lore"):
                 held = record.get(name)
                 if (json.loads(held) if isinstance(held, str) and held else None) != value:
                     changed[name] = value
