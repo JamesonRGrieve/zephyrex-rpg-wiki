@@ -1,6 +1,6 @@
 ---
 entity_type: hook
-kind: side_quest
+quest_type: side
 name: Ask Holst
 campaign: The Split Antler
 is_private: false

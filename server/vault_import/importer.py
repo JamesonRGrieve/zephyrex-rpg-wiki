@@ -20,6 +20,14 @@ from datetime import date, datetime, timezone
 from typing import Any, Callable, Optional
 
 from vault_import.api import Api, ApiError
+from zephyrex.extensions.wiki_shared.Contract import (  # type: ignore[import-not-found]
+    FACTION_KINDS,
+    HOOK_KINDS,
+    ITEM_KINDS,
+    JOURNAL_KINDS,
+    LOCATION_KINDS,
+    PERSON_KINDS,
+)
 from zephyrex.extensions.wiki_shared.Names import names, voice  # type: ignore[import-not-found]
 from vault_import.markdown import to_plate
 from vault_import.notes import ENTITY_TYPES, Note, link_name
@@ -33,11 +41,36 @@ PROPERTIES: dict[str, tuple[str, str]] = {
     "player": ("Player", "text"),
     "in_world_days": ("In-world days", "text"),
 }
+# A record's kind: `kind:`, or the vault's own field for it (location_type: facility, …).
+KIND_FIELDS = {
+    "location": "location_type",
+    "person": "person_type",
+    "faction": "faction_type",
+    "item": "item_type",
+    "journal": "journal_type",
+    "hook": "quest_type",
+}
+KINDS = {
+    "location": LOCATION_KINDS,
+    "person": PERSON_KINDS,
+    "faction": FACTION_KINDS,
+    "item": ITEM_KINDS,
+    "journal": JOURNAL_KINDS,
+    "hook": HOOK_KINDS,
+}
+# The vaults' words for a contract kind, where the word isn't the kind itself (after - becomes _).
+KIND_SYNONYMS = {
+    "hook": {"main": "major_quest", "side": "side_quest"},
+    # campaign_framing: one framing note per campaign (Premise, Tone, Truths, Opening Situation).
+    "journal": {"session": "session_report", "day_plan": "note", "campaign_framing": "lore"},
+    "item": {"equipment": "misc"},
+}
 # Handled elsewhere, or the note's identity; anything else in frontmatter is reported as unread.
 READ = {
     "entity_type", "kind", "name", "campaign", "setting_wide", "is_private", "tags", "aliases", "status",
     "race", "faction", "location", "relations", "parent_location", "parent", "parent_hook", "depends_on",
     "holder", "quantity", "session_number", "session_date", "maps", "keywords", "voice", *PROPERTIES,
+    *KIND_FIELDS.values(),
 }
 STATUS_KIND = {"hook": "quest_status"}
 
@@ -194,6 +227,19 @@ class Importer:
 
         return resolve
 
+    def _kind(self, note: Note, entity: str) -> Optional[str]:
+        """The note's kind, as the contract names it, or none; a word that isn't one is reported."""
+        field_name = "kind" if _text(note.meta.get("kind")) else KIND_FIELDS.get(entity, "kind")
+        word = _text(note.meta.get(field_name))
+        if word is None:
+            return None
+        kind = word.strip().lower().replace("-", "_").replace(" ", "_")
+        kind = KIND_SYNONYMS.get(entity, {}).get(kind, kind)
+        if kind in KINDS.get(entity, ()):
+            return kind
+        self.report.unread.setdefault(note.path, []).append(f"{field_name}: {word} (not one of the {entity} kinds)")
+        return None
+
     # ---- pass 1 ----------------------------------------------------------------------------
 
     def _place(self, note: Note) -> Optional[Placed]:
@@ -214,7 +260,7 @@ class Importer:
         if held is not None:
             self.report.refused.append((note.path, f"{note.name!r} is already a {held[0]} in this campaign"))
             return None
-        fields = {"name": note.name, "kind": _text(note.meta.get("kind")), **scope}
+        fields = {"name": note.name, "kind": self._kind(note, kind), **scope}
         if self.dry_run:
             record: dict[str, Any] = {"id": self._placeholder(), **fields}
         else:
@@ -451,7 +497,8 @@ class Importer:
                 continue
             unread = sorted(key for key in note.meta if key not in READ)
             if unread:
-                self.report.unread[note.path] = unread
+                # Beside any kind word pass 1 couldn't read.
+                self.report.unread.setdefault(note.path, []).extend(unread)
             try:
                 found = self._place(note)
             except ApiError as error:

@@ -1,6 +1,6 @@
 ---
 entity_type: location
-kind: region
+location_type: warp-passage
 name: The Fens
 campaign: The Split Antler
 is_private: false

@@ -1,6 +1,6 @@
 ---
 entity_type: item
-kind: misc
+item_type: equipment
 name: Waystone Shard
 campaign: The Split Antler
 is_private: false

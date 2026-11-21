@@ -1,6 +1,6 @@
 ---
 entity_type: location
-kind: building
+location_type: building
 name: Brindlemarsh Stable
 campaign: The Split Antler
 is_private: false

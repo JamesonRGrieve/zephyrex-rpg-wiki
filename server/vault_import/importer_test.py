@@ -39,6 +39,8 @@ def test_the_vault_imports_with_its_links_and_a_second_run_changes_nothing(api: 
     assert len(first.created) == 12, first.created  # the campaign and eleven records
     assert first.skipped == [("Characters/Stray.md", "no campaign: and not setting_wide: true")]
     assert first.unresolved == {"Characters/Holst.md": ["Nobody Here"]}
+    # The vault's own kind fields read as kinds; a word that isn't one is reported, never guessed.
+    assert first.unread.get("Locations/The Fens.md") == ["location_type: warp-passage (not one of the location kinds)"]
 
     [campaign] = [row for row in api.list("campaign") if row["name"] == "The Split Antler"]
     dnd = next(row for row in api.list("setting") if row["slug"] == "dnd")
@@ -65,6 +67,7 @@ def test_the_vault_imports_with_its_links_and_a_second_run_changes_nothing(api: 
     assert shard["resolved_at"] is not None and quest["resolved_at"] is None
 
     item = _one(api, "item", world, "Waystone Shard")
+    assert (stable["kind"], ask["kind"], item["kind"], fens["kind"]) == ("building", "side_quest", "misc", None)
     [holding] = api.list("entity_inventory", target_entity_type="person", target_entity_id=dingus["id"])
     instance, _etag = api.get("item_instance", holding["item_instance_id"])
     assert (instance["item_id"], instance["owner_person_id"], holding["quantity"]) == (item["id"], dingus["id"], 1)
