@@ -1156,6 +1156,9 @@ class WorldEntity(PlainModel):
     source: Optional[str] = None
     # For the GM and narrator only (its private "GM only" property is true): never a player's prompt.
     gm_only: bool = False
+    # Its tag names (rpg-ai finds the party by "PC"), and a person's ties to other people.
+    tags: list[str] = []
+    relationships: Optional[list[dict[str, Any]]] = None
     # Where a person is (a scenario's starting position, then play's), and a place's (or an
     # organisation's) parent in its tree: who's present in a scene is who's at its place or inside it.
     location_id: Optional[str] = None
@@ -1333,14 +1336,53 @@ def _with_secrecy(model_registry: Any, shown: list[WorldEntity]) -> list[WorldEn
     return shown
 
 
-def _shown(model_registry: Any, shown: list[WorldEntity]) -> list[WorldEntity]:
-    """The page as rpg-ai reads it: each record's picture, and whether it's the GM's alone."""
-    return _with_secrecy(model_registry, _with_pictures(model_registry, shown))
+def _with_tags_and_ties(model_registry: Any, requester_id: str, shown: list[WorldEntity]) -> list[WorldEntity]:
+    """Each record's tag names (rpg-ai finds the party by "PC"), and each person's ties to other
+    people ({to_id, kind, note}), read under the requester's access, one query each for the page. A
+    tie with a GM-only end is left out: it would tell a player what only the GM knows."""
+    from zephyrex.extensions.genealogy.BLL_Genealogy import RelationshipManager
+    from zephyrex.logic.AbstractLogicManager.models import FieldComparison
+
+    if not shown:
+        return shown
+    ids = sorted({entity.id for entity in shown})
+    links = _manager(model_registry, requester_id, EntityTaxonManager)
+    rows = links.list(filters=[FieldComparison(links.Model, "target_entity_id", "in", ids)]) or []
+    taxa = _manager(model_registry, requester_id, TaxonManager)
+    names = {str(one.id): str(one.name or "") for one in (taxa.list(filters=[FieldComparison(taxa.Model, "id", "in", sorted({str(row.taxon_id) for row in rows}))]) or [])} if rows else {}
+    tagged: dict[tuple[str, str], list[str]] = {}
+    for row in rows:
+        name = names.get(str(row.taxon_id))
+        if name:
+            tagged.setdefault((row.target_entity_type, row.target_entity_id), []).append(name)
+    people = [entity.id for entity in shown if entity.kind == "person"]
+    ties = _manager(model_registry, requester_id, RelationshipManager)
+    held = (ties.list(filters=[FieldComparison(ties.Model, "person_id", "in", people)]) or []) if people else []
+    others = sorted({str(row.target_person_id) for row in held if getattr(row, "target_person_id", None)})
+    secret = _gm_only(model_registry, people + others)
+    by_person: dict[str, list[dict[str, Any]]] = {}
+    for row in held:
+        to = getattr(row, "target_person_id", None)
+        if not to or ("person", str(to)) in secret or ("person", str(row.person_id)) in secret:
+            continue
+        by_person.setdefault(str(row.person_id), []).append({"to_id": str(to), "kind": row.kind, "note": (row.notes or "").strip() or None})
+    for entity in shown:
+        entity.tags = sorted(set(tagged.get((entity.kind, entity.id), [])))
+        if entity.kind == "person":
+            entity.relationships = by_person.get(entity.id, [])
+    return shown
 
 
-def _paged(found: list[WorldEntity], limit: int, model_registry: Any) -> WorldEntitiesPage:
+def _shown(model_registry: Any, shown: list[WorldEntity], requester_id: Optional[str] = None) -> list[WorldEntity]:
+    """The page as rpg-ai reads it: each record's picture, whether it's the GM's alone, its tags and a
+    person's ties."""
+    shown = _with_secrecy(model_registry, _with_pictures(model_registry, shown))
+    return shown if requester_id is None else _with_tags_and_ties(model_registry, requester_id, shown)
+
+
+def _paged(found: list[WorldEntity], limit: int, model_registry: Any, requester_id: Optional[str] = None) -> WorldEntitiesPage:
     found.sort(key=lambda entity: (entity.updated_at, entity.id))
-    shown = _shown(model_registry, found[:limit])
+    shown = _shown(model_registry, found[:limit], requester_id)
     return WorldEntitiesPage(world_entities=shown, next=_cursor_of(shown[-1]) if len(found) > limit else None)
 
 
@@ -1371,7 +1413,7 @@ def world_entities(
     setting_id = getattr(campaign, "setting_id", None)
     if include_setting and setting_id:
         found += _gather(model_registry, requester_id, wanted, {"setting_id": setting_id}, True, start, floor, limit)
-    return _paged(found, limit, model_registry)
+    return _paged(found, limit, model_registry, requester_id)
 
 
 def setting_canon(
@@ -1388,7 +1430,7 @@ def setting_canon(
     wanted = _checked_page(kinds, limit)
     _manager(model_registry, requester_id, SettingManager).get(id=setting_id)
     start, floor = _window(since, after)
-    return _paged(_gather(model_registry, requester_id, wanted, {"setting_id": setting_id}, True, start, floor, limit), limit, model_registry)
+    return _paged(_gather(model_registry, requester_id, wanted, {"setting_id": setting_id}, True, start, floor, limit), limit, model_registry, requester_id)
 
 
 def world_entities_by_id(model_registry: Any, requester_id: str, ids: list[str]) -> WorldEntitiesPage:
@@ -1410,7 +1452,7 @@ def world_entities_by_id(model_registry: Any, requester_id: str, ids: list[str])
             found.append(_entity(kind, record, getattr(record, "updated_at", None) or record.created_at, False))
     order = {entity_id: index for index, entity_id in enumerate(wanted)}
     found.sort(key=lambda entity: order[entity.id])
-    return WorldEntitiesPage(world_entities=_shown(model_registry, found), next=None)
+    return WorldEntitiesPage(world_entities=_shown(model_registry, found, requester_id), next=None)
 
 
 # ---------------------------------------------------------------------------

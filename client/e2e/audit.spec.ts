@@ -315,6 +315,9 @@ test.describe.serial('visual audit', () => {
     expect(((await walk.json()) as { person_move: { from_location_id: string; at_minutes: number } }).person_move).toMatchObject({ from_location_id: seeded.location, at_minutes: 570 });
     // And back, so the pages below show her where the seed put her.
     await request.post('/api/v1/person_move', { data: { person_move: { person_id: seeded.person, to_location_id: seeded.location } } });
+    // Parity's party fix: tag names, and a person's ties to other people.
+    const party = (await (await request.get(`/api/v1/world_entity?ids=${seeded.person}`)).json()) as { world_entities: { tags: string[]; relationships: { kind: string }[] }[] };
+    expect(party.world_entities[0]).toMatchObject({ tags: ['Elf', 'Lamplighters'], relationships: [{ kind: 'rival' }] });
     // Parity: where a person is and a place's parent, so a scene knows who's present.
     const placed = (await (await request.get(`/api/v1/world_entity?ids=${seeded.person},${seeded.location}`)).json()) as { world_entities: { location_id: string | null; parent_id: string | null }[] };
     expect(placed.world_entities.map((entity) => [entity.location_id, entity.parent_id !== null])).toEqual([[seeded.location, false], [null, true]]);

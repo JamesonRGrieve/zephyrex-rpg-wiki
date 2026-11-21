@@ -13,6 +13,9 @@ import { summary } from '../lib/summary';
 export const WORLD_ENTITY_KINDS = ['location', 'person', 'faction', 'item', 'journal'] as const;
 export type WorldEntityKind = (typeof WORLD_ENTITY_KINDS)[number];
 
+/** A person's tie to another: who, how ({to_id, kind, note}). */
+export type Tie = { to_id: string; kind: string | null; note: string | null };
+
 export interface EntityRow {
   id: string;
   /** A person's schedule and motivations (JSON text). */
@@ -66,6 +69,10 @@ export interface WorldEntity {
   source: string | null;
   /** For the GM and narrator only (its private "GM only" property is true): never a player's prompt. */
   gm_only: boolean;
+  /** Its tag names (rpg-ai finds the party by "PC"). */
+  tags: string[];
+  /** A person's ties to other people; null for other kinds. */
+  relationships: Tie[] | null;
   /** A person's schedule and motivations (the GM side's world tick); null for other kinds. */
   routine: Slot[] | null;
   motivations: string[] | null;
@@ -112,6 +119,9 @@ export function entityOf(kind: WorldEntityKind, row: EntityRow): WorldEntity {
     source: row.source,
     // Set from the record's properties by the route, a page at a time.
     gm_only: false,
+    // Filled by the route, a page at a time.
+    tags: [],
+    relationships: kind === 'person' ? [] : null,
     routine: kind === 'person' ? storedRoutine(row.routine) : null,
     motivations: kind === 'person' ? storedMotivations(row.motivations) : null,
     location_id: kind === 'person' ? (row.locationId ?? null) : null,

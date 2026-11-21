@@ -22,6 +22,7 @@ import {
 import { seenBy } from './worldRecords';
 import { EntityIdsError, entityIds } from '../lib/entityIds';
 import { GM_ONLY_PROPERTY } from '../contract';
+import type { Tie } from './worldEntities';
 
 const SELECT = {
   id: true,
@@ -57,13 +58,50 @@ function rowsOf(kind: WorldEntityKind, where: object): Promise<EntityRow[]> {
 
 /** Each record kept to the GM: its private "GM only" property is "true" (one query for the page). */
 async function withSecrecy<T extends { id: string; kind: string; gm_only: boolean }>(shown: T[]): Promise<T[]> {
-  if (shown.length === 0) return shown;
+  const secret = await secretsOf(shown.map((entity) => entity.id));
+  return shown.map((entity) => ({ ...entity, gm_only: secret.has(`${entity.kind}:${entity.id}`) }));
+}
+
+/** The GM-only marks of these records (their private "GM only" property is "true"). */
+async function secretsOf(ids: readonly string[]): Promise<Set<string>> {
+  if (ids.length === 0) return new Set();
   const rows = await prisma.recordMetadata.findMany({
-    where: { key: GM_ONLY_PROPERTY, targetEntityId: { in: shown.map((entity) => entity.id) } },
+    where: { key: GM_ONLY_PROPERTY, targetEntityId: { in: [...ids] } },
     select: { targetEntityType: true, targetEntityId: true, value: true },
   });
-  const secret = new Set(rows.filter((row) => (row.value ?? '').trim().toLowerCase() === 'true').map((row) => `${row.targetEntityType}:${row.targetEntityId}`));
-  return shown.map((entity) => ({ ...entity, gm_only: secret.has(`${entity.kind}:${entity.id}`) }));
+  return new Set(rows.filter((row) => (row.value ?? '').trim().toLowerCase() === 'true').map((row) => `${row.targetEntityType}:${row.targetEntityId}`));
+}
+
+/**
+ * Each record's tag names (rpg-ai finds the party by "PC") and each person's ties to other people
+ * ({to_id, kind, note}), as the server's; a tie with a GM-only end is left out.
+ */
+async function withTagsAndTies<T extends { id: string; kind: string; tags: string[]; relationships: Tie[] | null }>(ownerId: string, shown: T[]): Promise<T[]> {
+  if (shown.length === 0) return shown;
+  const ids = shown.map((entity) => entity.id);
+  const links = await prisma.entityTaxon.findMany({ where: { createdById: ownerId, targetEntityId: { in: ids } }, select: { taxonId: true, targetEntityType: true, targetEntityId: true } });
+  const taxa = await prisma.taxon.findMany({ where: { id: { in: [...new Set(links.map((link) => link.taxonId))] }, deletedAt: null }, select: { id: true, name: true } });
+  const nameOf = new Map(taxa.map((taxon) => [taxon.id, taxon.name]));
+  const tagged = new Map<string, Set<string>>();
+  for (const link of links) {
+    const name = nameOf.get(link.taxonId);
+    if (name === undefined) continue;
+    const key = `${link.targetEntityType}:${link.targetEntityId}`;
+    tagged.set(key, (tagged.get(key) ?? new Set()).add(name));
+  }
+  const people = shown.filter((entity) => entity.kind === 'person').map((entity) => entity.id);
+  const ties = people.length === 0 ? [] : await prisma.relationship.findMany({ where: { createdById: ownerId, personId: { in: people }, targetPersonId: { not: null } } });
+  const secret = await secretsOf([...people, ...ties.flatMap((tie) => (tie.targetPersonId === null ? [] : [tie.targetPersonId]))]);
+  const byPerson = new Map<string, Tie[]>();
+  for (const tie of ties) {
+    if (tie.personId === null || tie.targetPersonId === null || secret.has(`person:${tie.personId}`) || secret.has(`person:${tie.targetPersonId}`)) continue;
+    byPerson.set(tie.personId, [...(byPerson.get(tie.personId) ?? []), { to_id: tie.targetPersonId, kind: tie.kind, note: tie.notes?.trim() || null }]);
+  }
+  return shown.map((entity) => ({
+    ...entity,
+    tags: [...(tagged.get(`${entity.kind}:${entity.id}`) ?? [])].sort(),
+    relationships: entity.kind === 'person' ? (byPerson.get(entity.id) ?? []) : null,
+  }));
 }
 
 /**
@@ -83,7 +121,7 @@ async function byId(ownerId: string, text: string): Promise<NextResponse> {
   const rows = await Promise.all(WORLD_ENTITY_KINDS.map(async (kind) => (await rowsOf(kind, where)).map((row) => entityOf(kind, row))));
   const order = new Map(ids.map((id, index) => [id, index]));
   const found = rows.flat().sort((one, two) => (order.get(one.id) ?? 0) - (order.get(two.id) ?? 0));
-  return NextResponse.json({ world_entities: await withSecrecy(found), next: null });
+  return NextResponse.json({ world_entities: await withTagsAndTies(ownerId, await withSecrecy(found)), next: null });
 }
 
 export async function worldEntityGet(request: NextRequest): Promise<NextResponse> {
@@ -132,7 +170,7 @@ export async function worldEntityGet(request: NextRequest): Promise<NextResponse
       ),
     );
     const page = pageOf(rows.flat(), after, limit);
-    return NextResponse.json({ ...page, world_entities: await withSecrecy(page.world_entities) });
+    return NextResponse.json({ ...page, world_entities: await withTagsAndTies(owner.id, await withSecrecy(page.world_entities)) });
   } catch (error) {
     return apiErrorResponse(error);
   }

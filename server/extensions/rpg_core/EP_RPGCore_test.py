@@ -327,7 +327,7 @@ class TestWorldEntities:
         assert by_name["Harbour"] | {"updated_at": None} == {
             "id": harbour["id"], "kind": "location", "name": "Harbour", "aliases": [], "summary": "A port city.",
             "picture": None, "updated_at": None, "deleted": False, "setting_id": None, "canon": False, "canon_level": None,
-            "keywords": [], "voice": None, "routine": None, "motivations": None, "lore": None, "provenance": "homebrew", "source": None, "gm_only": False, "location_id": None, "parent_id": None,
+            "keywords": [], "voice": None, "routine": None, "motivations": None, "tags": [], "relationships": None, "lore": None, "provenance": "homebrew", "source": None, "gm_only": False, "location_id": None, "parent_id": None,
         }
         assert page["next"] is None
 
@@ -1117,3 +1117,31 @@ class TestWorldTick:
         assert (clock_now["day"], clock_now["time"]) == (2, "09:30")
         later = loaded_ability(registry, "rpg_core", "advance_clock")(registry, str(person.id), campaign["id"], 30, "Prayers")
         assert later["time"] == "10:00"
+
+
+class TestPartyKnowsItself:
+    """Parity's party fix: tag names on every record, and a person's ties to other people (a tie with
+    a GM-only end left out)."""
+
+    def test_tags_and_ties_reach_the_sync(self, server: TestClient, person: Any) -> None:
+        campaign = _create(server, person, "campaign", name="Party")
+        pc = _create(server, person, "taxon", name="PC", kind="tag", campaign_id=campaign["id"])
+        ilsa = _create(server, person, "person", name="Ilsa", kind="pc", campaign_id=campaign["id"])
+        vex = _create(server, person, "person", name="Vex", kind="pc", campaign_id=campaign["id"])
+        spy = _create(server, person, "person", name="The spy", kind="npc", campaign_id=campaign["id"])
+        for one in (ilsa, vex):
+            _create(server, person, "entity_taxon", taxon_id=pc["id"], target_entity_type="person", target_entity_id=one["id"])
+        _create(server, person, "relationship", person_id=ilsa["id"], target_person_id=vex["id"], kind="friend", intensity=0.8, notes="He pulled her out of the hive fire.")
+        _create(server, person, "relationship", person_id=ilsa["id"], target_person_id=spy["id"], kind="ally", intensity=0.2)
+        secret = server.post(
+            "/v1/record_metadata",
+            json={"record_metadata": {"target_entity_type": "person", "target_entity_id": spy["id"], "key": "GM only", "value": "true", "value_type": "boolean", "is_private": True}},
+            headers=_headers(person),
+        )
+        assert secret.status_code == 201, secret.text
+        synced = {row["name"]: row for row in server.get(f"/v1/world_entity?campaign_id={campaign['id']}", headers=_headers(person)).json()["world_entities"]}
+        assert (synced["Ilsa"]["tags"], synced["Vex"]["tags"], synced["The spy"]["tags"]) == (["PC"], ["PC"], [])
+        assert synced["Ilsa"]["relationships"] == [{"to_id": vex["id"], "kind": "friend", "note": "He pulled her out of the hive fire."}]
+        assert synced["Vex"]["relationships"] == []
+        by_id = server.get(f"/v1/world_entity?ids={ilsa['id']}", headers=_headers(person)).json()["world_entities"][0]
+        assert by_id["relationships"] == synced["Ilsa"]["relationships"]
