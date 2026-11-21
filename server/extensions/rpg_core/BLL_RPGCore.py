@@ -30,6 +30,9 @@ from zephyrex.extensions.wiki_shared.Contract import PERSON_KINDS  # type: ignor
 from zephyrex.extensions.wiki_shared.Records import (  # type: ignore[import-not-found]
     checked_kind,
     checked_name,
+    checked_slug,
+    free_slug,
+    slugify,
     with_entry_text,
 )
 from zephyrex.extensions.wiki_shared.Contract import CANON_LEVELS, ENTITY_TYPES, LIMITS  # type: ignore[import-not-found]
@@ -66,6 +69,7 @@ from zephyrex.logic.AbstractLogicManager import (
     hook_bll,
 )
 from zephyrex.lib.CustomRoute import ExposeIn, custom_route
+from zephyrex.lib.Environment import env
 from zephyrex.logic.BLL_Auth import UserModel
 from zephyrex.pydantic2.fastapi import RouterMixin
 from zephyrex.pydantic2.fastapi.types import RouteType
@@ -89,14 +93,19 @@ class SettingModel(
 
     Manager: ClassVar[Type["SettingManager"]] = None
     entry: Optional[str] = Field(None, description="Its tone and vocabulary: a Plate value as JSON text")
+    slug: Optional[str] = Field(
+        None, description="Its stable name (contract/wiki.json setting_slug): unique, fixed once set; vtt's systems name it"
+    )
     table_comment: ClassVar[str] = "A setting: the universe campaigns take place in; its canon is its campaign-less records."
 
     class Create(BaseModel):
         name: str = Field(...)
         description: Optional[str] = None
         entry: Optional[Any] = None
+        slug: Optional[str] = None
 
         _name = field_validator("name")(checked_name)
+        _slug = field_validator("slug")(checked_slug)
 
         @model_validator(mode="after")
         def _entry(self) -> Any:
@@ -106,8 +115,11 @@ class SettingModel(
         name: Optional[str] = None
         description: Optional[str] = None
         entry: Optional[Any] = None
+        # Only to say it stays: a different slug is refused (_slug_fixed).
+        slug: Optional[str] = None
 
         _name = field_validator("name")(checked_name)
+        _slug = field_validator("slug")(checked_slug)
 
         @model_validator(mode="after")
         def _entry(self) -> Any:
@@ -115,10 +127,52 @@ class SettingModel(
 
     class Search(ApplicationModel.Search):
         name: Optional[StringSearchModel] = None
+        slug: Optional[StringSearchModel] = None
 
 
 class SettingManager(AbstractBLLManager, RouterMixin):
     _model = SettingModel
+
+
+def _slug_taken(manager: Any, slug: str) -> bool:
+    """Any setting holds the slug, anyone's and deleted ones too (ROOT sees them all), as the unique
+    index counts them."""
+    root = SettingManager(requester_id=env("ROOT_ID"), model_registry=manager.model_registry)
+    return bool(root.list(slug=slug))
+
+
+def _slug_fixed(context: HookContext) -> None:
+    """S6b: a setting's slug is the one given (409 when another setting holds it) or its name's
+    (numbered past any taken), and is fixed once set."""
+    if context.method_name == "create":
+        if context.kwargs.get("entities") is not None:
+            raise HTTPException(status_code=422, detail="Create one setting at a time")
+        given = checked_slug(context.kwarg("slug", default=None))
+        if given is not None:
+            if _slug_taken(context.manager, given):
+                raise HTTPException(status_code=409, detail="Another setting already has that slug")
+            return
+        slug = slugify(str(context.kwarg("name", default="") or ""))
+        taken = set()
+        while (candidate := free_slug(slug, taken)) and _slug_taken(context.manager, candidate):
+            taken.add(candidate)
+        context.kwargs["slug"] = candidate
+        return
+    if context.method_name != "update":
+        return
+    wanted = context.kwarg("slug", default=None)
+    if wanted is None:
+        return
+    record_id = context.kwarg("id", default=None) or context.arg(0, default=None)
+    try:
+        held = getattr(context.manager.get(id=record_id), "slug", None) if record_id else None
+    except HTTPException:
+        return
+    if wanted != held:
+        raise HTTPException(status_code=422, detail="A setting's slug is fixed once set")
+
+
+hook_bll(SettingManager, timing=HookTiming.BEFORE, priority=21)(_slug_fixed)
 
 
 SettingModel.Manager = SettingManager

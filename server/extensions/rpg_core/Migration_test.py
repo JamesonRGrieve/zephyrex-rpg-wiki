@@ -135,6 +135,18 @@ def test_each_extension_owns_its_tables(database: sqlite3.Connection) -> None:
     assert {"campaigns", "locations", "factions", "items", "item_instances", "entity_inventories", "journals", "entity_posts", "hooks", "hook_dependencies", "person_hooks", "faction_hooks", "taxons", "entity_taxons", "statuses", "entity_statuses", "dispositions", "relation_influences", "settings"} <= tables
 
 
+def test_settings_006_indexes_unique_slugs_and_seeds_the_systems_settings(database: sqlite3.Connection) -> None:
+    from zephyrex.extensions.wiki_shared.Contract import SEED_SETTINGS  # type: ignore[import-not-found]
+
+    unique = {row[1]: row[2] for row in database.execute("PRAGMA index_list('settings')")}
+    assert unique.get("ix_settings_slug") == 1
+    rows = dict(database.execute("SELECT slug, created_by_user_id FROM settings WHERE slug IS NOT NULL").fetchall())
+    assert {one["slug"] for one in SEED_SETTINGS} <= set(rows)
+    from zephyrex.lib.Environment import env
+
+    assert {rows[one["slug"]] for one in SEED_SETTINGS} == {env("SYSTEM_ID")}
+
+
 def test_hooks_002_keeps_a_create_all_table_and_adds_its_missing_columns() -> None:
     """vtt's rpg_state made ``hooks`` by create_all, without entry or giver_person_id: 002 keeps its
     rows and adds those columns, and creates only the tables that aren't there."""

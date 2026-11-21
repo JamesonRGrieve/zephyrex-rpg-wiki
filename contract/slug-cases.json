@@ -1,0 +1,18 @@
+{
+  "$comment": "How a setting's slug is derived from its name, and slugs refused (contract/wiki.json setting_slug). Both back ends test against these: server/extensions/wiki_shared/Records_test.py and client/src/lib/slug.test.ts.",
+  "derived": [
+    { "name": "Dark Heresy 2e", "slug": "dark-heresy-2e" },
+    { "name": "Warhammer 40,000", "slug": "warhammer-40-000" },
+    { "name": "  The Old World  ", "slug": "the-old-world" },
+    { "name": "D&D", "slug": "d-d" },
+    { "name": "Café Noir", "slug": "caf-noir" },
+    { "name": "!!!", "slug": "unnamed" },
+    { "name": "An extremely long setting name that keeps going well past the sixty-four character cap", "slug": "an-extremely-long-setting-name-that-keeps-going-well-past-the-si" }
+  ],
+  "deduplicated": [
+    { "taken": [], "slug": "fallout", "free": "fallout" },
+    { "taken": ["fallout"], "slug": "fallout", "free": "fallout-2" },
+    { "taken": ["fallout", "fallout-2"], "slug": "fallout", "free": "fallout-3" }
+  ],
+  "invalid": ["Fallout", "fall out", "fall--out", "-fallout", "fallout-", "fall_out", ""]
+}

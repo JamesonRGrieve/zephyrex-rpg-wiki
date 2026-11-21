@@ -587,6 +587,38 @@ class TestSettings:
         assert _put(server, person, "faction", canon, setting_id=elsewhere["id"]).status_code == 422
         assert _put(server, person, "campaign", solenne, setting_id=elsewhere["id"]).status_code == 422
 
+    def test_a_setting_takes_a_unique_slug_fixed_once_set(self, server: TestClient, person: Any, other: Any) -> None:
+        # The seeded Fallout holds "fallout", so a person's own takes the next number.
+        own = _create(server, person, "setting", name="Fallout")
+        assert own["slug"] == "fallout-2"
+        realm = _create(server, person, "setting", name="Realm", slug="slug-realm")
+        assert realm["slug"] == "slug-realm"
+        clash = server.post("/v1/setting", json={"setting": {"name": "Theirs", "slug": "slug-realm"}}, headers=_headers(other))
+        assert clash.status_code == 409, clash.text
+        bad = server.post("/v1/setting", json={"setting": {"name": "Bad", "slug": "Bad Slug"}}, headers=_headers(person))
+        assert bad.status_code == 422, bad.text
+        assert _put(server, person, "setting", realm, slug="another").status_code == 422
+        kept = _put(server, person, "setting", realm, slug="slug-realm", name="Realm Renamed")
+        assert kept.status_code == 200, kept.text
+        assert kept.json()["setting"]["slug"] == "slug-realm"
+
+    def test_the_seeded_settings_are_everyones_and_only_the_systems_to_change(
+        self, server: TestClient, person: Any, other: Any
+    ) -> None:
+        from zephyrex.extensions.wiki_shared.Contract import SEED_SETTINGS  # type: ignore[import-not-found]
+
+        listed = server.get("/v1/setting", headers=_headers(other))
+        assert listed.status_code == 200, listed.text
+        seeded = {one["slug"]: one for one in listed.json()["settings"] if one["slug"] in {s["slug"] for s in SEED_SETTINGS}}
+        assert {slug: one["name"] for slug, one in seeded.items()} == {s["slug"]: s["name"] for s in SEED_SETTINGS}
+        forty_k = seeded["warhammer-40000"]
+        campaign = _create(server, other, "campaign", name="Dunmarch", setting_id=forty_k["id"])
+        assert campaign["setting_id"] == forty_k["id"]
+        assert server.get(f"/v1/setting/{forty_k['id']}", headers=_headers(person)).status_code == 200
+        # The framework doesn't say a record exists to someone who may not change it.
+        assert _put(server, person, "setting", forty_k, name="Mine now").status_code == 404
+        assert server.delete(f"/v1/setting/{forty_k['id']}", headers=_headers(person)).status_code == 404
+
     def test_rpg_ai_reads_a_settings_canon_alone_or_with_a_campaign(self, server: TestClient, person: Any) -> None:
         from zephyrex.extensions.AbstractExtensionProvider import loaded_ability
 

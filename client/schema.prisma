@@ -14,13 +14,15 @@ generator client {
 
 /// A world: the top-level container every record scopes to (rpg_core's CampaignModel).
 /// A setting (S6): the universe campaigns take place in. Its canon is every world record with this
-/// setting and no campaign. VTT's game systems name settings by id.
+/// setting and no campaign. VTT's game systems name settings by slug.
 model Setting {
   id          String   @id @default(uuid())
   createdById String
   name        String
   description String   @default("")
   entry       String?
+  /// Its stable name (contract/wiki.json setting_slug): unique, fixed once set (S6b).
+  slug        String?  @unique
   createdAt   DateTime @default(now())
   updatedAt   DateTime
   updatedById String?

@@ -21,3 +21,6 @@ export const ATTITUDE_NUANCES = contract.attitude_nuances as Readonly<Record<str
 export const DISPOSITION_TARGETS = contract.disposition_targets as readonly string[];
 export const CANON_LEVELS = contract.canon_levels as readonly string[];
 export const POST_POSITIONS = contract.post_positions as readonly string[];
+export const SETTING_SLUG = contract.setting_slug;
+/** The settings every wiki has (S6b): the system's, so everyone reads them and nobody else changes them. */
+export const SEED_SETTINGS = contract.seed_settings as readonly { slug: string; name: string }[];

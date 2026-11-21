@@ -7,7 +7,11 @@ import re
 from typing import Any, Callable, Optional
 
 from fastapi import HTTPException
-from zephyrex.extensions.wiki_shared.Contract import LIMITS  # type: ignore[import-not-found]
+from zephyrex.extensions.wiki_shared.Contract import (  # type: ignore[import-not-found]
+    LIMITS,
+    SETTING_SLUG_CHARACTERS,
+    SETTING_SLUG_PATTERN,
+)
 from zephyrex.extensions.wiki_shared.Entry import parse as parse_entry  # type: ignore[import-not-found]
 from zephyrex.lib.CycleGuard import CycleGuardError, would_create_tree_cycle
 from zephyrex.logic.AbstractLogicManager import AbstractBLLManager, HookContext
@@ -87,4 +91,38 @@ def checked_colour(value: Any) -> Any:
     """A colour is #rrggbb (the lite edition's rule too), or none."""
     if value is not None and not COLOUR.match(value):
         raise ValueError("A colour is # and six hex digits, like #a83232")
+    return value
+
+
+SETTING_SLUG = re.compile(SETTING_SLUG_PATTERN)
+
+
+def slugify(name: str) -> str:
+    """A setting's slug from its name (contract/slug-cases.json): lower case, every other run of
+    characters one hyphen, at most the contract's length; "unnamed" when nothing is left."""
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    return slug[:SETTING_SLUG_CHARACTERS].strip("-") or "unnamed"
+
+
+def free_slug(slug: str, taken: set[str]) -> str:
+    """``slug``, or with the first -2, -3… not in ``taken``, still within the contract's length."""
+    if slug not in taken:
+        return slug
+    number = 2
+    while True:
+        suffix = f"-{number}"
+        candidate = f"{slug[: SETTING_SLUG_CHARACTERS - len(suffix)].rstrip('-')}{suffix}"
+        if candidate not in taken:
+            return candidate
+        number += 1
+
+
+def checked_slug(value: Any) -> Any:
+    """A slug the contract allows, or none (then it is derived from the name)."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or len(value) > SETTING_SLUG_CHARACTERS or not SETTING_SLUG.match(value):
+        raise ValueError(
+            f"A slug is lower-case letters and digits in words joined by single hyphens, at most {SETTING_SLUG_CHARACTERS} characters"
+        )
     return value

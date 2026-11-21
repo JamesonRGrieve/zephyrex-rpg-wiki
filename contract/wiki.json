@@ -148,6 +148,19 @@
     "learned",
     "secret"
   ],
+  "setting_slug": {
+    "$comment": "A setting's stable name (S6b): unique, fixed once set, derived from its name when not given (lower case, every other run of characters one hyphen, as vtt's game-system slugs). vtt's game systems name their setting by it.",
+    "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+    "max_characters": 64
+  },
+  "seed_settings": [
+    { "slug": "warhammer-40000", "name": "Warhammer 40,000" },
+    { "slug": "age-of-sigmar", "name": "Age of Sigmar" },
+    { "slug": "warhammer-fantasy", "name": "Warhammer Fantasy" },
+    { "slug": "dnd", "name": "D&D" },
+    { "slug": "fallout", "name": "Fallout" },
+    { "slug": "modern", "name": "Modern" }
+  ],
   "entity_types": [
     "person",
     "location",

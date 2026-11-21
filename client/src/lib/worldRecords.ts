@@ -7,7 +7,7 @@
  * owner's own, and a place never sits under itself or its own descendants.
  */
 import type { Prisma } from '@prisma/client';
-import { type ResourceSpec, validationError } from '@zephyrex/lite';
+import { ApiError, notFound, type ResourceSpec, STATUS, validationError } from '@zephyrex/lite';
 import { z } from 'zod';
 import {
   ENTITY_TYPES,
@@ -23,6 +23,7 @@ import {
   CANON_LEVELS,
   DISPOSITION_TARGETS,
   POST_POSITIONS,
+  SEED_SETTINGS,
   STATUS_KINDS,
   TAXON_KINDS,
 } from '~/contract';
@@ -31,6 +32,7 @@ import { EntryError, parseEntry } from '~/lib/entry';
 import { wouldCloseCycle } from '~/lib/hookGraph';
 import { checkedRequirement, leavesOf, RequirementError } from '~/lib/requirements';
 import { prisma } from '~/lib/prisma';
+import { freeSlug, isSlug, SLUG_RULE, slugify } from '~/lib/slug';
 
 const name = z.string().trim().min(1, 'A name is required').max(LIMITS.name_characters);
 const reference = z.string().min(1).nullable();
@@ -111,7 +113,7 @@ async function checkSetting(
   const setting = wanted === undefined ? (current?.settingId ?? null) : wanted;
   const campaign = input.campaign_id === undefined ? (current?.campaignId ?? null) : input.campaign_id;
   if (typeof setting !== 'string') return;
-  if ((await prisma.setting.count({ where: { id: setting, createdById: ownerId } })) === 0)
+  if ((await prisma.setting.count({ where: { id: setting, ...seenBy(ownerId) } })) === 0)
     throw validationError('That setting is not one of yours', 'setting_id');
   if (typeof campaign === 'string') {
     const enclosing = await prisma.campaign.findUnique({ where: { id: campaign }, select: { settingId: true } });
@@ -130,14 +132,83 @@ async function checkPlace(ownerId: string, locationId: unknown, field: string): 
 
 // ---- setting (S6: the universe campaigns take place in; its canon is its campaign-less records) ----
 
+/** The framework's SYSTEM user, as the server's: its records are everyone's to read and nobody else's to change. */
+export const SYSTEM_OWNER_ID = 'FFFFFFFF-FFFF-FFFF-AAAA-FFFFFFFFFFFF';
+
+/** The settings `ownerId` sees: their own and the system's (S6b's seeded ones). */
+export function seenBy(ownerId: string): { createdById: { in: string[] } } {
+  return { createdById: { in: [ownerId, SYSTEM_OWNER_ID] } };
+}
+
+let seeding: Promise<void> | null = null;
+
+/**
+ * S6b, as the server's rpg_core 006: settings made before slugs get their name's, oldest first, and
+ * the contract's seed_settings are the system's, each once by slug. Once per process.
+ */
+export async function ensureSeedSettings(): Promise<void> {
+  seeding ??= seedSettings();
+  try {
+    await seeding;
+  } catch (error) {
+    // A failed attempt is tried again on the next request.
+    seeding = null;
+    throw error;
+  }
+}
+
+async function seedSettings(): Promise<void> {
+  const rows = await prisma.setting.findMany({ orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] });
+  const taken = new Set(rows.flatMap((row) => (row.slug === null ? [] : [row.slug])));
+  for (const row of rows.filter((one) => one.slug === null)) {
+    const slug = freeSlug(slugify(row.name), (candidate) => taken.has(candidate));
+    taken.add(slug);
+    // eslint-disable-next-line no-await-in-loop -- one row at a time keeps each slug free
+    await prisma.setting.update({ where: { id: row.id }, data: { slug } });
+  }
+  const missing = SEED_SETTINGS.filter((one) => !taken.has(one.slug));
+  if (missing.length > 0) {
+    await prisma.setting.createMany({
+      data: missing.map((one) => ({ createdById: SYSTEM_OWNER_ID, name: one.name, slug: one.slug, updatedAt: new Date() })),
+    });
+  }
+}
+
+/** As the server: a seeded setting reads as missing to anyone changing it, as the framework says of any record one may not change. */
+const refuseSystems = (row: { createdById: string } | null): void => {
+  if (row?.createdById === SYSTEM_OWNER_ID) throw notFound('SettingModel');
+};
+
+const slugInput = z.string().refine(isSlug, SLUG_RULE);
+
 const SETTING_COLUMNS: Columns = {
   name: plain('name'),
   description: plain('description'),
   entry: plain('entry'),
+  slug: plain('slug'),
 };
-const settingCreate = z.object({ name, description: z.string().default(''), entry: entry.optional() });
-const settingUpdate = z.object({ name, description: z.string(), entry }).partial();
+const settingCreate = z.object({ name, description: z.string().default(''), entry: entry.optional(), slug: slugInput.optional() });
+const settingUpdate = z.object({ name, description: z.string(), entry, slug: slugInput }).partial();
 type SettingRow = Prisma.SettingGetPayload<object>;
+
+// Numbered slugs keep at least this much of the name (the contract's length less a suffix like -9999).
+const SLUG_PREFIX = 50;
+
+const slugTaken = async (slug: string): Promise<boolean> => (await prisma.setting.count({ where: { slug } })) > 0;
+
+/** The slug given (409 when another setting holds it), or its name's numbered past any taken, as the server's. */
+async function settingSlug(input: { name: string; slug?: string }): Promise<string> {
+  if (input.slug !== undefined) {
+    if (await slugTaken(input.slug)) throw new ApiError(STATUS.CONFLICT, 'Another setting already has that slug');
+    return input.slug;
+  }
+  const taken = new Set(
+    (await prisma.setting.findMany({ where: { slug: { startsWith: slugify(input.name).slice(0, SLUG_PREFIX) } }, select: { slug: true } })).flatMap(
+      (row) => (row.slug === null ? [] : [row.slug]),
+    ),
+  );
+  return freeSlug(slugify(input.name), (candidate) => taken.has(candidate));
+}
 
 export const settings: ResourceSpec<SettingRow, z.infer<typeof settingCreate>, z.infer<typeof settingUpdate>> = {
   resource: 'setting',
@@ -145,11 +216,25 @@ export const settings: ResourceSpec<SettingRow, z.infer<typeof settingCreate>, z
   modelName: 'SettingModel',
   createSchema: settingCreate,
   updateSchema: settingUpdate,
-  list: (ownerId) => prisma.setting.findMany({ where: { createdById: ownerId }, orderBy: { name: 'asc' } }),
-  find: (id, ownerId) => prisma.setting.findFirst({ where: { id, createdById: ownerId } }),
-  insert: (ownerId, input, stamp) =>
-    prisma.setting.create({ data: { createdById: ownerId, ...written(SETTING_COLUMNS, input, stamp) } as Prisma.SettingUncheckedCreateInput }),
+  async list(ownerId) {
+    await ensureSeedSettings();
+    return prisma.setting.findMany({ where: seenBy(ownerId), orderBy: { name: 'asc' } });
+  },
+  async find(id, ownerId) {
+    await ensureSeedSettings();
+    return prisma.setting.findFirst({ where: { id, ...seenBy(ownerId) } });
+  },
+  async insert(ownerId, input, stamp) {
+    await ensureSeedSettings();
+    const slug = await settingSlug(input);
+    return prisma.setting.create({
+      data: { createdById: ownerId, ...written(SETTING_COLUMNS, { ...input, slug }, stamp) } as Prisma.SettingUncheckedCreateInput,
+    });
+  },
   async updateIfCurrent(id, version, input, stamp, userId) {
+    const held = await prisma.setting.findUnique({ where: { id }, select: { createdById: true, slug: true } });
+    refuseSystems(held);
+    if (input.slug !== undefined && input.slug !== held?.slug) throw validationError('A setting’s slug is fixed once set', 'slug');
     const { count } = await prisma.setting.updateMany({
       where: { id, updatedAt: version },
       data: written(SETTING_COLUMNS, input, stamp, userId) as Prisma.SettingUncheckedUpdateManyInput,
@@ -157,6 +242,7 @@ export const settings: ResourceSpec<SettingRow, z.infer<typeof settingCreate>, z
     return count === 0 ? null : prisma.setting.findUnique({ where: { id } });
   },
   async remove(id) {
+    refuseSystems(await prisma.setting.findUnique({ where: { id }, select: { createdById: true } }));
     // Its campaigns and canon stay, unscoped, as the server's optional foreign keys leave them.
     await prisma.$transaction([
       prisma.campaign.updateMany({ where: { settingId: id }, data: { settingId: null } }),
@@ -185,7 +271,7 @@ type CampaignRow = Prisma.CampaignGetPayload<object>;
 async function checkCampaignSetting(ownerId: string, wanted: unknown, held: string | null): Promise<void> {
   if (held !== null && wanted !== undefined && wanted !== held)
     throw validationError('A campaign’s setting is fixed once set', 'setting_id');
-  if (typeof wanted === 'string' && (await prisma.setting.count({ where: { id: wanted, createdById: ownerId } })) === 0)
+  if (typeof wanted === 'string' && (await prisma.setting.count({ where: { id: wanted, ...seenBy(ownerId) } })) === 0)
     throw validationError('That setting is not one of yours', 'setting_id');
 }
 

@@ -19,6 +19,7 @@ import {
   WORLD_ENTITY_KINDS,
   type WorldEntityKind,
 } from '~/lib/worldEntities';
+import { seenBy } from '~/lib/worldRecords';
 
 const SELECT = {
   id: true,
@@ -58,7 +59,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       const campaign = await prisma.campaign.findFirst({ where: { id: campaignId, createdById: owner.id }, select: { settingId: true } });
       if (campaign === null) throw recordError(404, 'CampaignModel not found');
       canonOf = query.get('include_setting') === 'true' ? campaign.settingId : null;
-    } else if ((await prisma.setting.count({ where: { id: settingId ?? '', createdById: owner.id } })) === 0) {
+    } else if ((await prisma.setting.count({ where: { id: settingId ?? '', ...seenBy(owner.id) } })) === 0) {
       throw recordError(404, 'SettingModel not found');
     }
     const sinceText = query.get('since');

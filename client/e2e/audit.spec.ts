@@ -252,6 +252,19 @@ test.describe.serial('visual audit', () => {
     const both = (await (await request.get(`/api/v1/world_entity?campaign_id=${seeded.world}&include_setting=true`)).json()) as { world_entities: { name: string }[] };
     expect(both.world_entities.map((entity) => entity.name)).toContain('Adeptus Mechanicus');
     expect(both.world_entities.map((entity) => entity.name)).toContain('Port Gull');
+    // S6b: the contract's seeded settings are everyone's to read and read as missing to anyone changing them; slugs are unique.
+    const listed = (await (await request.get('/api/v1/setting')).json()) as { settings: { id: string; slug: string; name: string; updated_at: string }[] };
+    const bySlug = new Map(listed.settings.map((one) => [one.slug, one]));
+    for (const slug of ['warhammer-40000', 'age-of-sigmar', 'warhammer-fantasy', 'dnd', 'fallout', 'modern']) expect(bySlug.has(slug), slug).toBe(true);
+    expect(bySlug.get('the-grim-future')?.id).toBe(seeded.setting);
+    const fortyK = bySlug.get('warhammer-40000')!;
+    const fixed = await request.get(`/api/v1/setting/${fortyK.id}`);
+    const refused = await request.put(`/api/v1/setting/${fortyK.id}`, { data: { setting: { name: 'Mine now' } }, headers: { 'If-Match': fixed.headers().etag ?? '' } });
+    expect(refused.status(), await refused.text()).toBe(404);
+    const clash = await request.post('/api/v1/setting', { data: { setting: { name: 'Another Fallout', slug: 'fallout' } } });
+    expect(clash.status(), await clash.text()).toBe(409);
+    const numbered = await request.post('/api/v1/setting', { data: { setting: { name: 'Fallout' } } });
+    expect(((await numbered.json()) as { setting: { slug: string } }).setting.slug).toBe('fallout-2');
     const pages = worldPages(seeded);
     const page = await browser.newPage({ baseURL: String(testInfo.project.use.baseURL) });
     await expectSeedShows(page, seeded);

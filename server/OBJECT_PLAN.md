@@ -490,8 +490,8 @@ Covers: Kanka Items + cross-entity Inventory. World Anvil Item + Technology temp
 
 | Model | Key Fields |
 |-------|------------|
-| GameSystemModel | name, description (moved to VTT's rpg_systems; it names a setting by setting_id) |
-| SettingModel | name, description, entry. S6 (2026-11-21): the universe campaigns take place in; its canon is every world record with this setting and no campaign |
+| GameSystemModel | name, description (moved to VTT's rpg_systems; it names a setting by setting_id, matched by the setting's slug) |
+| SettingModel | name, description, entry, slug (S6b: unique, fixed once set; VTT's systems name a setting by it). S6 (2026-11-21): the universe campaigns take place in; its canon is every world record with this setting and no campaign. The contract's seed_settings are SYSTEM's, readable by everyone |
 | CampaignModel | name, description, setting_id FK (fixed once set), user_id FK (GM); the game system is VTT's |
 | @extension_model(PersonModel) | kind (pc\|npc\|monster\|creature\|vehicle\|construct), campaign_id, user_id, location_id |
 
