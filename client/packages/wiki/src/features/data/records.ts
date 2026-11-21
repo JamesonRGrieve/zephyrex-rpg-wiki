@@ -62,6 +62,8 @@ export const placeSchema = z.object({
   /** S4c: other names it goes by, and what else wakes it in the AI's lorebook (JSON text). */
   aliases: z.string().nullish(),
   keywords: z.string().nullish(),
+  /** S4d: its lorebook activation (JSON text). */
+  lore: z.string().nullish(),
 });
 export type Place = z.infer<typeof placeSchema>;
 
@@ -78,6 +80,8 @@ export const personSchema = z.object({
   /** S4c: other names it goes by, and what else wakes it in the AI's lorebook (JSON text). */
   aliases: z.string().nullish(),
   keywords: z.string().nullish(),
+  /** S4d: its lorebook activation (JSON text). */
+  lore: z.string().nullish(),
   /** S4c: how the AI plays them (JSON text); for the GM. */
   voice: z.string().nullish(),
 });
@@ -96,6 +100,8 @@ export const factionSchema = z.object({
   /** S4c: other names it goes by, and what else wakes it in the AI's lorebook (JSON text). */
   aliases: z.string().nullish(),
   keywords: z.string().nullish(),
+  /** S4d: its lorebook activation (JSON text). */
+  lore: z.string().nullish(),
 });
 export type Faction = z.infer<typeof factionSchema>;
 
@@ -114,6 +120,8 @@ export const itemSchema = z.object({
   /** S4c: other names it goes by, and what else wakes it in the AI's lorebook (JSON text). */
   aliases: z.string().nullish(),
   keywords: z.string().nullish(),
+  /** S4d: its lorebook activation (JSON text). */
+  lore: z.string().nullish(),
 });
 export type Item = z.infer<typeof itemSchema>;
 
@@ -152,6 +160,8 @@ export const journalSchema = z.object({
   /** S4c: other names it goes by, and what else wakes it in the AI's lorebook (JSON text). */
   aliases: z.string().nullish(),
   keywords: z.string().nullish(),
+  /** S4d: its lorebook activation (JSON text). */
+  lore: z.string().nullish(),
 });
 export type Journal = z.infer<typeof journalSchema>;
 
@@ -185,6 +195,8 @@ export const hookSchema = z.object({
   /** S4c: other names it goes by, and what else wakes it in the AI's lorebook (JSON text). */
   aliases: z.string().nullish(),
   keywords: z.string().nullish(),
+  /** S4d: its lorebook activation (JSON text). */
+  lore: z.string().nullish(),
 });
 export type Hook = z.infer<typeof hookSchema>;
 

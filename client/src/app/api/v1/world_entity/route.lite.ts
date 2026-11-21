@@ -32,6 +32,7 @@ const SELECT = {
   canonLevel: true,
   aliases: true,
   keywords: true,
+  lore: true,
 } as const;
 
 function rowsOf(kind: WorldEntityKind, where: object): Promise<EntityRow[]> {

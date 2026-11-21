@@ -169,6 +169,36 @@
     "date",
     "link"
   ],
+  "lore_positions": [
+    "before_character",
+    "after_character",
+    "author_note_top",
+    "author_note_bottom",
+    "at_depth",
+    "example_top",
+    "example_bottom",
+    "outlet"
+  ],
+  "lore_logic": [
+    "and_any",
+    "not_all",
+    "not_any",
+    "and_all"
+  ],
+  "lore_defaults": {
+    "always_active": false,
+    "order": 100,
+    "position": "before_character",
+    "depth": 4,
+    "probability": 100,
+    "selective_logic": "and_any",
+    "secondary_keys": [],
+    "sticky": 0,
+    "cooldown": 0,
+    "delay": 0,
+    "group": "",
+    "group_weight": 100
+  },
   "attachment_roles": [
     "primary_image",
     "header_image",

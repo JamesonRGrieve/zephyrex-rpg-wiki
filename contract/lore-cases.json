@@ -1,0 +1,36 @@
+{
+  "$comment": "S4d: a record's lorebook activation (SillyTavern World Info's fields, for rpg-ai's activation): checked and filled with contract/wiki.json lore_defaults by both back ends, server/extensions/wiki_shared/Lore_test.py and the client package's lib/lore.test.ts. Positions and logic are SillyTavern's, named: position 0-7 and selectiveLogic 0-3 in that order.",
+  "valid": [
+    {
+      "name": "the defaults fill what isn't given",
+      "value": { "always_active": true },
+      "checked": { "always_active": true, "order": 100, "position": "before_character", "depth": 4, "probability": 100, "selective_logic": "and_any", "secondary_keys": [], "sticky": 0, "cooldown": 0, "delay": 0, "group": "", "group_weight": 100 }
+    },
+    {
+      "name": "every field, secondary keys kept once",
+      "value": { "always_active": false, "order": 5, "position": "at_depth", "depth": 2, "probability": 40, "selective_logic": "not_any", "secondary_keys": [" gate ", "Gate", "warp"], "sticky": 3, "cooldown": 2, "delay": 1, "group": " Omens ", "group_weight": 50 },
+      "checked": { "always_active": false, "order": 5, "position": "at_depth", "depth": 2, "probability": 40, "selective_logic": "not_any", "secondary_keys": ["gate", "warp"], "sticky": 3, "cooldown": 2, "delay": 1, "group": "Omens", "group_weight": 50 }
+    }
+  ],
+  "invalid": [
+    { "name": "not an object", "value": [1], "message": "A lore block is an object of SillyTavern's activation fields" },
+    { "name": "an unknown field", "value": { "colour": "red" }, "message": "A lore block is an object of SillyTavern's activation fields" },
+    { "name": "an unknown position", "value": { "position": "middle" }, "message": "A lore position is one of: before_character, after_character, author_note_top, author_note_bottom, at_depth, example_top, example_bottom, outlet" },
+    { "name": "unknown logic", "value": { "selective_logic": "or" }, "message": "Lore logic is one of: and_any, not_all, not_any, and_all" },
+    { "name": "a probability over 100", "value": { "probability": 101 }, "message": "probability is a whole number from 0 to 100" },
+    { "name": "a negative depth", "value": { "depth": -1 }, "message": "depth is a whole number of zero or more" },
+    { "name": "a switch that isn't one", "value": { "always_active": "yes" }, "message": "always_active is true or false" }
+  ],
+  "from_sillytavern": [
+    {
+      "name": "a World Info entry's fields",
+      "entry": { "constant": true, "order": 50, "position": 4, "depth": 3, "probability": 70, "useProbability": true, "selective": true, "selectiveLogic": 2, "keysecondary": ["gate"], "sticky": 1, "cooldown": 0, "delay": 2, "group": "Omens", "groupWeight": 80 },
+      "lore": { "always_active": true, "order": 50, "position": "at_depth", "depth": 3, "probability": 70, "selective_logic": "not_any", "secondary_keys": ["gate"], "sticky": 1, "cooldown": 0, "delay": 2, "group": "Omens", "group_weight": 80 }
+    },
+    {
+      "name": "probability off reads as always 100, and no secondary keys when not selective",
+      "entry": { "constant": false, "order": 10, "position": 1, "probability": 30, "useProbability": false, "selective": false, "keysecondary": ["ignored"] },
+      "lore": { "always_active": false, "order": 10, "position": "after_character", "depth": 4, "probability": 100, "selective_logic": "and_any", "secondary_keys": [], "sticky": 0, "cooldown": 0, "delay": 0, "group": "", "group_weight": 100 }
+    }
+  ]
+}

@@ -5,6 +5,7 @@
  * {id, kind, name, aliases, summary, picture, updated_at, deleted}, paged by (updated_at, id) with an opaque
  * cursor. Deleted ones are tombstones. The paging is pure, here; the lite route reads the rows.
  */
+import { type Lore, storedLore } from '@zephyrex-rpg/wiki/lib/lore';
 import { storedNames, storedVoice, type Voice } from '@zephyrex-rpg/wiki/lib/names';
 import { summary } from '@zephyrex-rpg/wiki/lib/summary';
 
@@ -22,6 +23,7 @@ export interface EntityRow {
   canonLevel: string | null;
   aliases: string | null;
   keywords: string | null;
+  lore: string | null;
   /** A person's AI voice (S4c); other kinds have none. */
   voice?: string | null;
 }
@@ -44,6 +46,8 @@ export interface WorldEntity {
   keywords: string[];
   /** S4c: how the AI plays a person; null for other kinds. */
   voice: Voice | null;
+  /** S4d: its lorebook activation (SillyTavern World Info's fields), or none. */
+  lore: Lore | null;
 }
 
 export const DEFAULT_LIMIT = 100;
@@ -78,6 +82,7 @@ export function entityOf(kind: WorldEntityKind, row: EntityRow): WorldEntity {
     canon_level: row.canonLevel,
     keywords: storedNames(row.keywords),
     voice: kind === 'person' ? storedVoice(row.voice ?? null) : null,
+    lore: storedLore(row.lore),
   };
 }
 

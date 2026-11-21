@@ -14,6 +14,7 @@ ENTRY_TEXT_CASES_PATH = REPOSITORY_ROOT / "contract" / "entry-text-cases.json"
 SLUG_CASES_PATH = REPOSITORY_ROOT / "contract" / "slug-cases.json"
 KIT_CASES_PATH = REPOSITORY_ROOT / "contract" / "property-kit-cases.json"
 NAME_LIST_CASES_PATH = REPOSITORY_ROOT / "contract" / "name-list-cases.json"
+LORE_CASES_PATH = REPOSITORY_ROOT / "contract" / "lore-cases.json"
 
 CONTRACT: dict[str, Any] = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 LIMITS: dict[str, int] = CONTRACT["limits"]
@@ -33,6 +34,10 @@ CANON_LEVELS: tuple[str, ...] = tuple(CONTRACT["canon_levels"])
 POST_POSITIONS: tuple[str, ...] = tuple(CONTRACT["post_positions"])
 # How a property's value reads (S4b; the framework's record_metadata value types).
 PROPERTY_VALUE_TYPES: tuple[str, ...] = tuple(CONTRACT["property_value_types"])
+# S4d: lorebook activation, SillyTavern World Info's fields (positions and logic named, in ST's order).
+LORE_POSITIONS: tuple[str, ...] = tuple(CONTRACT["lore_positions"])
+LORE_LOGIC: tuple[str, ...] = tuple(CONTRACT["lore_logic"])
+LORE_DEFAULTS: dict[str, Any] = dict(CONTRACT["lore_defaults"])
 # What a file is to a record (S2c, the framework's attachments): the first is its own picture.
 ATTACHMENT_ROLES: tuple[str, ...] = tuple(CONTRACT["attachment_roles"])
 SETTING_SLUG_PATTERN: str = CONTRACT["setting_slug"]["pattern"]

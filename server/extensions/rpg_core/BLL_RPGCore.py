@@ -35,6 +35,7 @@ from zephyrex.extensions.wiki_shared.Records import (  # type: ignore[import-not
     slugify,
     with_entry_text,
 )
+from zephyrex.extensions.wiki_shared.Lore import lore_text, stored_lore  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Names import names_text, stored_names, stored_voice, voice_text  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Contract import ATTACHMENT_ROLES, CANON_LEVELS, ENTITY_TYPES, LIMITS  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Report import report_entry  # type: ignore[import-not-found]
@@ -238,6 +239,7 @@ class RPG_PersonModel(BaseModel):
     is_template: Optional[bool] = Field(None, description="A template (W7): copied into campaigns, never a world fact")
     aliases: Optional[str] = Field(None, description="Other names it goes by, as JSON text (S4c)")
     keywords: Optional[str] = Field(None, description="What else wakes it in the AI's lorebook, as JSON text (S4c)")
+    lore: Optional[str] = Field(None, description="Its lorebook activation (SillyTavern World Info's fields), as JSON text (S4d)")
     voice: Optional[str] = Field(None, description="How the AI plays them: personality, speech, first_message, examples, as JSON text (S4c; GM-facing)")
     user_id: Optional[str] = Field(None, description="FK → users.id; the player. None = an NPC")
     location_id: Optional[str] = Field(None, description="FK → locations.id; where they are")
@@ -254,6 +256,8 @@ class RPG_PersonModel(BaseModel):
 
         _aliases = field_validator("aliases")(names_text)
         _keywords = field_validator("keywords")(names_text)
+        lore: Optional[Any] = None
+        _lore = field_validator("lore")(lore_text)
         voice: Optional[Any] = None
         _voice = field_validator("voice")(voice_text)
         user_id: Optional[str] = None
@@ -277,6 +281,8 @@ class RPG_PersonModel(BaseModel):
 
         _aliases = field_validator("aliases")(names_text)
         _keywords = field_validator("keywords")(names_text)
+        lore: Optional[Any] = None
+        _lore = field_validator("lore")(lore_text)
         voice: Optional[Any] = None
         _voice = field_validator("voice")(voice_text)
         user_id: Optional[str] = None
@@ -309,6 +315,7 @@ class RPG_LocationModel(BaseModel):
     is_template: Optional[bool] = Field(None, description="A template (W7): copied into campaigns, never a world fact")
     aliases: Optional[str] = Field(None, description="Other names it goes by, as JSON text (S4c)")
     keywords: Optional[str] = Field(None, description="What else wakes it in the AI's lorebook, as JSON text (S4c)")
+    lore: Optional[str] = Field(None, description="Its lorebook activation (SillyTavern World Info's fields), as JSON text (S4d)")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
@@ -320,6 +327,8 @@ class RPG_LocationModel(BaseModel):
 
         _aliases = field_validator("aliases")(names_text)
         _keywords = field_validator("keywords")(names_text)
+        lore: Optional[Any] = None
+        _lore = field_validator("lore")(lore_text)
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
@@ -331,6 +340,8 @@ class RPG_LocationModel(BaseModel):
 
         _aliases = field_validator("aliases")(names_text)
         _keywords = field_validator("keywords")(names_text)
+        lore: Optional[Any] = None
+        _lore = field_validator("lore")(lore_text)
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
@@ -349,6 +360,7 @@ class RPG_FactionModel(BaseModel):
     is_template: Optional[bool] = Field(None, description="A template (W7): copied into campaigns, never a world fact")
     aliases: Optional[str] = Field(None, description="Other names it goes by, as JSON text (S4c)")
     keywords: Optional[str] = Field(None, description="What else wakes it in the AI's lorebook, as JSON text (S4c)")
+    lore: Optional[str] = Field(None, description="Its lorebook activation (SillyTavern World Info's fields), as JSON text (S4d)")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
@@ -360,6 +372,8 @@ class RPG_FactionModel(BaseModel):
 
         _aliases = field_validator("aliases")(names_text)
         _keywords = field_validator("keywords")(names_text)
+        lore: Optional[Any] = None
+        _lore = field_validator("lore")(lore_text)
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
@@ -371,6 +385,8 @@ class RPG_FactionModel(BaseModel):
 
         _aliases = field_validator("aliases")(names_text)
         _keywords = field_validator("keywords")(names_text)
+        lore: Optional[Any] = None
+        _lore = field_validator("lore")(lore_text)
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
@@ -390,6 +406,7 @@ class RPG_ItemModel(BaseModel):
     is_template: Optional[bool] = Field(None, description="A template (W7): copied into campaigns, never a world fact")
     aliases: Optional[str] = Field(None, description="Other names it goes by, as JSON text (S4c)")
     keywords: Optional[str] = Field(None, description="What else wakes it in the AI's lorebook, as JSON text (S4c)")
+    lore: Optional[str] = Field(None, description="Its lorebook activation (SillyTavern World Info's fields), as JSON text (S4d)")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
@@ -401,6 +418,8 @@ class RPG_ItemModel(BaseModel):
 
         _aliases = field_validator("aliases")(names_text)
         _keywords = field_validator("keywords")(names_text)
+        lore: Optional[Any] = None
+        _lore = field_validator("lore")(lore_text)
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
@@ -412,6 +431,8 @@ class RPG_ItemModel(BaseModel):
 
         _aliases = field_validator("aliases")(names_text)
         _keywords = field_validator("keywords")(names_text)
+        lore: Optional[Any] = None
+        _lore = field_validator("lore")(lore_text)
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
@@ -553,6 +574,7 @@ class RPG_JournalModel(BaseModel):
     is_template: Optional[bool] = Field(None, description="A template (W7): copied into campaigns, never a world fact")
     aliases: Optional[str] = Field(None, description="Other names it goes by, as JSON text (S4c)")
     keywords: Optional[str] = Field(None, description="What else wakes it in the AI's lorebook, as JSON text (S4c)")
+    lore: Optional[str] = Field(None, description="Its lorebook activation (SillyTavern World Info's fields), as JSON text (S4d)")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
@@ -564,6 +586,8 @@ class RPG_JournalModel(BaseModel):
 
         _aliases = field_validator("aliases")(names_text)
         _keywords = field_validator("keywords")(names_text)
+        lore: Optional[Any] = None
+        _lore = field_validator("lore")(lore_text)
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
@@ -575,6 +599,8 @@ class RPG_JournalModel(BaseModel):
 
         _aliases = field_validator("aliases")(names_text)
         _keywords = field_validator("keywords")(names_text)
+        lore: Optional[Any] = None
+        _lore = field_validator("lore")(lore_text)
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
@@ -593,6 +619,7 @@ class RPG_HookModel(BaseModel):
     is_template: Optional[bool] = Field(None, description="A template (W7): copied into campaigns, never a world fact")
     aliases: Optional[str] = Field(None, description="Other names it goes by, as JSON text (S4c)")
     keywords: Optional[str] = Field(None, description="What else wakes it in the AI's lorebook, as JSON text (S4c)")
+    lore: Optional[str] = Field(None, description="Its lorebook activation (SillyTavern World Info's fields), as JSON text (S4d)")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
@@ -604,6 +631,8 @@ class RPG_HookModel(BaseModel):
 
         _aliases = field_validator("aliases")(names_text)
         _keywords = field_validator("keywords")(names_text)
+        lore: Optional[Any] = None
+        _lore = field_validator("lore")(lore_text)
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
@@ -615,6 +644,8 @@ class RPG_HookModel(BaseModel):
 
         _aliases = field_validator("aliases")(names_text)
         _keywords = field_validator("keywords")(names_text)
+        lore: Optional[Any] = None
+        _lore = field_validator("lore")(lore_text)
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
@@ -880,6 +911,8 @@ class WorldEntity(PlainModel):
     # S4c: what else wakes it in the AI's lorebook (beyond name and aliases), and a person's voice.
     keywords: list[str] = []
     voice: Optional[dict[str, Any]] = None
+    # S4d: its lorebook activation (SillyTavern World Info's fields), or none.
+    lore: Optional[dict[str, Any]] = None
 
 
 class WorldEntitiesPage(PlainModel):
@@ -956,6 +989,7 @@ def _gather(
                     aliases=stored_names(getattr(record, "aliases", None)),
                     keywords=stored_names(getattr(record, "keywords", None)),
                     voice=stored_voice(getattr(record, "voice", None)) if kind == "person" else None,
+                    lore=stored_lore(getattr(record, "lore", None)),
                     summary=summary(getattr(record, "description", None)),
                     picture=None,
                     updated_at=_naive(change.changed_at),

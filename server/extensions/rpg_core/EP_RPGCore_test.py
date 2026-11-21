@@ -327,7 +327,7 @@ class TestWorldEntities:
         assert by_name["Harbour"] | {"updated_at": None} == {
             "id": harbour["id"], "kind": "location", "name": "Harbour", "aliases": [], "summary": "A port city.",
             "picture": None, "updated_at": None, "deleted": False, "setting_id": None, "canon": False, "canon_level": None,
-            "keywords": [], "voice": None,
+            "keywords": [], "voice": None, "lore": None,
         }
         assert page["next"] is None
 
@@ -821,3 +821,21 @@ class TestNamesAndVoice:
         for resource, body in refused:
             response = server.post(f"/v1/{resource}", json={resource: body}, headers=_headers(person))
             assert response.status_code == 422, (resource, response.text)
+
+
+class TestLore:
+    """S4d: a record's lorebook activation (SillyTavern World Info's fields) in world_entities, so
+    rpg-ai's activation reads it in the one sync."""
+
+    def test_a_records_lore_block_is_filled_checked_and_synced(self, server: TestClient, person: Any) -> None:
+        campaign = _create(server, person, "campaign", name="Lorebook")
+        omen = _create(
+            server, person, "journal", name="The Flicker", kind="lore", campaign_id=campaign["id"], keywords=["flicker"],
+            lore={"position": "at_depth", "depth": 2, "selective_logic": "not_any", "secondary_keys": ["gate"]},
+        )
+        assert json.loads(omen["lore"])["probability"] == 100
+        [synced] = server.get(f"/v1/world_entity?campaign_id={campaign['id']}", headers=_headers(person)).json()["world_entities"]
+        assert (synced["keywords"], synced["lore"]["position"], synced["lore"]["secondary_keys"], synced["lore"]["order"]) == (["flicker"], "at_depth", ["gate"], 100)
+        for bad in ({"position": "middle"}, {"probability": 101}, {"colour": "red"}):
+            response = server.post("/v1/journal", json={"journal": {"name": "Bad", "lore": bad}}, headers=_headers(person))
+            assert response.status_code == 422, (bad, response.text)

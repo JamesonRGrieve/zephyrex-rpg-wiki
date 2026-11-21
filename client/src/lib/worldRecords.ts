@@ -33,6 +33,7 @@ import { wouldCloseCycle } from '@zephyrex-rpg/wiki/lib/hookGraph';
 import { checkedRequirement, leavesOf, RequirementError } from '@zephyrex-rpg/wiki/lib/requirements';
 import { prisma } from '~/lib/prisma';
 import { checkedKit, KitError } from '@zephyrex-rpg/wiki/lib/properties';
+import { lore } from '@zephyrex-rpg/wiki/lib/lore';
 import { names, voice } from '@zephyrex-rpg/wiki/lib/names';
 import { freeSlug, isSlug, SLUG_RULE, slugify } from '@zephyrex-rpg/wiki/lib/slug';
 
@@ -104,6 +105,16 @@ const canonLevel = kindOf(CANON_LEVELS);
 const nameList = z.unknown().transform((value, context) => {
   try {
     return JSON.stringify(names(value));
+  } catch (error) {
+    context.addIssue({ code: 'custom', message: error instanceof Error ? error.message : String(error) });
+    return z.NEVER;
+  }
+});
+
+/** S4d: a record's lorebook activation, kept as JSON text, as the server's. */
+const loreText = z.unknown().transform((value, context) => {
+  try {
+    return JSON.stringify(lore(value));
   } catch (error) {
     context.addIssue({ code: 'custom', message: error instanceof Error ? error.message : String(error) });
     return z.NEVER;
@@ -355,6 +366,7 @@ const LOCATION_COLUMNS: Columns = {
   is_template: plain('isTemplate'),
   aliases: plain('aliases'),
   keywords: plain('keywords'),
+  lore: plain('lore'),
   associated_person_id: plain('associatedPersonId'),
 };
 const locationFields = {
@@ -369,6 +381,7 @@ const locationFields = {
   is_template: z.boolean().nullable(),
   aliases: nameList,
   keywords: nameList,
+  lore: loreText,
   associated_person_id: reference,
 };
 const locationCreate = z.object({
@@ -383,6 +396,7 @@ const locationCreate = z.object({
   is_template: z.boolean().nullable().default(null),
   aliases: nameList.optional(),
   keywords: nameList.optional(),
+  lore: loreText.optional(),
   associated_person_id: reference.default(null),
 });
 const locationUpdate = z.object(locationFields).partial();
@@ -483,6 +497,7 @@ const PERSON_COLUMNS: Columns = {
   is_template: plain('isTemplate'),
   aliases: plain('aliases'),
   keywords: plain('keywords'),
+  lore: plain('lore'),
   voice: plain('voice'),
   location_id: plain('locationId'),
   gender: plain('gender'),
@@ -498,6 +513,7 @@ const personFields = {
   is_template: z.boolean().nullable(),
   aliases: nameList,
   keywords: nameList,
+  lore: loreText,
   voice: voiceText,
   location_id: reference,
   gender: z.string().max(LIMITS.name_characters).nullable(),
@@ -513,6 +529,7 @@ const personCreate = z.object({
   is_template: z.boolean().nullable().default(null),
   aliases: nameList.optional(),
   keywords: nameList.optional(),
+  lore: loreText.optional(),
   voice: voiceText.optional(),
   location_id: reference.default(null),
   gender: personFields.gender.default(null),
@@ -596,6 +613,7 @@ const FACTION_COLUMNS: Columns = {
   is_template: plain('isTemplate'),
   aliases: plain('aliases'),
   keywords: plain('keywords'),
+  lore: plain('lore'),
 };
 const factionCreate = z.object({
   name,
@@ -609,9 +627,10 @@ const factionCreate = z.object({
   is_template: z.boolean().nullable().default(null),
   aliases: nameList.optional(),
   keywords: nameList.optional(),
+  lore: loreText.optional(),
 });
 const factionUpdate = z
-  .object({ name, description: z.string(), entry, kind: kindOf(FACTION_KINDS), parent_id: reference, campaign_id: reference, setting_id: reference, canon_level: canonLevel, is_template: z.boolean().nullable(), aliases: nameList, keywords: nameList })
+  .object({ name, description: z.string(), entry, kind: kindOf(FACTION_KINDS), parent_id: reference, campaign_id: reference, setting_id: reference, canon_level: canonLevel, is_template: z.boolean().nullable(), aliases: nameList, keywords: nameList, lore: loreText })
   .partial();
 type FactionRow = Prisma.FactionGetPayload<object>;
 
@@ -699,6 +718,7 @@ const ITEM_COLUMNS: Columns = {
   is_template: plain('isTemplate'),
   aliases: plain('aliases'),
   keywords: plain('keywords'),
+  lore: plain('lore'),
 };
 const itemCreate = z.object({
   name,
@@ -714,6 +734,7 @@ const itemCreate = z.object({
   is_template: z.boolean().nullable().default(null),
   aliases: nameList.optional(),
   keywords: nameList.optional(),
+  lore: loreText.optional(),
 });
 const itemUpdate = z
   .object({
@@ -730,6 +751,7 @@ const itemUpdate = z
     is_template: z.boolean().nullable(),
     aliases: nameList,
     keywords: nameList,
+    lore: loreText,
   })
   .partial();
 type ItemRow = Prisma.ItemGetPayload<object>;
@@ -955,6 +977,7 @@ const JOURNAL_COLUMNS: Columns = {
   is_template: plain('isTemplate'),
   aliases: plain('aliases'),
   keywords: plain('keywords'),
+  lore: plain('lore'),
 };
 const sessionNumber = z.number().int().min(1, 'A session number is a whole number of one or more').nullable();
 const moment = z.coerce.date().nullable();
@@ -973,6 +996,7 @@ const journalCreate = z.object({
   is_template: z.boolean().nullable().default(null),
   aliases: nameList.optional(),
   keywords: nameList.optional(),
+  lore: loreText.optional(),
 });
 const journalUpdate = z
   .object({
@@ -990,6 +1014,7 @@ const journalUpdate = z
     is_template: z.boolean().nullable(),
     aliases: nameList,
     keywords: nameList,
+    lore: loreText,
   })
   .partial();
 type JournalRow = Prisma.JournalGetPayload<object>;
@@ -1206,6 +1231,7 @@ const HOOK_COLUMNS: Columns = {
   is_template: plain('isTemplate'),
   aliases: plain('aliases'),
   keywords: plain('keywords'),
+  lore: plain('lore'),
 };
 const hookCreate = z.object({
   name,
@@ -1224,6 +1250,7 @@ const hookCreate = z.object({
   is_template: z.boolean().nullable().default(null),
   aliases: nameList.optional(),
   keywords: nameList.optional(),
+  lore: loreText.optional(),
 });
 const hookUpdate = z
   .object({
@@ -1243,6 +1270,7 @@ const hookUpdate = z
     is_template: z.boolean().nullable(),
     aliases: nameList,
     keywords: nameList,
+    lore: loreText,
   })
   .partial();
 type HookRow = Prisma.HookGetPayload<object>;

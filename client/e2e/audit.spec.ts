@@ -285,6 +285,13 @@ test.describe.serial('visual audit', () => {
     // S4c: aliases, lorebook keys and a person's voice reach the sync.
     const mira = (synced.world_entities as { name: string; aliases?: string[]; keywords?: string[]; voice?: { personality: string } | null }[]).find((entity) => entity.name === 'Mira of the Lantern');
     expect([mira?.aliases, mira?.keywords, mira?.voice?.personality]).toEqual([['The Lantern Keeper'], ['harbour light'], 'Patient, watchful, kind to sailors.']);
+    // S4d: a lorebook entry's activation reaches the sync, filled with the contract's defaults.
+    const flicker = await request.post('/api/v1/journal', {
+      data: { journal: { name: 'The Flicker', kind: 'lore', campaign_id: seeded.world, keywords: ['flicker'], lore: { position: 'at_depth', depth: 2 } } },
+    });
+    expect(flicker.status(), await flicker.text()).toBe(201);
+    const withLore = (await (await request.get(`/api/v1/world_entity?campaign_id=${seeded.world}`)).json()) as { world_entities: { name: string; lore: { position: string; probability: number } | null }[] };
+    expect(withLore.world_entities.find((entity) => entity.name === 'The Flicker')?.lore).toMatchObject({ position: 'at_depth', probability: 100 });
     const pages = worldPages(seeded);
     const page = await browser.newPage({ baseURL: String(testInfo.project.use.baseURL) });
     await expectSeedShows(page, seeded);
