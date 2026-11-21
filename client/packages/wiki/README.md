@@ -64,6 +64,10 @@ AGPL-3.0-or-later.
 
 ## The lite API (`@zephyrex-rpg/wiki/lite`)
 
+An app that never serves it (a hosted edition, whose server composes the wiki's extensions) builds
+the package without it: `node scripts/compile.mjs --no-lite`. The lite API types against
+`@zephyrex/lite` and a Prisma client generated with the wiki's models, which such an app lacks.
+
 An app's lite edition (Next.js only, no server-framework) serves the wiki's API itself:
 
 1. Copy the schema fragment into a Prisma multi-file schema folder, beside the app's own datasource

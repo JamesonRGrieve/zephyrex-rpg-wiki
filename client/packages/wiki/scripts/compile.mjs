@@ -6,6 +6,10 @@
  * src/ is staged into build/ with the contract beside it, compiled to dist/, and each emitted
  * import is made loadable by Node: relative imports get their .js, the contract's JSON its import
  * attribute, and Next's subpaths (no exports map) their file name.
+ *
+ * --no-lite leaves out the lite API (src/lite.ts, src/lite/): an app that never mounts it (vtt
+ * hosted) has neither @zephyrex/lite nor a Prisma client generated with the wiki's models, which
+ * the lite API types against. Pages and libraries never import it, so the rest builds without it.
  */
 import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -21,6 +25,10 @@ const CONTRACT_IMPORT = "'../../../../contract/wiki.json'";
 rmSync(BUILD, { recursive: true, force: true });
 rmSync(DIST, { recursive: true, force: true });
 cpSync(join(PACKAGE, 'src'), BUILD, { recursive: true });
+if (process.argv.includes('--no-lite')) {
+  rmSync(join(BUILD, 'lite.ts'));
+  rmSync(join(BUILD, 'lite'), { recursive: true });
+}
 mkdirSync(join(BUILD, 'contract'), { recursive: true });
 for (const name of readdirSync(join(REPOSITORY, 'contract'))) {
   if (name.endsWith('.json')) cpSync(join(REPOSITORY, 'contract', name), join(BUILD, 'contract', name));
