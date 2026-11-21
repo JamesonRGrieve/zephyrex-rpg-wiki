@@ -32,7 +32,7 @@ export function linesOf(entry: string | null, description: string | null): strin
 }
 
 /** Each line with a key from its text and how often that text came before (lines can repeat). */
-function keyed(lines: readonly string[]): { key: string; line: string }[] {
+export function keyed(lines: readonly string[]): { key: string; line: string }[] {
   const seen = new Map<string, number>();
   return lines.map((line) => {
     const count = seen.get(line) ?? 0;

@@ -9,7 +9,7 @@
 import type { Prisma } from '@prisma/client';
 import { type ResourceSpec, validationError } from '@zephyrex/lite';
 import { z } from 'zod';
-import { ENTITY_TYPES, FACTION_KINDS, ITEM_KINDS, LIMITS, LOCATION_KINDS, PERSON_KINDS } from '~/contract';
+import { ENTITY_TYPES, FACTION_KINDS, ITEM_KINDS, JOURNAL_KINDS, LIMITS, LOCATION_KINDS, PERSON_KINDS, POST_POSITIONS } from '~/contract';
 import { type Columns, columnsOf, fieldsOf, plain } from '~/lib/columns';
 import { EntryError, parseEntry } from '~/lib/entry';
 import { prisma } from '~/lib/prisma';
@@ -35,6 +35,16 @@ function written(columns: Columns, input: Record<string, unknown>, stamp: Date, 
   return { ...columnsOf(columns, data), updatedAt: stamp, ...(userId === undefined ? {} : { updatedById: userId }) };
 }
 
+/**
+ * A deleted place, person, faction or item stays as a tombstone (rpg-ai A15: a since-sync removes its
+ * entry), as the server's soft delete keeps it: hidden from every normal read, its updatedAt the
+ * moment it went.
+ */
+function tombstone(): { deletedAt: Date; updatedAt: Date } {
+  const now = new Date();
+  return { deletedAt: now, updatedAt: now };
+}
+
 function filters(query: URLSearchParams, names: readonly [string, string][]): Record<string, string> {
   const where: Record<string, string> = {};
   for (const [field, column] of names) {
@@ -52,13 +62,23 @@ async function checkWorld(ownerId: string, campaignId: unknown): Promise<void> {
 
 async function checkPerson(ownerId: string, personId: unknown): Promise<void> {
   if (typeof personId !== 'string') return;
-  if ((await prisma.person.count({ where: { id: personId, createdById: ownerId } })) === 0)
+  if ((await prisma.person.count({ where: { deletedAt: null, id: personId, createdById: ownerId } })) === 0)
     throw validationError('That person is not one of yours', 'associated_person_id');
+}
+
+/**
+ * A record's world is fixed once set (rpg-ai A15's sync), as the server refuses: campaign_id goes
+ * from none to a world, never to another world or back to none. Moving is copy and delete.
+ */
+function checkWorldStays(current: string | null | undefined, wanted: unknown): void {
+  if (wanted === undefined || current === null || current === undefined) return;
+  if (wanted !== current)
+    throw validationError('A record’s world is fixed once set: copy it to another world instead', 'campaign_id');
 }
 
 async function checkPlace(ownerId: string, locationId: unknown, field: string): Promise<void> {
   if (typeof locationId !== 'string') return;
-  if ((await prisma.location.count({ where: { id: locationId, createdById: ownerId } })) === 0)
+  if ((await prisma.location.count({ where: { deletedAt: null, id: locationId, createdById: ownerId } })) === 0)
     throw validationError('That place is not one of yours', field);
 }
 
@@ -166,6 +186,7 @@ export const locations: ResourceSpec<LocationRow, z.infer<typeof locationCreate>
     prisma.location.findMany({
       where: {
         createdById: ownerId,
+        deletedAt: null,
         ...filters(query, [
           ['campaign_id', 'campaignId'],
           ['parent_id', 'parentId'],
@@ -175,7 +196,7 @@ export const locations: ResourceSpec<LocationRow, z.infer<typeof locationCreate>
       },
       orderBy: { name: 'asc' },
     }),
-  find: (id, ownerId) => prisma.location.findFirst({ where: { id, createdById: ownerId } }),
+  find: (id, ownerId) => prisma.location.findFirst({ where: { id, createdById: ownerId, deletedAt: null } }),
   async insert(ownerId, input, stamp) {
     await checkWorld(ownerId, input.campaign_id);
     await checkPlace(ownerId, input.parent_id, 'parent_id');
@@ -185,7 +206,8 @@ export const locations: ResourceSpec<LocationRow, z.infer<typeof locationCreate>
     });
   },
   async updateIfCurrent(id, version, input, stamp, userId) {
-    const owner = await prisma.location.findUnique({ where: { id }, select: { createdById: true } });
+    const owner = await prisma.location.findUnique({ where: { id }, select: { createdById: true, campaignId: true } });
+    checkWorldStays(owner?.campaignId, input.campaign_id);
     if (owner !== null) {
       await checkWorld(owner.createdById, input.campaign_id);
       await checkPlace(owner.createdById, input.parent_id, 'parent_id');
@@ -206,7 +228,7 @@ export const locations: ResourceSpec<LocationRow, z.infer<typeof locationCreate>
       prisma.person.updateMany({ where: { locationId: id }, data: { locationId: null } }),
       prisma.itemInstance.updateMany({ where: { locationId: id }, data: { locationId: null } }),
       prisma.entityInventory.deleteMany({ where: { targetEntityType: 'location', targetEntityId: id } }),
-      prisma.location.delete({ where: { id } }),
+      prisma.location.update({ where: { id }, data: tombstone() }),
     ]);
   },
   fields: (row) => fieldsOf(LOCATION_COLUMNS, row),
@@ -254,6 +276,7 @@ export const people: ResourceSpec<PersonRow, z.infer<typeof personCreate>, z.inf
     prisma.person.findMany({
       where: {
         createdById: ownerId,
+        deletedAt: null,
         ...filters(query, [
           ['campaign_id', 'campaignId'],
           ['location_id', 'locationId'],
@@ -262,7 +285,7 @@ export const people: ResourceSpec<PersonRow, z.infer<typeof personCreate>, z.inf
       },
       orderBy: { name: 'asc' },
     }),
-  find: (id, ownerId) => prisma.person.findFirst({ where: { id, createdById: ownerId } }),
+  find: (id, ownerId) => prisma.person.findFirst({ where: { id, createdById: ownerId, deletedAt: null } }),
   async insert(ownerId, input, stamp) {
     await checkWorld(ownerId, input.campaign_id);
     await checkPlace(ownerId, input.location_id, 'location_id');
@@ -271,7 +294,8 @@ export const people: ResourceSpec<PersonRow, z.infer<typeof personCreate>, z.inf
     });
   },
   async updateIfCurrent(id, version, input, stamp, userId) {
-    const owner = await prisma.person.findUnique({ where: { id }, select: { createdById: true } });
+    const owner = await prisma.person.findUnique({ where: { id }, select: { createdById: true, campaignId: true } });
+    checkWorldStays(owner?.campaignId, input.campaign_id);
     if (owner !== null) {
       await checkWorld(owner.createdById, input.campaign_id);
       await checkPlace(owner.createdById, input.location_id, 'location_id');
@@ -287,7 +311,7 @@ export const people: ResourceSpec<PersonRow, z.infer<typeof personCreate>, z.inf
       prisma.itemInstance.updateMany({ where: { ownerPersonId: id }, data: { ownerPersonId: null } }),
       prisma.entityInventory.deleteMany({ where: { targetEntityType: 'person', targetEntityId: id } }),
       prisma.location.updateMany({ where: { associatedPersonId: id }, data: { associatedPersonId: null } }),
-      prisma.person.delete({ where: { id } }),
+      prisma.person.update({ where: { id }, data: tombstone() }),
     ]);
   },
   // The server's Person also answers its genealogy dates and the player; lite has no accounts.
@@ -324,7 +348,7 @@ type FactionRow = Prisma.FactionGetPayload<object>;
 
 async function checkFaction(ownerId: string, factionId: unknown): Promise<void> {
   if (typeof factionId !== 'string') return;
-  if ((await prisma.faction.count({ where: { id: factionId, createdById: ownerId } })) === 0)
+  if ((await prisma.faction.count({ where: { deletedAt: null, id: factionId, createdById: ownerId } })) === 0)
     throw validationError('That faction is not one of yours', 'parent_id');
 }
 
@@ -338,6 +362,7 @@ export const factions: ResourceSpec<FactionRow, z.infer<typeof factionCreate>, z
     prisma.faction.findMany({
       where: {
         createdById: ownerId,
+        deletedAt: null,
         ...filters(query, [
           ['campaign_id', 'campaignId'],
           ['parent_id', 'parentId'],
@@ -346,7 +371,7 @@ export const factions: ResourceSpec<FactionRow, z.infer<typeof factionCreate>, z
       },
       orderBy: { name: 'asc' },
     }),
-  find: (id, ownerId) => prisma.faction.findFirst({ where: { id, createdById: ownerId } }),
+  find: (id, ownerId) => prisma.faction.findFirst({ where: { id, createdById: ownerId, deletedAt: null } }),
   async insert(ownerId, input, stamp) {
     await checkWorld(ownerId, input.campaign_id);
     await checkFaction(ownerId, input.parent_id);
@@ -355,7 +380,8 @@ export const factions: ResourceSpec<FactionRow, z.infer<typeof factionCreate>, z
     });
   },
   async updateIfCurrent(id, version, input, stamp, userId) {
-    const owner = await prisma.faction.findUnique({ where: { id }, select: { createdById: true } });
+    const owner = await prisma.faction.findUnique({ where: { id }, select: { createdById: true, campaignId: true } });
+    checkWorldStays(owner?.campaignId, input.campaign_id);
     if (owner !== null) {
       await checkWorld(owner.createdById, input.campaign_id);
       await checkFaction(owner.createdById, input.parent_id);
@@ -373,7 +399,7 @@ export const factions: ResourceSpec<FactionRow, z.infer<typeof factionCreate>, z
     await prisma.$transaction([
       prisma.faction.updateMany({ where: { parentId: id }, data: { parentId: faction?.parentId ?? null } }),
       prisma.entityInventory.deleteMany({ where: { targetEntityType: 'faction', targetEntityId: id } }),
-      prisma.faction.delete({ where: { id } }),
+      prisma.faction.update({ where: { id }, data: tombstone() }),
     ]);
   },
   fields: (row) => fieldsOf(FACTION_COLUMNS, row),
@@ -429,6 +455,7 @@ export const items: ResourceSpec<ItemRow, z.infer<typeof itemCreate>, z.infer<ty
     prisma.item.findMany({
       where: {
         createdById: ownerId,
+        deletedAt: null,
         ...filters(query, [
           ['campaign_id', 'campaignId'],
           ['kind', 'kind'],
@@ -436,7 +463,7 @@ export const items: ResourceSpec<ItemRow, z.infer<typeof itemCreate>, z.infer<ty
       },
       orderBy: { name: 'asc' },
     }),
-  find: (id, ownerId) => prisma.item.findFirst({ where: { id, createdById: ownerId } }),
+  find: (id, ownerId) => prisma.item.findFirst({ where: { id, createdById: ownerId, deletedAt: null } }),
   async insert(ownerId, input, stamp) {
     await checkWorld(ownerId, input.campaign_id);
     return prisma.item.create({
@@ -444,7 +471,8 @@ export const items: ResourceSpec<ItemRow, z.infer<typeof itemCreate>, z.infer<ty
     });
   },
   async updateIfCurrent(id, version, input, stamp, userId) {
-    const owner = await prisma.item.findUnique({ where: { id }, select: { createdById: true } });
+    const owner = await prisma.item.findUnique({ where: { id }, select: { createdById: true, campaignId: true } });
+    checkWorldStays(owner?.campaignId, input.campaign_id);
     if (owner !== null) await checkWorld(owner.createdById, input.campaign_id);
     const { count } = await prisma.item.updateMany({
       where: { id, updatedAt: version },
@@ -460,7 +488,7 @@ export const items: ResourceSpec<ItemRow, z.infer<typeof itemCreate>, z.infer<ty
       prisma.entityInventory.deleteMany({ where: { itemInstanceId: { in: ids } } }),
       prisma.entityInventory.deleteMany({ where: { targetEntityType: 'item', targetEntityId: id } }),
       prisma.itemInstance.deleteMany({ where: { itemId: id } }),
-      prisma.item.delete({ where: { id } }),
+      prisma.item.update({ where: { id }, data: tombstone() }),
     ]);
   },
   fields: (row) => fieldsOf(ITEM_COLUMNS, row),
@@ -499,12 +527,12 @@ async function checkOwned(
 }
 
 async function checkInstanceRefs(ownerId: string, input: Record<string, unknown>): Promise<void> {
-  await checkOwned(ownerId, input.item_id, (where) => prisma.item.count({ where }), 'That item is not one of yours', 'item_id');
+  await checkOwned(ownerId, input.item_id, (where) => prisma.item.count({ where: { ...where, deletedAt: null } }), 'That item is not one of yours', 'item_id');
   await checkPlace(ownerId, input.location_id, 'location_id');
   await checkOwned(
     ownerId,
     input.owner_person_id,
-    (where) => prisma.person.count({ where }),
+    (where) => prisma.person.count({ where: { ...where, deletedAt: null } }),
     'That person is not one of yours',
     'owner_person_id',
   );
@@ -614,4 +642,163 @@ export const entityInventories: ResourceSpec<InventoryRow, z.infer<typeof invent
     await prisma.entityInventory.delete({ where: { id } });
   },
   fields: (row) => fieldsOf(INVENTORY_COLUMNS, row),
+};
+
+// ---- journal (session reports, diaries, lore, notes…) ---------------------------------------
+
+const JOURNAL_COLUMNS: Columns = {
+  name: plain('name'),
+  description: plain('description'),
+  entry: plain('entry'),
+  kind: plain('kind'),
+  location_id: plain('locationId'),
+  author_person_id: plain('authorPersonId'),
+  session_number: plain('sessionNumber'),
+  occurred_at: plain('occurredAt'),
+  campaign_id: plain('campaignId'),
+};
+const sessionNumber = z.number().int().min(1, 'A session number is a whole number of one or more').nullable();
+const moment = z.coerce.date().nullable();
+const journalCreate = z.object({
+  name,
+  description: z.string().default(''),
+  entry: entry.optional(),
+  kind: kindOf(JOURNAL_KINDS).default(null),
+  location_id: reference.default(null),
+  author_person_id: reference.default(null),
+  session_number: sessionNumber.default(null),
+  occurred_at: moment.default(null),
+  campaign_id: reference.default(null),
+});
+const journalUpdate = z
+  .object({
+    name,
+    description: z.string(),
+    entry,
+    kind: kindOf(JOURNAL_KINDS),
+    location_id: reference,
+    author_person_id: reference,
+    session_number: sessionNumber,
+    occurred_at: moment,
+    campaign_id: reference,
+  })
+  .partial();
+type JournalRow = Prisma.JournalGetPayload<object>;
+
+async function checkJournalRefs(ownerId: string, input: Record<string, unknown>): Promise<void> {
+  await checkWorld(ownerId, input.campaign_id);
+  await checkPlace(ownerId, input.location_id, 'location_id');
+  await checkOwned(
+    ownerId,
+    input.author_person_id,
+    (where) => prisma.person.count({ where: { ...where, deletedAt: null } }),
+    'That person is not one of yours',
+    'author_person_id',
+  );
+}
+
+export const journals: ResourceSpec<JournalRow, z.infer<typeof journalCreate>, z.infer<typeof journalUpdate>> = {
+  resource: 'journal',
+  plural: 'journals',
+  modelName: 'JournalModel',
+  createSchema: journalCreate,
+  updateSchema: journalUpdate,
+  list: (ownerId, query) =>
+    prisma.journal.findMany({
+      where: {
+        createdById: ownerId,
+        deletedAt: null,
+        ...filters(query, [
+          ['campaign_id', 'campaignId'],
+          ['kind', 'kind'],
+          ['location_id', 'locationId'],
+          ['author_person_id', 'authorPersonId'],
+        ]),
+      },
+      orderBy: [{ occurredAt: 'desc' }, { name: 'asc' }],
+    }),
+  find: (id, ownerId) => prisma.journal.findFirst({ where: { id, createdById: ownerId, deletedAt: null } }),
+  async insert(ownerId, input, stamp) {
+    await checkJournalRefs(ownerId, input);
+    return prisma.journal.create({
+      data: { createdById: ownerId, ...written(JOURNAL_COLUMNS, input, stamp) } as Prisma.JournalUncheckedCreateInput,
+    });
+  },
+  async updateIfCurrent(id, version, input, stamp, userId) {
+    const owner = await prisma.journal.findUnique({ where: { id }, select: { createdById: true, campaignId: true } });
+    checkWorldStays(owner?.campaignId, input.campaign_id);
+    if (owner !== null) await checkJournalRefs(owner.createdById, input);
+    const { count } = await prisma.journal.updateMany({
+      where: { id, updatedAt: version },
+      data: written(JOURNAL_COLUMNS, input, stamp, userId) as Prisma.JournalUncheckedUpdateManyInput,
+    });
+    return count === 0 ? null : prisma.journal.findUnique({ where: { id } });
+  },
+  async remove(id) {
+    // Its posts stay, as the server's polymorphic posts do (no cascade on a target).
+    await prisma.journal.update({ where: { id }, data: tombstone() });
+  },
+  fields: (row) => ({ ...fieldsOf(JOURNAL_COLUMNS, row), occurred_at: row.occurredAt?.toISOString() ?? null }),
+};
+
+// ---- entity_post (a post on any entity, W3) --------------------------------------------------
+
+const POST_COLUMNS: Columns = {
+  target_entity_type: plain('targetEntityType'),
+  target_entity_id: plain('targetEntityId'),
+  name: plain('name'),
+  description: plain('description'),
+  entry: plain('entry'),
+  position: plain('position'),
+  ordinal: plain('ordinal'),
+};
+const position = z.enum(POST_POSITIONS as [string, ...string[]]);
+const ordinal = z.number().int().min(0, 'An ordinal is a whole number of zero or more');
+const postCreate = z.object({
+  target_entity_type: z.enum(ENTITY_TYPES as [string, ...string[]]),
+  target_entity_id: z.string().min(1),
+  name,
+  description: z.string().default(''),
+  entry: entry.optional(),
+  position: position.default('default'),
+  ordinal: ordinal.default(0),
+});
+const postUpdate = z.object({ name, description: z.string(), entry, position, ordinal }).partial();
+type PostRow = Prisma.EntityPostGetPayload<object>;
+
+export const entityPosts: ResourceSpec<PostRow, z.infer<typeof postCreate>, z.infer<typeof postUpdate>> = {
+  resource: 'entity_post',
+  plural: 'entity_posts',
+  modelName: 'EntityPostModel',
+  createSchema: postCreate,
+  updateSchema: postUpdate,
+  list: (ownerId, query) =>
+    prisma.entityPost.findMany({
+      where: {
+        createdById: ownerId,
+        ...filters(query, [
+          ['target_entity_type', 'targetEntityType'],
+          ['target_entity_id', 'targetEntityId'],
+          ['position', 'position'],
+        ]),
+      },
+      // pinned_top sorts before default; then by ordinal.
+      orderBy: [{ position: 'desc' }, { ordinal: 'asc' }, { createdAt: 'asc' }],
+    }),
+  find: (id, ownerId) => prisma.entityPost.findFirst({ where: { id, createdById: ownerId } }),
+  insert: (ownerId, input, stamp) =>
+    prisma.entityPost.create({
+      data: { createdById: ownerId, ...written(POST_COLUMNS, input, stamp) } as Prisma.EntityPostUncheckedCreateInput,
+    }),
+  async updateIfCurrent(id, version, input, stamp, userId) {
+    const { count } = await prisma.entityPost.updateMany({
+      where: { id, updatedAt: version },
+      data: written(POST_COLUMNS, input, stamp, userId) as Prisma.EntityPostUncheckedUpdateManyInput,
+    });
+    return count === 0 ? null : prisma.entityPost.findUnique({ where: { id } });
+  },
+  async remove(id) {
+    await prisma.entityPost.delete({ where: { id } });
+  },
+  fields: (row) => fieldsOf(POST_COLUMNS, row),
 };

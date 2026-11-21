@@ -1,0 +1,36 @@
+{
+  "$comment": "A record's summary for a lorebook entry (rpg-ai A15): its plain-text description with every run of whitespace (newlines included) made one space and the ends trimmed. Within limits.summary_characters it stands as it is; longer, it is cut at the last space that leaves room for a closing \"…\" within the limit (or, with no space there, at the limit less one), trimmed, and \"…\" is added. Held on the server (server/extensions/wiki_shared/Summary.py), the lite edition (client/src/lib/summary.ts) and rpg-ai, which reads these cases too.",
+  "limit": 20,
+  "cases": [
+    {
+      "name": "empty",
+      "text": "",
+      "summary": ""
+    },
+    {
+      "name": "short stands as it is",
+      "text": "A port city.",
+      "summary": "A port city."
+    },
+    {
+      "name": "whitespace runs become one space, then the cut",
+      "text": "  History\n\nFounded   by smugglers.  ",
+      "summary": "History Founded by…"
+    },
+    {
+      "name": "exactly the limit",
+      "text": "abcdefghij klmnopqrs",
+      "summary": "abcdefghij klmnopqrs"
+    },
+    {
+      "name": "cut at the last space within the limit",
+      "text": "The Salt Coast is long and grey",
+      "summary": "The Salt Coast is…"
+    },
+    {
+      "name": "one long word is cut at the limit less one",
+      "text": "Supercalifragilisticexpialidocious",
+      "summary": "Supercalifragilisti…"
+    }
+  ]
+}

@@ -12,3 +12,5 @@ export const PERSON_KINDS = contract.person_kinds as readonly string[];
 export const ENTITY_TYPES = contract.entity_types as readonly string[];
 export const FACTION_KINDS = contract.faction_kinds as readonly string[];
 export const ITEM_KINDS = contract.item_kinds as readonly string[];
+export const JOURNAL_KINDS = contract.journal_kinds as readonly string[];
+export const POST_POSITIONS = contract.post_positions as readonly string[];

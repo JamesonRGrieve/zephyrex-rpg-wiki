@@ -26,6 +26,11 @@ optional = false
 name = "world_inventory"
 optional = false
 
+# ...and journals (world_narrative): scoped the same way, and where session reports are written.
+[[extension_dependencies]]
+name = "world_narrative"
+optional = false
+
 [[extension_dependencies]]
 name = "acl_rbac"
 optional = true

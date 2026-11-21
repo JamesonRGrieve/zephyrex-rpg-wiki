@@ -1,0 +1,133 @@
+{
+  "$comment": "A session report's body as a Plate value (rpg-ai A24). The title is the journal's name and never appears in the body. A plain-text body becomes one paragraph per blank-line-separated block (trimmed; a block's own line breaks kept; empty blocks dropped); a Plate value is kept as it is. Mentions, when there are any, close the body with one paragraph: \"Mentioned: \" then each mention node (target_entity_type, target_entity_id, the entity's name as its text), separated by \", \", empty text leaves around inline nodes as Slate requires. Held on the server (server/extensions/wiki_shared/Report.py) and the lite edition (client/src/lib/report.ts).",
+  "cases": [
+    {
+      "name": "one paragraph",
+      "body": "The party reached Saltmarsh.",
+      "mentions": [],
+      "entry": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "The party reached Saltmarsh."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "blank lines part paragraphs; empty blocks are dropped",
+      "body": "  First.\n\n\n\nSecond line one\nline two.  \n\n   ",
+      "mentions": [],
+      "entry": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "First."
+            }
+          ]
+        },
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Second line one\nline two."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "mentions close the body",
+      "body": "They met at the Gull.",
+      "mentions": [
+        {
+          "target_entity_type": "person",
+          "target_entity_id": "p1",
+          "name": "Mira"
+        },
+        {
+          "target_entity_type": "location",
+          "target_entity_id": "l3",
+          "name": "The Gull"
+        }
+      ],
+      "entry": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "They met at the Gull."
+            }
+          ]
+        },
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Mentioned: "
+            },
+            {
+              "type": "mention",
+              "target_entity_type": "person",
+              "target_entity_id": "p1",
+              "children": [
+                {
+                  "text": "Mira"
+                }
+              ]
+            },
+            {
+              "text": ", "
+            },
+            {
+              "type": "mention",
+              "target_entity_type": "location",
+              "target_entity_id": "l3",
+              "children": [
+                {
+                  "text": "The Gull"
+                }
+              ]
+            },
+            {
+              "text": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a Plate body is kept as it is",
+      "body": [
+        {
+          "type": "h2",
+          "children": [
+            {
+              "text": "Scene one"
+            }
+          ]
+        }
+      ],
+      "mentions": [],
+      "entry": [
+        {
+          "type": "h2",
+          "children": [
+            {
+              "text": "Scene one"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "an empty body with no mentions is empty",
+      "body": "   ",
+      "mentions": [],
+      "entry": []
+    }
+  ]
+}

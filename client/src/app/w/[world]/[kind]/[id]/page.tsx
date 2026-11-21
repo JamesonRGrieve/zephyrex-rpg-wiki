@@ -13,10 +13,11 @@ import { PageHeader } from 'zephyrex/ui/page-header';
 import { SkeletonRows } from 'zephyrex/ui/skeleton';
 import { EntityPage, type EntityPageProps } from '~/components/world/EntityPage';
 import { type CarriedLine, InventoryList } from '~/components/world/InventoryList';
+import { PostList } from '~/components/world/PostList';
 import { ENTITY_KINDS, type EntityKind, isEntityKind } from '~/components/world/kinds';
 import { Unavailable } from '~/components/world/Unavailable';
 import { type Capabilities, useCapabilities } from '~/features/capabilities';
-import { carried, factions, itemInstances, items, people, places } from '~/features/data/records';
+import { carried, factions, itemInstances, items, journals, people, places, posts } from '~/features/data/records';
 
 interface Shown {
   name: string;
@@ -40,6 +41,12 @@ function Carries({ world, type, id }: { world: string; type: EntityKind; id: str
   return <InventoryList lines={lines} error={rows.error} onRetry={() => rows.mutate()} />;
 }
 
+/** The posts on the record (W3), pinned first. */
+function Posts({ type, id }: { type: EntityKind; id: string }): ReactElement {
+  const rows = posts.useList({ target_entity_type: type, target_entity_id: id });
+  return <PostList posts={rows.data} error={rows.error} onRetry={() => rows.mutate()} />;
+}
+
 function Record({
   world,
   kind,
@@ -49,6 +56,7 @@ function Record({
   onRetry,
   where,
   canCarry,
+  canPost,
 }: {
   world: string;
   kind: EntityKind;
@@ -58,6 +66,7 @@ function Record({
   onRetry: () => Promise<unknown>;
   where: EntityPageProps['where'];
   canCarry: boolean;
+  canPost: boolean;
 }): ReactElement {
   const words = ENTITY_KINDS[kind];
   return (
@@ -71,6 +80,7 @@ function Record({
       {record !== undefined && (
         <>
           <EntityPage kind={record.kind} entry={record.entry} description={record.description} where={where} />
+          {canPost && <Posts type={kind} id={id} />}
           {canCarry && <Carries world={world} type={kind} id={id} />}
         </>
       )}
@@ -84,14 +94,14 @@ function PlacePage({ world, id, can }: { world: string; id: string; can: Capabil
   const one = places.useOne(id);
   const parent = places.useOne(one.data?.parent_id ?? null);
   const where = parent.data === undefined ? undefined : { label: 'In', name: parent.data.name, href: placeHref(world, parent.data.id) };
-  return <Record world={world} kind='location' id={id} record={one.data} error={one.error} onRetry={() => one.mutate()} where={where} canCarry={can.items} />;
+  return <Record world={world} kind='location' id={id} record={one.data} error={one.error} onRetry={() => one.mutate()} where={where} canCarry={can.items} canPost={can.posts} />;
 }
 
 function PersonPage({ world, id, can }: { world: string; id: string; can: Capabilities }): ReactElement {
   const one = people.useOne(id);
   const place = places.useOne(one.data?.location_id ?? null);
   const where = place.data === undefined ? undefined : { label: 'At', name: place.data.name, href: placeHref(world, place.data.id) };
-  return <Record world={world} kind='person' id={id} record={one.data} error={one.error} onRetry={() => one.mutate()} where={where} canCarry={can.items} />;
+  return <Record world={world} kind='person' id={id} record={one.data} error={one.error} onRetry={() => one.mutate()} where={where} canCarry={can.items} canPost={can.posts} />;
 }
 
 function FactionPage({ world, id, can }: { world: string; id: string; can: Capabilities }): ReactElement {
@@ -99,15 +109,24 @@ function FactionPage({ world, id, can }: { world: string; id: string; can: Capab
   const parent = factions.useOne(one.data?.parent_id ?? null);
   const where =
     parent.data === undefined ? undefined : { label: 'Part of', name: parent.data.name, href: `/w/${world}/faction/${parent.data.id}` };
-  return <Record world={world} kind='faction' id={id} record={one.data} error={one.error} onRetry={() => one.mutate()} where={where} canCarry={can.items} />;
+  return <Record world={world} kind='faction' id={id} record={one.data} error={one.error} onRetry={() => one.mutate()} where={where} canCarry={can.items} canPost={can.posts} />;
 }
 
 function ItemPage({ world, id, can }: { world: string; id: string; can: Capabilities }): ReactElement {
   const one = items.useOne(id);
-  return <Record world={world} kind='item' id={id} record={one.data} error={one.error} onRetry={() => one.mutate()} where={undefined} canCarry={can.items} />;
+  return <Record world={world} kind='item' id={id} record={one.data} error={one.error} onRetry={() => one.mutate()} where={undefined} canCarry={can.items} canPost={can.posts} />;
 }
 
-const PAGES = { location: PlacePage, person: PersonPage, faction: FactionPage, item: ItemPage } as const;
+function JournalPage({ world, id, can }: { world: string; id: string; can: Capabilities }): ReactElement {
+  const one = journals.useOne(id);
+  const place = places.useOne(one.data?.location_id ?? null);
+  const where = place.data === undefined ? undefined : { label: 'At', name: place.data.name, href: placeHref(world, place.data.id) };
+  return (
+    <Record world={world} kind='journal' id={id} record={one.data} error={one.error} onRetry={() => one.mutate()} where={where} canCarry={false} canPost={can.posts} />
+  );
+}
+
+const PAGES = { location: PlacePage, person: PersonPage, faction: FactionPage, item: ItemPage, journal: JournalPage } as const;
 
 export default function EntityRecordPage(): ReactElement {
   const params = useParams<{ world: string; kind: string; id: string }>();

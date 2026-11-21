@@ -40,8 +40,11 @@ model Location {
   createdAt    DateTime @default(now())
   updatedAt    DateTime
   updatedById  String?
+  /// Soft delete: a tombstone a since-sync reads (rpg-ai A15); hidden from normal reads.
+  deletedAt    DateTime?
 
   @@index([createdById])
+  @@index([deletedAt])
   @@index([campaignId])
   @@index([parentId])
   @@index([associatedPersonId])
@@ -63,8 +66,11 @@ model Person {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime
   updatedById  String?
+  /// Soft delete: a tombstone a since-sync reads (rpg-ai A15); hidden from normal reads.
+  deletedAt    DateTime?
 
   @@index([createdById])
+  @@index([deletedAt])
   @@index([campaignId])
 }
 
@@ -81,8 +87,11 @@ model Faction {
   createdAt    DateTime @default(now())
   updatedAt    DateTime
   updatedById  String?
+  /// Soft delete: a tombstone a since-sync reads (rpg-ai A15); hidden from normal reads.
+  deletedAt    DateTime?
 
   @@index([createdById])
+  @@index([deletedAt])
   @@index([campaignId])
   @@index([parentId])
 }
@@ -102,8 +111,11 @@ model Item {
   createdAt    DateTime @default(now())
   updatedAt    DateTime
   updatedById  String?
+  /// Soft delete: a tombstone a since-sync reads (rpg-ai A15); hidden from normal reads.
+  deletedAt    DateTime?
 
   @@index([createdById])
+  @@index([deletedAt])
   @@index([campaignId])
 }
 
@@ -132,6 +144,49 @@ model EntityInventory {
   targetEntityId   String
   itemInstanceId   String?
   quantity         Int      @default(1)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime
+  updatedById      String?
+
+  @@index([createdById])
+  @@index([targetEntityId])
+}
+
+/// A journal: session report, diary, lore, handout, note, manuscript, prose or chapter
+/// (world_narrative's JournalModel, with rpg_core's campaign). Soft-deleted, like the other synced kinds.
+model Journal {
+  id             String    @id @default(uuid())
+  createdById    String
+  name           String
+  description    String    @default("")
+  entry          String?
+  kind           String?
+  locationId     String?
+  authorPersonId String?
+  sessionNumber  Int?
+  occurredAt     DateTime?
+  campaignId     String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime
+  updatedById    String?
+  deletedAt      DateTime?
+
+  @@index([createdById])
+  @@index([campaignId])
+  @@index([deletedAt])
+}
+
+/// A post on any entity (entity_posts' EntityPostModel): pinned_top shows first.
+model EntityPost {
+  id               String   @id @default(uuid())
+  createdById      String
+  targetEntityType String
+  targetEntityId   String
+  name             String
+  description      String   @default("")
+  entry            String?
+  position         String   @default("default")
+  ordinal          Int      @default(0)
   createdAt        DateTime @default(now())
   updatedAt        DateTime
   updatedById      String?

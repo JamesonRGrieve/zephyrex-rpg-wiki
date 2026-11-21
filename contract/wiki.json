@@ -3,7 +3,9 @@
   "limits": {
     "name_characters": 200,
     "entry_bytes": 200000,
-    "entry_depth": 32
+    "entry_depth": 32,
+    "summary_characters": 400,
+    "report_mentions": 200
   },
   "location_kinds": [
     "system",
@@ -51,10 +53,25 @@
     "authority",
     "misc"
   ],
+  "journal_kinds": [
+    "session_report",
+    "in_world_diary",
+    "lore",
+    "handout",
+    "note",
+    "manuscript",
+    "prose",
+    "chapter"
+  ],
+  "post_positions": [
+    "pinned_top",
+    "default"
+  ],
   "entity_types": [
     "person",
     "location",
     "faction",
-    "item"
+    "item",
+    "journal"
   ]
 }

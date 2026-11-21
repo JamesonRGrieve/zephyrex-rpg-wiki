@@ -19,6 +19,7 @@ INJECTED = {
     "locations": {"campaign_id"},
     "factions": {"campaign_id"},
     "items": {"campaign_id"},
+    "journals": {"campaign_id"},
 }
 FOREIGN_KEYS = {
     ("persons", "campaign_id"): "campaigns",
@@ -27,6 +28,8 @@ FOREIGN_KEYS = {
     ("locations", "campaign_id"): "campaigns",
     ("locations", "associated_person_id"): "persons",
     ("items", "campaign_id"): "campaigns",
+    ("journals", "campaign_id"): "campaigns",
+    ("journals", "author_person_id"): "persons",
 }
 
 
@@ -56,4 +59,4 @@ def test_the_injected_references_are_real_foreign_keys(database: sqlite3.Connect
 
 def test_each_extension_owns_its_tables(database: sqlite3.Connection) -> None:
     tables = {row[0] for row in database.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-    assert {"campaigns", "locations", "factions", "items", "item_instances", "entity_inventories"} <= tables
+    assert {"campaigns", "locations", "factions", "items", "item_instances", "entity_inventories", "journals", "entity_posts"} <= tables

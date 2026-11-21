@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+// @vitest-environment node
+// Pure logic: no DOM, so no jsdom to load (which, read from an NFS store, can miss Vitest's worker start).
 // An entry's plain-text copy, held to the cases the server is held to
 // (contract/entry-text-cases.json; server/extensions/wiki_shared/Entry_test.py).
 import { describe, expect, it } from 'vitest';

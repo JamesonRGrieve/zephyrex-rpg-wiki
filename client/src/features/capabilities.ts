@@ -20,6 +20,10 @@ export interface Capabilities {
   factions: boolean;
   /** Items, and what anyone carries (world_inventory). */
   items: boolean;
+  /** Journals: session reports, diaries, lore, notes (world_narrative). */
+  journals: boolean;
+  /** Posts on any record (entity_posts). */
+  posts: boolean;
   /** Accounts: the same records on every device the person signs in on. */
   accounts: boolean;
 }
@@ -32,6 +36,8 @@ export function capabilitiesOf(names: ReadonlySet<string>, loaded: boolean): Cap
     people: names.has('genealogy'),
     factions: names.has('world_social'),
     items: names.has('world_inventory'),
+    journals: names.has('world_narrative'),
+    posts: names.has('entity_posts'),
     accounts: names.has('auth_session'),
   };
 }

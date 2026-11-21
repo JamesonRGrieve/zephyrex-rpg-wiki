@@ -1,0 +1,12 @@
+name = "entity_posts"
+version = "0.1.0"
+description = "Pinnable rich-text posts on any entity"
+entry_module = "EXT_EntityPosts"
+minimum_framework_version = "0.0.1"
+# Where this extension's source is offered (AGPL-3.0 section 13).
+repository = "https://github.com/JamesonRGrieve/zephyrex-rpg-wiki"
+
+# Optional: when present, ACL drives per-post visibility (W9). No visibility column here.
+[[extension_dependencies]]
+name = "acl_rbac"
+optional = true

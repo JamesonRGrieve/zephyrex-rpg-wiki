@@ -12,7 +12,7 @@
 import useSWR, { type SWRResponse, useSWRConfig } from 'swr';
 import { useClient } from 'zephyrex';
 import { z } from 'zod';
-import { ENTITY_TYPES, FACTION_KINDS, ITEM_KINDS, LOCATION_KINDS, PERSON_KINDS } from '~/contract';
+import { ENTITY_TYPES, FACTION_KINDS, ITEM_KINDS, JOURNAL_KINDS, LOCATION_KINDS, PERSON_KINDS, POST_POSITIONS } from '~/contract';
 
 const JSON_BODY = z.json();
 
@@ -102,6 +102,32 @@ export const carriedSchema = z.object({
   quantity: z.number().nullable(),
 });
 export type Carried = z.infer<typeof carriedSchema>;
+
+export const journalSchema = z.object({
+  ...versioned,
+  name: z.string(),
+  description: z.string().nullable(),
+  entry: z.string().nullable(),
+  kind: kindIn(JOURNAL_KINDS),
+  location_id: z.string().nullable(),
+  author_person_id: z.string().nullable(),
+  session_number: z.number().nullable(),
+  occurred_at: z.string().nullable(),
+  campaign_id: z.string().nullable(),
+});
+export type Journal = z.infer<typeof journalSchema>;
+
+export const postSchema = z.object({
+  ...versioned,
+  target_entity_type: z.enum(ENTITY_TYPES as [string, ...string[]]),
+  target_entity_id: z.string(),
+  name: z.string(),
+  description: z.string().nullable(),
+  entry: z.string().nullable(),
+  position: z.enum(POST_POSITIONS as [string, ...string[]]).nullable(),
+  ordinal: z.number().nullable(),
+});
+export type Post = z.infer<typeof postSchema>;
 
 type Versioned = { id: string; created_at: string; updated_at: string | null };
 /** What a write may set: a record's own fields (and, for write-only fields, `Extra`). */
@@ -201,3 +227,12 @@ export const carried = resource<
   Carried,
   Pick<Carried, 'target_entity_type' | 'target_entity_id' | 'item_instance_id'> & Fields<Carried>
 >('entity_inventory', 'entity_inventories', carriedSchema);
+export const journals = resource<Journal, Fields<Journal, { entry?: unknown }> & { name: string }>(
+  'journal',
+  'journals',
+  journalSchema,
+);
+export const posts = resource<
+  Post,
+  Pick<Post, 'target_entity_type' | 'target_entity_id' | 'name'> & Fields<Post, { entry?: unknown }>
+>('entity_post', 'entity_posts', postSchema);

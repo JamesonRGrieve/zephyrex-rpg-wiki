@@ -197,3 +197,153 @@ class TestWornOrPacked:
         assert _worn_by(server, person, loose) is None
         slots = server.get(f"/v1/location?associated_person_id={mira['id']}", headers=_headers(person)).json()["locations"]
         assert {row["id"] for row in slots} == {hand["id"], pack["id"]}
+
+
+class TestWorldIsFixed:
+    """A record's world is fixed once set (rpg-ai A15's sync); moving is copy and delete."""
+
+    def test_a_record_joins_a_world_but_never_leaves_or_switches(self, server: TestClient, person: Any) -> None:
+        first = _create(server, person, "campaign", name="First World")
+        second = _create(server, person, "campaign", name="Second World")
+        for resource, fields in (
+            ("location", {"name": "Driftwood Pier", "kind": "building"}),
+            ("faction", {"name": "Pier Watch", "kind": "military"}),
+            ("item", {"name": "Pier lantern", "kind": "misc"}),
+            ("person", {"name": "Old Tamsin", "kind": "npc"}),
+        ):
+            record = _create(server, person, resource, **fields)
+            joined = _put(server, person, resource, record, campaign_id=first["id"])
+            assert joined.status_code == 200, (resource, joined.text)
+            assert _put(server, person, resource, record, campaign_id=second["id"]).status_code == 422, resource
+            assert _put(server, person, resource, record, campaign_id=None).status_code == 422, resource
+            assert _put(server, person, resource, record, campaign_id=first["id"]).status_code == 200, resource
+
+
+class TestJournalsAndPosts:
+    def test_a_journal_has_a_kind_an_author_a_place_and_a_world(self, server: TestClient, person: Any, world: dict[str, Any]) -> None:
+        bard = _create(server, person, "person", name="Wren the Bard", campaign_id=world["id"])
+        inn = _create(server, person, "location", name="The Lantern", kind="building", campaign_id=world["id"])
+        diary = _create(
+            server, person, "journal", name="Wren's diary", kind="in_world_diary", author_person_id=bard["id"], location_id=inn["id"],
+            campaign_id=world["id"], entry=ENTRY,
+        )
+        assert (diary["kind"], diary["author_person_id"], diary["location_id"], diary["campaign_id"]) == ("in_world_diary", bard["id"], inn["id"], world["id"])
+        assert diary["description"] == "A port city."
+        response = server.post("/v1/journal", json={"journal": {"name": "Odd", "kind": "poem"}}, headers=_headers(person))
+        assert response.status_code == 422, response.text
+
+    def test_posts_sit_on_any_record_pinned_first(self, server: TestClient, person: Any) -> None:
+        keep = _create(server, person, "location", name="The Keep", kind="building")
+        pinned = _create(server, person, "entity_post", target_entity_type="location", target_entity_id=keep["id"], name="Rumour", position="pinned_top")
+        _create(server, person, "entity_post", target_entity_type="location", target_entity_id=keep["id"], name="History", ordinal=1)
+        assert pinned["position"] == "pinned_top"
+        posts = server.get(f"/v1/entity_post?target_entity_id={keep['id']}", headers=_headers(person)).json()["entity_posts"]
+        assert {post["name"] for post in posts} == {"Rumour", "History"}
+        for bad in ({"position": "sideways"}, {"target_entity_type": "planet"}, {"ordinal": -1}):
+            body = {"target_entity_type": "location", "target_entity_id": keep["id"], "name": "Odd", **bad}
+            response = server.post("/v1/entity_post", json={"entity_post": body}, headers=_headers(person))
+            assert response.status_code == 422, (bad, response.text)
+
+
+class TestSessionReports:
+    """rpg-ai A24: a session report is a journal of kind session_report in its campaign."""
+
+    def _cast(self, server: TestClient, person: Any, world: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+        mira = _create(server, person, "person", name="Mira of the Lantern", campaign_id=world["id"])
+        gull = _create(server, person, "location", name="Gull Rock", kind="region", campaign_id=world["id"])
+        return mira, gull
+
+    def test_written_and_read_back_with_its_mentions_and_title_kept_out_of_the_body(
+        self, server: TestClient, person: Any, world: dict[str, Any]
+    ) -> None:
+        mira, gull = self._cast(server, person, world)
+        report = {
+            "campaign_id": world["id"],
+            "title": "Session 4: the Gull Rock ambush",
+            "body": "The party was ambushed.\n\nMira held the line.",
+            "session_number": 4,
+            "mentions": [
+                {"target_entity_type": "person", "target_entity_id": mira["id"]},
+                {"target_entity_type": "location", "target_entity_id": gull["id"]},
+            ],
+        }
+        written = server.post("/v1/session_report", json={"session_report": report}, headers=_headers(person))
+        assert written.status_code in (200, 201), written.text
+        saved = written.json()["session_report"]
+        assert saved["title"] == "Session 4: the Gull Rock ambush"
+        assert "Session 4" not in saved["text"]
+        assert saved["text"] == "The party was ambushed.\nMira held the line.\nMentioned: Mira of the Lantern, Gull Rock"
+        assert [(m["target_entity_type"], m["target_entity_id"]) for m in saved["mentions"]] == [("person", mira["id"]), ("location", gull["id"])]
+        again = server.get(f"/v1/session_report/{saved['id']}", headers=_headers(person)).json()["session_report"]
+        assert again == saved
+        journal = server.get(f"/v1/journal/{saved['id']}", headers=_headers(person)).json()["journal"]
+        assert (journal["kind"], journal["session_number"], journal["campaign_id"]) == ("session_report", 4, world["id"])
+
+    def test_a_mention_outside_the_campaign_or_another_persons_campaign_is_refused(
+        self, server: TestClient, person: Any, other: Any, world: dict[str, Any]
+    ) -> None:
+        stranger = _create(server, person, "person", name="A stranger")
+        report = {
+            "campaign_id": world["id"],
+            "title": "Session 5",
+            "body": "Quiet.",
+            "mentions": [{"target_entity_type": "person", "target_entity_id": stranger["id"]}],
+        }
+        response = server.post("/v1/session_report", json={"session_report": report}, headers=_headers(person))
+        assert response.status_code == 422, response.text
+        theirs = server.post("/v1/session_report", json={"session_report": {**report, "mentions": []}}, headers=_headers(other))
+        assert theirs.status_code == 404, theirs.text
+
+    def test_the_abilities_write_and_read_the_same_record(self, server: TestClient, person: Any, world: dict[str, Any]) -> None:
+        from zephyrex.extensions.AbstractExtensionProvider import loaded_ability
+
+        registry = server.app.state.model_registry  # type: ignore[attr-defined]
+        write = loaded_ability(registry, "rpg_core", "session_report")
+        read = loaded_ability(registry, "rpg_core", "session_report_get")
+        assert write is not None and read is not None
+        made = write(registry, str(person.id), campaign_id=world["id"], title="Session 6", body="Calm seas.")
+        report = read(registry, str(person.id), made["id"])
+        assert (report["title"], report["text"], report["mentions"]) == ("Session 6", "Calm seas.", [])
+
+
+class TestWorldEntities:
+    """rpg-ai A15: a campaign's changes since a time, tombstones included, paged."""
+
+    def test_a_sync_sees_changes_tombstones_and_pages(self, server: TestClient, person: Any, other: Any) -> None:
+        world_id = _create(server, person, "campaign", name="Sync World")["id"]
+        harbour = _create(server, person, "location", name="Harbour", kind="district", campaign_id=world_id, entry=ENTRY)
+        _create(server, person, "person", name="Dockmaster Ilse", campaign_id=world_id)
+        _create(server, person, "faction", name="Harbour Guild", kind="guild", campaign_id=world_id)
+        doomed = _create(server, person, "item", name="Cracked lantern", kind="misc", campaign_id=world_id)
+        _create(server, person, "location", name="Elsewhere", kind="region")  # no world: never listed
+
+        everything = server.get(f"/v1/world_entity?campaign_id={world_id}", headers=_headers(person))
+        assert everything.status_code == 200, everything.text
+        page = everything.json()
+        by_name = {entity["name"]: entity for entity in page["world_entities"]}
+        assert set(by_name) == {"Harbour", "Dockmaster Ilse", "Harbour Guild", "Cracked lantern"}
+        assert by_name["Harbour"] | {"updated_at": None} == {
+            "id": harbour["id"], "kind": "location", "name": "Harbour", "aliases": [], "summary": "A port city.",
+            "picture": None, "updated_at": None, "deleted": False,
+        }
+        assert page["next"] is None
+
+        current = server.get(f"/v1/item/{doomed['id']}", headers=_headers(person))
+        gone = server.delete(f"/v1/item/{doomed['id']}", headers=_headers(person, **{"If-Match": current.headers["ETag"]}))
+        assert gone.status_code in (200, 204), gone.text
+        last_seen = max(entity["updated_at"] for entity in page["world_entities"])
+        changed = server.get(f"/v1/world_entity?campaign_id={world_id}&since={last_seen}&kinds=item", headers=_headers(person)).json()
+        assert [(entity["id"], entity["deleted"]) for entity in changed["world_entities"]][-1] == (doomed["id"], True)
+
+        seen: list[str] = []
+        after = ""
+        while True:
+            step = server.get(f"/v1/world_entity?campaign_id={world_id}&limit=1{after}", headers=_headers(person)).json()
+            seen.extend(entity["id"] for entity in step["world_entities"])
+            if step["next"] is None:
+                break
+            after = f"&after={step['next']}"
+        assert len(seen) == len(set(seen)) == 4
+
+        assert server.get(f"/v1/world_entity?campaign_id={world_id}", headers=_headers(other)).status_code == 404
+        assert server.get(f"/v1/world_entity?campaign_id={world_id}&kinds=dragon", headers=_headers(person)).status_code == 422

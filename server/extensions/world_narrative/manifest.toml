@@ -1,0 +1,20 @@
+name = "world_narrative"
+version = "0.1.0"
+description = "Journals: session reports, diaries, lore, handouts, notes and manuscripts"
+entry_module = "EXT_WorldNarrative"
+minimum_framework_version = "0.0.1"
+# Where this extension's source is offered (AGPL-3.0 section 13).
+repository = "https://github.com/JamesonRGrieve/zephyrex-rpg-wiki"
+
+# A journal has an author (a person) and a place.
+[[extension_dependencies]]
+name = "genealogy"
+optional = false
+
+[[extension_dependencies]]
+name = "world_spatial"
+optional = false
+
+[[extension_dependencies]]
+name = "acl_rbac"
+optional = true
