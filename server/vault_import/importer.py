@@ -16,6 +16,7 @@ changes nothing.
 
 import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from datetime import date, datetime, timezone
 from typing import Any, Callable, Optional
 
@@ -46,13 +47,13 @@ PROPERTIES: dict[str, tuple[str, str]] = {
     "in_world_days": ("In-world days", "text"),
 }
 # A record's kind: `kind:`, or the vault's own field for it (location_type: facility, …).
-KIND_FIELDS = {
-    "location": "location_type",
-    "person": "person_type",
-    "faction": "faction_type",
-    "item": "item_type",
-    "journal": "journal_type",
-    "hook": "quest_type",
+KIND_FIELDS: dict[str, tuple[str, ...]] = {
+    "location": ("location_type",),
+    "person": ("person_type", "character_type"),
+    "faction": ("faction_type", "organisation_type"),
+    "item": ("item_type",),
+    "journal": ("journal_type", "note_type"),
+    "hook": ("quest_type",),
 }
 KINDS = {
     "location": LOCATION_KINDS,
@@ -65,7 +66,7 @@ KINDS = {
 # The vaults' words for a contract kind, where the word isn't the kind itself (after - becomes _).
 KIND_SYNONYMS = {
     "hook": {"main": "major_quest", "side": "side_quest"},
-    "journal": {"session": "session_report", "day_plan": "note"},
+    "journal": {"session": "session_report", "day_plan": "note", "gm_reference": "note", "investigation_framework": "note"},
     "item": {"equipment": "misc"},
 }
 # Handled elsewhere, or the note's identity; anything else in frontmatter is reported as unread.
@@ -74,7 +75,7 @@ READ = {
     "race", "faction", "location", "relations", "parent_location", "parent", "parent_hook", "depends_on",
     "holder", "quantity", "session_number", "session_date", "maps", "keywords", "voice", "provenance", "source", "image", "picture", "system", "editions", "description",
     *PROPERTIES,
-    *KIND_FIELDS.values(),
+    *(one for fields in KIND_FIELDS.values() for one in fields),
 }
 STATUS_KIND = {"hook": "quest_status"}
 
@@ -427,9 +428,16 @@ class Importer:
 
     def _kind(self, note: Note, entity: str) -> Optional[str]:
         """The note's kind, as the contract names it, or none; a word that isn't one is reported."""
-        field_name = "kind" if _text(note.meta.get("kind")) else KIND_FIELDS.get(entity, "kind")
+        fields = ("kind", *KIND_FIELDS.get(entity, ()))
+        field_name = next((one for one in fields if _text(note.meta.get(one))), "kind")
         word = _text(note.meta.get(field_name))
         if word is None:
+            # A pregenerated or player character with no kind of its own is a PC.
+            if entity == "person" and any(part in ("Pregens", "Players") for part in Path(note.path).parts):
+                return "pc"
+            # A vehicle note is a vessel.
+            if entity == "location" and str(note.meta.get("entity_type") or "").strip().lower() == "vehicle":
+                return "vessel"
             return None
         kind = word.strip().lower().replace("-", "_").replace(" ", "_")
         kind = KIND_SYNONYMS.get(entity, {}).get(kind, kind)

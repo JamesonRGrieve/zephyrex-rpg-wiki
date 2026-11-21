@@ -29,11 +29,26 @@ class Note:
 
     @property
     def entity_type(self) -> str:
-        return str(self.meta.get("entity_type") or "")
+        """The record type, as the contract names it; a vault's own word for one (dh-campaign's
+        character, quest, note, vehicle) read as that type."""
+        word = str(self.meta.get("entity_type") or "").strip().lower()
+        return VAULT_TYPES.get(word, word)
 
     @property
     def name(self) -> str:
         return str(self.meta.get("name") or Path(self.path).stem).strip()
+
+
+# Vaults' own record types (dh-campaign's schema, its Templates/) → the contract's.
+VAULT_TYPES = {
+    "character": "person",
+    "quest": "hook",
+    "note": "journal",
+    "organisation": "faction",
+    "organization": "faction",
+    # A vessel: a place one can be aboard (its kind vessel).
+    "vehicle": "location",
+}
 
 
 def link_name(value: Any) -> Optional[str]:

@@ -137,3 +137,30 @@ def test_new_records_are_made_one_plural_create_a_kind(server: TestClient) -> No
     assert sorted(kinds) == sorted(set(kinds)) and sum(count for _resource, count in api.batches) == 12
     # No record of the six kinds is made alone (the campaign, its tags and links are their own calls).
     assert not {"person", "location", "faction", "item", "journal", "hook"} & set(api.singles)
+
+
+def test_dh_campaign_types_read_as_the_contracts(server: TestClient, tmp_path: Path) -> None:
+    """dh-campaign's own schema (its Templates/): character, quest, note and vehicle are a person, a
+    hook, a journal and a vessel; a pregen with no kind is a PC; note_type gives a note's kind."""
+    notes = {
+        "OneShots/Ash/Ash Framing.md": "---\nentity_type: journal\nkind: campaign_framing\ncampaign: Ash Run\nname: Ash Run\n---\nThe frame.\n",
+        "OneShots/Ash/Pregens/Vael.md": "---\nentity_type: character\ncampaign: Ash Run\nrole: Acolyte. Pregen, the Sage.\n---\nA sage.\n",
+        "OneShots/Ash/Characters/Orrin.md": "---\nentity_type: character\nkind: npc\ncampaign: Ash Run\n---\nA clerk.\n",
+        "OneShots/Ash/Quests/Find the Cell.md": "---\nentity_type: quest\nquest_type: side\ncampaign: Ash Run\n---\nFind it.\n",
+        "OneShots/Ash/Notes/GM Notes.md": "---\nentity_type: note\nnote_type: gm-reference\ncampaign: Ash Run\n---\nSecrets.\n",
+        "OneShots/Ash/Locations/The Pale Wake.md": "---\nentity_type: vehicle\nlocation_type: vessel\ncampaign: Ash Run\n---\nA frigate.\n",
+    }
+    for path, text in notes.items():
+        (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / path).write_text(text, encoding="utf-8")
+    user = create_user(server)
+    api = Api(server, {"Authorization": f"Bearer {user.jwt}"})
+    report = Importer(api, setting_slug="dnd").run(read_vault(tmp_path))
+    assert report.skipped == [] and report.refused == [], (report.skipped, report.refused)
+    assert not any("kind" in field or "_type" in field for fields in report.unread.values() for field in fields), report.unread
+    [campaign] = [row for row in api.list("campaign") if row["name"] == "Ash Run"]
+    kinds = {kind: {row["name"]: row.get("kind") for row in api.list(kind, campaign_id=campaign["id"])} for kind in ("person", "hook", "journal", "location")}
+    assert kinds["person"] == {"Vael": "pc", "Orrin": "npc"}
+    assert kinds["hook"] == {"Find the Cell": "side_quest"}
+    assert kinds["journal"]["GM Notes"] == "note"
+    assert kinds["location"] == {"The Pale Wake": "vessel"}
