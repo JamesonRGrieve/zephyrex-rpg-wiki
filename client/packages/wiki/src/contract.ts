@@ -34,6 +34,8 @@ export const VOICE_PARTS = contract.voice_parts as readonly string[];
 export const VOICE_DEFAULTS = contract.voice_defaults;
 export const DEPTH_PROMPT_ROLES = contract.depth_prompt_roles as readonly string[];
 export const PROVENANCES = contract.provenances as readonly string[];
+/** The private property that keeps a record to the GM ("true" when set). */
+export const GM_ONLY_PROPERTY = contract.gm_only_property;
 export const ATTACHMENT_ROLES = contract.attachment_roles as readonly string[];
 /** The settings every wiki has (S6b): the system's, so everyone reads them and nobody else changes them. */
 export const SEED_SETTINGS = contract.seed_settings as readonly { slug: string; name: string }[];

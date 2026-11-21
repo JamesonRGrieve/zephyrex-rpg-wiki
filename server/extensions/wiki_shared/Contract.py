@@ -21,6 +21,8 @@ PROVENANCE_CASES_PATH = REPOSITORY_ROOT / "contract" / "provenance-cases.json"
 CONTRACT: dict[str, Any] = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 LIMITS: dict[str, int] = CONTRACT["limits"]
 PROVENANCES: tuple[str, ...] = tuple(CONTRACT["provenances"])
+# The private property that keeps a record to the GM (the vault's is_private: true), "true" when set.
+GM_ONLY_PROPERTY: str = CONTRACT["gm_only_property"]
 LOCATION_KINDS: tuple[str, ...] = tuple(CONTRACT["location_kinds"])
 PERSON_KINDS: tuple[str, ...] = tuple(CONTRACT["person_kinds"])
 FACTION_KINDS: tuple[str, ...] = tuple(CONTRACT["faction_kinds"])

@@ -40,7 +40,7 @@ from zephyrex.extensions.wiki_shared.EntityIds import EntityIdsError, entity_ids
 from zephyrex.extensions.wiki_shared.Lore import lore_text, stored_lore  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Provenance import HOMEBREW, checked_provenance, checked_source, provenance  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Names import names_text, stored_names, stored_voice, voice_text  # type: ignore[import-not-found]
-from zephyrex.extensions.wiki_shared.Contract import ATTACHMENT_ROLES, CANON_LEVELS, ENTITY_TYPES, LIMITS  # type: ignore[import-not-found]
+from zephyrex.extensions.wiki_shared.Contract import ATTACHMENT_ROLES, CANON_LEVELS, ENTITY_TYPES, GM_ONLY_PROPERTY, LIMITS  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Report import report_entry  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Summary import summary  # type: ignore[import-not-found]
 from zephyrex.extensions.world_inventory.BLL_WorldInventory import (  # type: ignore[import-not-found]
@@ -1022,6 +1022,8 @@ class WorldEntity(PlainModel):
     # Where it came from: homebrew, official or adapted, and its source.
     provenance: str = HOMEBREW
     source: Optional[str] = None
+    # For the GM and narrator only (its private "GM only" property is true): never a player's prompt.
+    gm_only: bool = False
 
 
 class WorldEntitiesPage(PlainModel):
@@ -1161,9 +1163,39 @@ def _with_pictures(model_registry: Any, shown: list[WorldEntity]) -> list[WorldE
     return shown
 
 
+def _with_secrecy(model_registry: Any, shown: list[WorldEntity]) -> list[WorldEntity]:
+    """Each record kept to the GM: its private "GM only" property (contract gm_only_property) is
+    "true", in one query for the page (as SYSTEM: the caller already sees each record). Where the
+    metadata extension isn't loaded, nothing is."""
+    if "metadata" not in model_registry.loaded_extension_names() or not shown:
+        return shown
+    # The metadata extension's own row manager (its record_metadata routes have no model of their own).
+    from zephyrex.extensions.metadata.BLL_Metadata import MetadataManager  # type: ignore[import-not-found]
+    from zephyrex.logic.AbstractLogicManager.models import FieldComparison
+
+    rows = MetadataManager(requester_id=env("SYSTEM_ID"), model_registry=model_registry)
+    secret = {
+        (row.target_entity_type, row.target_entity_id)
+        for row in rows.list(
+            key=GM_ONLY_PROPERTY,
+            filters=[FieldComparison(rows.Model, "target_entity_id", "in", sorted({entity.id for entity in shown}))],
+        )
+        or []
+        if str(row.value).strip().lower() == "true"
+    }
+    for entity in shown:
+        entity.gm_only = (entity.kind, entity.id) in secret
+    return shown
+
+
+def _shown(model_registry: Any, shown: list[WorldEntity]) -> list[WorldEntity]:
+    """The page as rpg-ai reads it: each record's picture, and whether it's the GM's alone."""
+    return _with_secrecy(model_registry, _with_pictures(model_registry, shown))
+
+
 def _paged(found: list[WorldEntity], limit: int, model_registry: Any) -> WorldEntitiesPage:
     found.sort(key=lambda entity: (entity.updated_at, entity.id))
-    shown = _with_pictures(model_registry, found[:limit])
+    shown = _shown(model_registry, found[:limit])
     return WorldEntitiesPage(world_entities=shown, next=_cursor_of(shown[-1]) if len(found) > limit else None)
 
 
@@ -1233,7 +1265,7 @@ def world_entities_by_id(model_registry: Any, requester_id: str, ids: list[str])
             found.append(_entity(kind, record, getattr(record, "updated_at", None) or record.created_at, False))
     order = {entity_id: index for index, entity_id in enumerate(wanted)}
     found.sort(key=lambda entity: order[entity.id])
-    return WorldEntitiesPage(world_entities=_with_pictures(model_registry, found), next=None)
+    return WorldEntitiesPage(world_entities=_shown(model_registry, found), next=None)
 
 
 class WorldEntityManager(AbstractBLLManager[Any], RouterMixin):

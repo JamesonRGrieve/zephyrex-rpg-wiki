@@ -19,6 +19,7 @@
     "depth_prompt_depth": 999,
     "source_characters": 300
   },
+  "gm_only_property": "GM only",
   "provenances": [
     "homebrew",
     "official",

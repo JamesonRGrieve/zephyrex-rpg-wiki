@@ -327,7 +327,7 @@ class TestWorldEntities:
         assert by_name["Harbour"] | {"updated_at": None} == {
             "id": harbour["id"], "kind": "location", "name": "Harbour", "aliases": [], "summary": "A port city.",
             "picture": None, "updated_at": None, "deleted": False, "setting_id": None, "canon": False, "canon_level": None,
-            "keywords": [], "voice": None, "lore": None, "provenance": "homebrew", "source": None,
+            "keywords": [], "voice": None, "lore": None, "provenance": "homebrew", "source": None, "gm_only": False,
         }
         assert page["next"] is None
 
@@ -903,3 +903,23 @@ class TestProvenance:
         assert (synced["Relic"]["provenance"], synced["Relic"]["source"], synced["Cellar"]["provenance"]) == ("official", "Inquisitor's Handbook, p. 140", "homebrew")
         home = _put(server, person, "item", relic, provenance="homebrew").json()["item"]
         assert (home["provenance"], home["source"]) == ("homebrew", None)
+
+
+class TestGmOnly:
+    """Parity: a record kept to the GM (its private "GM only" property is true) says so in the sync,
+    so rpg-ai keeps it out of players' prompts."""
+
+    def test_the_gm_only_property_marks_a_record(self, server: TestClient, person: Any) -> None:
+        campaign = _create(server, person, "campaign", name="Secrets")
+        truth = _create(server, person, "journal", name="The Truth of the Flicker", kind="lore", campaign_id=campaign["id"])
+        public = _create(server, person, "journal", name="Player briefing", kind="handout", campaign_id=campaign["id"])
+        added = server.post(
+            "/v1/record_metadata",
+            json={"record_metadata": {"target_entity_type": "journal", "target_entity_id": truth["id"], "key": "GM only", "value": "true", "value_type": "boolean", "is_private": True}},
+            headers=_headers(person),
+        )
+        assert added.status_code == 201, added.text
+        synced = {entity["name"]: entity["gm_only"] for entity in server.get(f"/v1/world_entity?campaign_id={campaign['id']}", headers=_headers(person)).json()["world_entities"]}
+        assert synced == {"The Truth of the Flicker": True, "Player briefing": False}
+        by_id = server.get(f"/v1/world_entity?ids={truth['id']},{public['id']}", headers=_headers(person)).json()["world_entities"]
+        assert [entity["gm_only"] for entity in by_id] == [True, False]

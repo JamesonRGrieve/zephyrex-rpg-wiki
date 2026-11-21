@@ -22,6 +22,7 @@ from typing import Any, Callable, Optional
 from vault_import.api import Api, ApiError
 from zephyrex.extensions.wiki_shared.Contract import (  # type: ignore[import-not-found]
     FACTION_KINDS,
+    GM_ONLY_PROPERTY,
     HOOK_KINDS,
     ITEM_KINDS,
     JOURNAL_KINDS,
@@ -450,7 +451,7 @@ class Importer:
             if value is not None:
                 changed |= self._property(kind, record_id, label, value, value_type)
         if meta.get("is_private") is True:
-            changed |= self._property(kind, record_id, "GM only", "true", "boolean", private=True)
+            changed |= self._property(kind, record_id, GM_ONLY_PROPERTY, "true", "boolean", private=True)
         if self.dry_run or record_id.startswith("(new"):
             return changed
         tagged = {one["taxon_id"] for one in self.api.list("entity_taxon", target_entity_type=kind, target_entity_id=record_id)}

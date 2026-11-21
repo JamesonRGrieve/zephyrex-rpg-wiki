@@ -21,6 +21,7 @@ import {
 } from './worldEntities';
 import { seenBy } from './worldRecords';
 import { EntityIdsError, entityIds } from '../lib/entityIds';
+import { GM_ONLY_PROPERTY } from '../contract';
 
 const SELECT = {
   id: true,
@@ -53,6 +54,17 @@ function rowsOf(kind: WorldEntityKind, where: object): Promise<EntityRow[]> {
   }
 }
 
+/** Each record kept to the GM: its private "GM only" property is "true" (one query for the page). */
+async function withSecrecy<T extends { id: string; kind: string; gm_only: boolean }>(shown: T[]): Promise<T[]> {
+  if (shown.length === 0) return shown;
+  const rows = await prisma.recordMetadata.findMany({
+    where: { key: GM_ONLY_PROPERTY, targetEntityId: { in: shown.map((entity) => entity.id) } },
+    select: { targetEntityType: true, targetEntityId: true, value: true },
+  });
+  const secret = new Set(rows.filter((row) => (row.value ?? '').trim().toLowerCase() === 'true').map((row) => `${row.targetEntityType}:${row.targetEntityId}`));
+  return shown.map((entity) => ({ ...entity, gm_only: secret.has(`${entity.kind}:${entity.id}`) }));
+}
+
 /**
  * ?ids=a,b: the named records wherever they are (rpg-ai's sandbox cast), shaped as the sync shapes
  * them, in the order asked. An id that isn't the owner's, a deleted record, a template or an unknown
@@ -70,7 +82,7 @@ async function byId(ownerId: string, text: string): Promise<NextResponse> {
   const rows = await Promise.all(WORLD_ENTITY_KINDS.map(async (kind) => (await rowsOf(kind, where)).map((row) => entityOf(kind, row))));
   const order = new Map(ids.map((id, index) => [id, index]));
   const found = rows.flat().sort((one, two) => (order.get(one.id) ?? 0) - (order.get(two.id) ?? 0));
-  return NextResponse.json({ world_entities: found, next: null });
+  return NextResponse.json({ world_entities: await withSecrecy(found), next: null });
 }
 
 export async function worldEntityGet(request: NextRequest): Promise<NextResponse> {
@@ -118,7 +130,8 @@ export async function worldEntityGet(request: NextRequest): Promise<NextResponse
         (kinds as WorldEntityKind[]).map(async (kind) => (await rowsOf(kind, where)).map((row) => entityOf(kind, row))),
       ),
     );
-    return NextResponse.json(pageOf(rows.flat(), after, limit));
+    const page = pageOf(rows.flat(), after, limit);
+    return NextResponse.json({ ...page, world_entities: await withSecrecy(page.world_entities) });
   } catch (error) {
     return apiErrorResponse(error);
   }

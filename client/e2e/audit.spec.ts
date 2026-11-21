@@ -298,6 +298,9 @@ test.describe.serial('visual audit', () => {
     // The sandbox cast read by id (rpg-ai): in the order asked, an unknown id absent.
     const cast = (await (await request.get(`/api/v1/world_entity?ids=${seeded.location},no-such-id,${seeded.person}`)).json()) as { world_entities: { name: string }[]; next: null };
     expect([cast.world_entities.map((entity) => entity.name), cast.next]).toEqual([['Port Gull', 'Mira of the Lantern'], null]);
+    // Parity: a record kept to the GM says so, and only it.
+    const secrets = (await (await request.get(`/api/v1/world_entity?ids=${seeded.journal},${seeded.person}`)).json()) as { world_entities: { gm_only: boolean }[] };
+    expect(secrets.world_entities.map((entity) => entity.gm_only)).toEqual([true, false]);
     const pages = worldPages(seeded);
     const page = await browser.newPage({ baseURL: String(testInfo.project.use.baseURL) });
     await expectSeedShows(page, seeded);

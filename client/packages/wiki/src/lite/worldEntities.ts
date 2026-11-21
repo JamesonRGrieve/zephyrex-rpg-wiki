@@ -53,6 +53,8 @@ export interface WorldEntity {
   /** Where it came from: homebrew, official or adapted, and its source. */
   provenance: string;
   source: string | null;
+  /** For the GM and narrator only (its private "GM only" property is true): never a player's prompt. */
+  gm_only: boolean;
 }
 
 export const DEFAULT_LIMIT = 100;
@@ -90,6 +92,8 @@ export function entityOf(kind: WorldEntityKind, row: EntityRow): WorldEntity {
     lore: storedLore(row.lore),
     provenance: row.provenance,
     source: row.source,
+    // Set from the record's properties by the route, a page at a time.
+    gm_only: false,
   };
 }
 
