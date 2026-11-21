@@ -1,34 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 'use client';
-/** /w/[world]/plot: a world's plot board (W57): its hooks by where they stand. */
-import Link from 'next/link';
+/** /w/[world]/plot: a world's plot board. The page is the wiki package's (S7), as an app composing the wiki shows it. */
 import { useParams } from 'next/navigation';
 import type { ReactElement } from 'react';
-import { PageHeader } from 'zephyrex/ui/page-header';
-import { SkeletonRows } from 'zephyrex/ui/skeleton';
-import { PlotBoard } from '@zephyrex-rpg/wiki/components/world/PlotBoard';
-import { Unavailable } from '@zephyrex-rpg/wiki/components/world/Unavailable';
-import { useCapabilities } from '@zephyrex-rpg/wiki/features/capabilities';
-import { usePlot } from '@zephyrex-rpg/wiki/features/data/plot';
-import { worlds } from '@zephyrex-rpg/wiki/features/data/records';
+import { PlotPage } from '@zephyrex-rpg/wiki/pages/PlotPage';
 
-function Board({ world }: { world: string }): ReactElement {
-  const plot = usePlot(world);
-  const rows = plot.hooks?.map((hook) => ({ id: hook.id, name: hook.name, href: `/w/${world}/hook/${hook.id}`, state: plot.stateOf(hook), excuse: hook.excuse }));
-  return <PlotBoard hooks={rows} error={plot.error} onRetry={plot.retry} />;
-}
-
-export default function WorldPlotPage(): ReactElement {
+export default function Page(): ReactElement {
   const params = useParams<{ world: string }>();
-  const can = useCapabilities();
-  const world = worlds.useOne(params.world);
-  return (
-    <main className='mx-auto grid w-full max-w-5xl content-start gap-6 px-4 py-8'>
-      <PageHeader title={world.data === undefined ? 'Plot board' : `Plot board of ${world.data.name}`} />
-      <Link href={`/w/${params.world}/hook`} className='text-sm underline-offset-4 hover:underline'>
-        All hooks
-      </Link>
-      {!can.loaded ? <SkeletonRows rows={3} label='Loading' /> : can.hooks ? <Board world={params.world} /> : <Unavailable what='hooks' />}
-    </main>
-  );
+  return <PlotPage {...params} />;
 }

@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { ZephyrexConfig } from 'zephyrex';
-import { genealogyExtension, rpgLogExtension } from './extensions/campaign';
-import { rpgExtension } from './extensions/rpg';
+import { wikiExtension } from '@zephyrex-rpg/wiki/extension';
+import { genealogyExtension } from './extensions/campaign';
 
 export const APP_NAME = 'Zephyrex RPG Wiki';
 export const APP_DESCRIPTION = 'A worldbuilding and campaign wiki: who, where, when, what happened and what is secret.';
 
 /** The app's pages (matched as path prefixes); in the hosted build they need a signed-in person. */
-const APP_ROUTES = ['/rpg', '/settings', '/team'];
+const APP_ROUTES = ['/w', '/settings', '/team'];
 
 /**
  * The build edition decides only what the back end can do, never what a page shows: pages turn a
@@ -38,7 +38,9 @@ const config: ZephyrexConfig = {
     gravatar: false,
   },
   auth: HOSTED ? { enabled: true, privateRoutes: APP_ROUTES } : { enabled: false },
-  extensions: [rpgExtension, genealogyExtension, rpgLogExtension],
+  // The wiki's own pages, as an app composing the wiki registers them (S7); genealogy is the
+  // framework's people.
+  extensions: [wikiExtension(), genealogyExtension],
 };
 
 export default config;
