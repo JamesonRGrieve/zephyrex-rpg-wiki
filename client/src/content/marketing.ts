@@ -15,11 +15,11 @@ export const NAV: readonly Link[] = [
 ];
 
 /** The way in: the worlds you keep (the visual audit found the page never led into the app). */
-export const START: Link = { label: 'Open your worlds', href: '/w' };
+export const START: Link = { label: 'Open your settings', href: '/w' };
 
 export const HERO = {
   title: 'Your world, written down',
-  lead: 'A worldbuilding and campaign wiki: who, where, when, what happened and what is secret. Worlds with their places, people, organisations, items, journals, plot hooks, tags and relations are here now; the rest is being built.',
+  lead: 'A worldbuilding and campaign wiki: who, where, when, what happened and what is secret. Settings and campaigns with their places, people, organisations, items, journals, plot hooks, tags and relations are here now; the rest is being built.',
 };
 
 export const PLANNED: readonly Feature[] = [
@@ -105,7 +105,7 @@ export const FOOTER: readonly FooterColumn[] = [
   {
     title: 'Learn',
     links: [
-      { label: 'Your worlds', href: '/w' },
+      { label: 'Settings', href: '/w' },
       { label: 'Planned features', href: '#planned' },
       { label: 'FAQ', href: '#faq' },
     ],

@@ -9,26 +9,26 @@ import { WorldList } from './WorldList';
 const noop = () => Promise.resolve(true);
 
 describe('WorldList', () => {
-  it('lists the worlds, each opening its places', () => {
+  it('lists the campaigns, each opening its page', () => {
     render(<WorldList worlds={WORLDS} onCreate={noop} onDelete={vi.fn()} />);
-    expect(screen.getByRole('link', { name: /The Salt Coast/ })).toHaveAttribute('href', '/w/w1/location');
+    expect(screen.getByRole('link', { name: /The Salt Coast/ })).toHaveAttribute('href', '/w/w1/about');
   });
 
   it('shows loading, a load failure with a retry, and a first world to make', async () => {
     const onRetry = vi.fn().mockResolvedValue(undefined);
     const { rerender } = render(<WorldList worlds={undefined} onCreate={noop} onDelete={vi.fn()} />);
-    expect(screen.getByText('Loading your worlds')).toBeInTheDocument();
+    expect(screen.getByText('Loading the campaigns')).toBeInTheDocument();
     rerender(<WorldList worlds={undefined} error={new Error('offline')} onRetry={onRetry} onCreate={noop} onDelete={vi.fn()} />);
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(onRetry).toHaveBeenCalled();
     rerender(<WorldList worlds={[]} onCreate={noop} onDelete={vi.fn()} />);
-    expect(screen.getByText(/No worlds yet/)).toBeInTheDocument();
+    expect(screen.getByText(/No campaigns yet/)).toBeInTheDocument();
   });
 
   it('makes a world from its name and clears the field once it lands', async () => {
     const onCreate = vi.fn().mockResolvedValue(true);
     render(<WorldList worlds={[]} onCreate={onCreate} onDelete={vi.fn()} />);
-    const field = screen.getByLabelText('New world');
+    const field = screen.getByLabelText('New campaign');
     await userEvent.type(field, '  Hollowmere ');
     await userEvent.click(screen.getByRole('button', { name: 'Make it' }));
     expect(onCreate).toHaveBeenCalledWith('Hollowmere');
@@ -42,7 +42,7 @@ describe('WorldList', () => {
       render(<WorldList worlds={[WORLDS[0]!]} onCreate={noop} onDelete={onDelete} />);
       fireEvent.click(screen.getByRole('button', { name: 'Delete The Salt Coast' }));
       expect(screen.queryByRole('link', { name: /The Salt Coast/ })).not.toBeInTheDocument();
-      expect(screen.queryByText(/No worlds yet/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/No campaigns yet/)).not.toBeInTheDocument();
       expect(onDelete).not.toHaveBeenCalled();
       act(() => {
         vi.advanceTimersByTime(UNDO_MS);

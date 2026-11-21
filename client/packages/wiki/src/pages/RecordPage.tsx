@@ -53,6 +53,7 @@ import {
 import { currentAttitude } from '../lib/dispositions';
 import { storedNames, storedVoice } from '../lib/names';
 import { describeRequirement } from '../lib/requirements';
+import { scopeQuery } from '../lib/scope';
 import { useWikiBase } from '../base';
 import { kindPath, recordPath, taxonomyPath } from '../lib/paths';
 
@@ -124,7 +125,7 @@ function Carries({ world, type, id }: { world: string; type: EntityKind; id: str
   const base = useWikiBase();
   const rows = carried.useList({ target_entity_type: type, target_entity_id: id });
   const instances = itemInstances.useList();
-  const catalogue = items.useList({ campaign_id: world });
+  const catalogue = items.useList(scopeQuery(world));
   const itemOf = new Map((instances.data ?? []).map((one) => [one.id, one.item_id]));
   const nameOf = new Map((catalogue.data ?? []).map((one) => [one.id, one.name]));
   const lines: CarriedLine[] | undefined = rows.data?.map((row) => {
@@ -140,8 +141,8 @@ function Classification({ world, type, id }: { world: string; type: EntityKind; 
   const base = useWikiBase();
   const on = entityTaxa.useList({ target_entity_type: type, target_entity_id: id });
   const held = entityStatuses.useList({ target_entity_type: type, target_entity_id: id });
-  const allTaxa = taxa.useList({ campaign_id: world });
-  const allStatuses = statuses.useList({ campaign_id: world });
+  const allTaxa = taxa.useList(scopeQuery(world));
+  const allStatuses = statuses.useList(scopeQuery(world));
   const taxonOf = new Map((allTaxa.data ?? []).map((row) => [row.id, row]));
   const statusOf = new Map((allStatuses.data ?? []).map((row) => [row.id, row]));
   const chips: Chip[] | undefined = on.data?.map((link) => {
@@ -172,8 +173,8 @@ function Relations({ world, type, id }: { world: string; type: 'person' | 'facti
   const base = useWikiBase();
   const from = relationships.useList(type === 'person' ? { person_id: id } : { faction_id: id });
   const to = relationships.useList(type === 'person' ? { target_person_id: id } : { target_faction_id: id });
-  const allPeople = people.useList({ campaign_id: world });
-  const allFactions = factions.useList({ campaign_id: world });
+  const allPeople = people.useList(scopeQuery(world));
+  const allFactions = factions.useList(scopeQuery(world));
   const personName = new Map((allPeople.data ?? []).map((row) => [row.id, row.name]));
   const factionName = new Map((allFactions.data ?? []).map((row) => [row.id, row.name]));
   const end = (personId: string | null, factionId: string | null) =>
@@ -217,8 +218,8 @@ function Dispositions({ world, id }: { world: string; id: string }): ReactElemen
   const base = useWikiBase();
   const rows = dispositions.useList({ person_id: id });
   const plot = usePlot(world);
-  const allPeople = people.useList({ campaign_id: world });
-  const allFactions = factions.useList({ campaign_id: world });
+  const allPeople = people.useList(scopeQuery(world));
+  const allFactions = factions.useList(scopeQuery(world));
   const personName = new Map((allPeople.data ?? []).map((row) => [row.id, row.name]));
   const factionName = new Map((allFactions.data ?? []).map((row) => [row.id, row.name]));
   const groups = new Map<string, NonNullable<typeof rows.data>>();
@@ -362,7 +363,7 @@ function Record({
       {record !== undefined && (
         <>
           {record.is_template === true && (
-            <p className='rounded-md border px-3 py-2 text-sm'>A template: copied into worlds, never one of a world&rsquo;s facts.</p>
+            <p className='rounded-md border px-3 py-2 text-sm'>A template: copied into campaigns, never one of a campaign&rsquo;s facts.</p>
           )}
           <Names aliases={storedNames(record.aliases ?? null)} keywords={storedNames(record.keywords ?? null)} />
           <Picture kind={kind} id={id} />
@@ -465,9 +466,9 @@ function Plot({ world, id }: { world: string; id: string }): ReactElement {
   const leads = hookDependencies.useList({ parent_hook_id: id });
   const mine = personHooks.useList({ hook_id: id });
   const theirs = factionHooks.useList({ hook_id: id });
-  const allHooks = hooks.useList({ campaign_id: world });
-  const allPeople = people.useList({ campaign_id: world });
-  const allFactions = factions.useList({ campaign_id: world });
+  const allHooks = hooks.useList(scopeQuery(world));
+  const allPeople = people.useList(scopeQuery(world));
+  const allFactions = factions.useList(scopeQuery(world));
   const nameOf = (rows: readonly { id: string; name: string }[] | undefined) => new Map((rows ?? []).map((row) => [row.id, row.name]));
   const hookName = nameOf(allHooks.data);
   const personName = nameOf(allPeople.data);

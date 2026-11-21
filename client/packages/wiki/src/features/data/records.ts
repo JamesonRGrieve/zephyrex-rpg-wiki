@@ -46,6 +46,7 @@ export const worldSchema = z.object({
   ...versioned,
   name: z.string(),
   description: z.string().nullable(),
+  setting_id: z.string().nullish(),
   /** Where the scenario came from: homebrew, official or adapted, and its source. */
   provenance: z.string().nullish(),
   source: z.string().nullish(),
@@ -54,6 +55,15 @@ export const worldSchema = z.object({
   scenario_id: z.string().nullish(),
 });
 export type World = z.infer<typeof worldSchema>;
+
+/** A setting (S6): the universe campaigns take place in; its campaign-less records are its canon. */
+export const settingSchema = z.object({
+  ...versioned,
+  name: z.string(),
+  description: z.string().nullable(),
+  slug: z.string().nullish(),
+});
+export type Setting = z.infer<typeof settingSchema>;
 
 export const placeSchema = z.object({
   ...versioned,
@@ -403,6 +413,7 @@ export function resource<T extends Versioned, Create extends object, Extra = obj
 }
 
 export const worlds = resource<World, Fields<World> & { name: string }>('campaign', 'campaigns', worldSchema);
+export const settings = resource<Setting, Fields<Setting> & { name: string }>('setting', 'settings', settingSchema);
 export const places = resource<Place, Fields<Place, { entry?: unknown }> & { name: string }>(
   'location',
   'locations',

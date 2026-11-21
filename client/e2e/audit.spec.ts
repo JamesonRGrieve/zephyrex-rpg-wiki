@@ -182,6 +182,7 @@ function worldPages(seeded: Seeded): string[] {
     '/w',
     ...['location', 'person', 'faction', 'item', 'journal', 'hook'].map((kind) => `${w}/${kind}`),
     `${w}/about`,
+    `/w/setting-${seeded.setting}/faction`,
     `${w}/location/${seeded.location}`,
     `${w}/person/${seeded.person}`,
     `${w}/faction/${seeded.faction}`,
@@ -225,7 +226,10 @@ async function audit(browser: Browser, testInfo: TestInfo, stage: string, target
 async function expectSeedShows(page: Page, seeded: Seeded): Promise<void> {
   const w = `/w/${seeded.world}`;
   const shows: [string, string[]][] = [
-    ['/w', ['The Salt Coast']],
+    ['/w', ['The Grim Future', 'The Salt Coast', 'Warhammer 40,000']],
+    // A setting's canon has the campaign's pages; a campaign shows its setting's canon, marked.
+    [`/w/setting-${seeded.setting}/faction`, ['Adeptus Mechanicus']],
+    [`${w}/faction`, ['Lantern Guild', 'Adeptus Mechanicus', 'Canon']],
     [`${w}/location`, ['Port Gull', 'Salt Coast']],
     [`${w}/person/${seeded.person}`, ['Lamplighters', 'Alive', 'Lantern Guild', 'Captain Ross', 'Rumour', 'guarded (cautious-neutral)', 'Since Find the lost map', '-20', 'The Lantern Keeper', 'Mira: Mind the seventh step.', 'Lantern oil', 'Three flasks']],
     [`${w}/faction/${seeded.faction}`, ['Mira of the Lantern']],

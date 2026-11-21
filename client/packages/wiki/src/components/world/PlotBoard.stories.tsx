@@ -27,6 +27,6 @@ export const Default: Story = {
 export const FirstRun: Story = {
   args: { hooks: [] },
   play: async ({ canvasElement }) => {
-    await expect(within(canvasElement).getByText('No hooks in this world yet. Add one from Hooks.')).toBeInTheDocument();
+    await expect(within(canvasElement).getByText('No hooks in this campaign yet. Add one from Hooks.')).toBeInTheDocument();
   },
 };

@@ -60,7 +60,7 @@ describe('EntityList', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(onRetry).toHaveBeenCalled();
     rerender(<EntityList {...props} rows={[]} />);
-    expect(screen.getByText('No places in this world yet. Add the first one above.')).toBeInTheDocument();
+    expect(screen.getByText('No places here yet. Add the first one above.')).toBeInTheDocument();
   });
 
   it('adds one with its name and kind', async () => {
@@ -80,7 +80,7 @@ describe('EntityList', () => {
       render(<EntityList {...props} rows={[PLACES[1]!]} onDelete={onDelete} />);
       fireEvent.click(screen.getByRole('button', { name: 'Delete Saltmarsh' }));
       expect(screen.queryByRole('link', { name: /Saltmarsh/ })).not.toBeInTheDocument();
-      expect(screen.queryByText(/No places in this world yet/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/No places here yet/)).not.toBeInTheDocument();
       expect(onDelete).not.toHaveBeenCalled();
       act(() => {
         vi.advanceTimersByTime(UNDO_MS);

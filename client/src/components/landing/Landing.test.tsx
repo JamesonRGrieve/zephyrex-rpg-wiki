@@ -15,7 +15,7 @@ describe('Landing', () => {
   it('says what is live and leads into the app', () => {
     render(<Landing />);
     expect(screen.getByText(/are here now; the rest is being built/)).toBeInTheDocument();
-    for (const link of screen.getAllByRole('link', { name: 'Open your worlds' })) {
+    for (const link of screen.getAllByRole('link', { name: 'Open your settings' })) {
       expect(link).toHaveAttribute('href', '/w');
     }
     // The header's nav renders twice (the bar and the phone menu): every copy points at the plan.

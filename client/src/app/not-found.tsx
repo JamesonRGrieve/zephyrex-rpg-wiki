@@ -10,7 +10,7 @@ export default function NotFound(): ReactNode {
       <p className='text-muted-foreground'>There is nothing at this address. It may have moved, or the link may be wrong.</p>
       <p className='flex flex-wrap gap-4'>
         <Link href='/w' className='inline-flex min-h-11 items-center underline-offset-4 hover:underline'>
-          Your worlds
+          Settings
         </Link>
         <Link href='/' className='inline-flex min-h-11 items-center underline-offset-4 hover:underline'>
           Home

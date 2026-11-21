@@ -39,7 +39,7 @@ export function wikiExtension({ base = 'w' }: WikiExtensionOptions = {}): Zephyr
     name: 'rpg_core',
     serverExtension: 'rpg_core',
     displayName: 'Zephyrex RPG Wiki',
-    description: 'Worlds and their places, people, organisations, items, journals and plot',
+    description: 'Settings and campaigns: their places, people, organisations, items, journals and plot',
     // Most specific first: the router takes the first pattern that matches.
     pages: [
       { path: root, component: routed(root, () => <WorldsPage />) },
@@ -52,6 +52,6 @@ export function wikiExtension({ base = 'w' }: WikiExtensionOptions = {}): Zephyr
         component: routed(root, (params) => <RecordPage world={of(params, 'world')} kind={of(params, 'kind')} id={of(params, 'id')} />),
       },
     ],
-    navItems: [{ title: 'Worlds', url: `/${root}` }],
+    navItems: [{ title: 'Settings', url: `/${root}` }],
   };
 }

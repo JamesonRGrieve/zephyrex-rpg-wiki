@@ -29,7 +29,7 @@ export function PlotBoard({ hooks, error, onRetry }: { hooks: readonly BoardHook
   if (error !== undefined) return <LoadProblem what='the plot board' error={error} onRetry={onRetry} />;
   if (hooks === undefined) return <SkeletonRows rows={4} label='Loading the plot board' />;
   if (hooks.length === 0)
-    return <p className='rounded-xl border border-dashed p-8 text-center text-muted-foreground'>No hooks in this world yet. Add one from Hooks.</p>;
+    return <p className='rounded-xl border border-dashed p-8 text-center text-muted-foreground'>No hooks in this campaign yet. Add one from Hooks.</p>;
   return (
     <div className='grid gap-6 md:grid-cols-2'>
       {COLUMNS.map(({ state, title, empty }) => {

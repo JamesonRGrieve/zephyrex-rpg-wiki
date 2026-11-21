@@ -10,7 +10,7 @@ import { PlotBoard } from '../components/world/PlotBoard';
 import { Unavailable } from '../components/world/Unavailable';
 import { useCapabilities } from '../features/capabilities';
 import { usePlot } from '../features/data/plot';
-import { worlds } from '../features/data/records';
+import { useScope } from '../features/data/scopes';
 import { useWikiBase } from '../base';
 import { kindPath, recordPath } from '../lib/paths';
 
@@ -24,10 +24,10 @@ function Board({ world }: { world: string }): ReactElement {
 export function PlotPage(params: { world: string }): ReactElement {
   const base = useWikiBase();
   const can = useCapabilities();
-  const world = worlds.useOne(params.world);
+  const scope = useScope(params.world);
   return (
     <main className='mx-auto grid w-full max-w-5xl content-start gap-6 px-4 py-8'>
-      <PageHeader title={world.data === undefined ? 'Plot board' : `Plot board of ${world.data.name}`} />
+      <PageHeader title={scope.name === undefined ? 'Plot board' : `Plot board of ${scope.name}`} />
       <Link href={kindPath(base, params.world, 'hook')} className='text-sm underline-offset-4 hover:underline'>
         All hooks
       </Link>

@@ -14,7 +14,9 @@ import { ENTITY_KINDS, isEntityKind } from '../components/world/kinds';
 import { ParentTree } from '../components/world/ParentTree';
 import { Unavailable } from '../components/world/Unavailable';
 import { useCapabilities } from '../features/capabilities';
-import { entityTaxa, factions, hooks, items, journals, people, places, statuses, taxa, worlds } from '../features/data/records';
+import { entityTaxa, factions, hooks, items, journals, people, places, statuses, taxa } from '../features/data/records';
+import { scopeQuery } from '../lib/scope';
+import { useScope } from '../features/data/scopes';
 import { useWikiBase } from '../base';
 import { kindPath, recordPath, taxonomyPath } from '../lib/paths';
 
@@ -23,7 +25,7 @@ function Tagged({ world, taxonId }: { world: string; taxonId: string }): ReactEl
   const base = useWikiBase();
   const links = entityTaxa.useList({ taxon_id: taxonId });
   // One call per kind, always in this order (hooks never run in a loop).
-  const scope = { campaign_id: world };
+  const scope = scopeQuery(world);
   const lists = [
     places.useList(scope),
     people.useList(scope),
@@ -55,8 +57,8 @@ function Tagged({ world, taxonId }: { world: string; taxonId: string }): ReactEl
 function Taxonomy({ world }: { world: string }): ReactElement {
   const base = useWikiBase();
   const chosen = useSearchParams().get('taxon');
-  const all = taxa.useList({ campaign_id: world });
-  const states = statuses.useList({ campaign_id: world });
+  const all = taxa.useList(scopeQuery(world));
+  const states = statuses.useList(scopeQuery(world));
   const picked = chosen === null ? undefined : all.data?.find((row) => row.id === chosen);
   return (
     <div className='grid gap-6 md:grid-cols-2'>
@@ -106,10 +108,10 @@ function Taxonomy({ world }: { world: string }): ReactElement {
 export function TaxonomyPage(params: { world: string }): ReactElement {
   const base = useWikiBase();
   const can = useCapabilities();
-  const world = worlds.useOne(params.world);
+  const scope = useScope(params.world);
   return (
     <main className='mx-auto grid w-full max-w-5xl content-start gap-6 px-4 py-8'>
-      <PageHeader title={world.data === undefined ? 'Taxonomy' : `Taxonomy of ${world.data.name}`} />
+      <PageHeader title={scope.name === undefined ? 'Taxonomy' : `Taxonomy of ${scope.name}`} />
       <Link href={kindPath(base, params.world, 'location')} className='text-sm underline-offset-4 hover:underline'>
         Back to the world
       </Link>

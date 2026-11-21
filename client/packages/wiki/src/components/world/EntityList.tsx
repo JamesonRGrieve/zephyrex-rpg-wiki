@@ -135,11 +135,11 @@ export function EntityList<T extends EntityRow>({
             />
           </div>
         </div>
-        {error !== undefined && <LoadProblem what={`this world's ${plural}`} error={error} onRetry={onRetry} />}
+        {error !== undefined && <LoadProblem what={`the ${plural}`} error={error} onRetry={onRetry} />}
         {rows === undefined && error === undefined && <SkeletonRows rows={4} label={`Loading ${plural}`} />}
         {rows !== undefined && hidden.shown.length === 0 && !hidden.pending && (
           <p className='rounded-xl border border-dashed p-8 text-center text-muted-foreground'>
-            {`No ${plural} in this world yet. Add the first one above.`}
+            {`No ${plural} here yet. Add the first one above.`}
           </p>
         )}
         {hidden.shown.length > 0 && shown.length === 0 && (

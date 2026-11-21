@@ -83,10 +83,10 @@ function Scenario({ world }: { world: string }): ReactElement | null {
 
 function About({ world }: { world: string }): ReactElement {
   const one = worlds.useOne(world);
-  if (one.error !== undefined) return <LoadProblem what='this world' error={one.error} onRetry={() => one.mutate()} />;
+  if (one.error !== undefined) return <LoadProblem what='this campaign' error={one.error} onRetry={() => one.mutate()} />;
   if (one.data === undefined) return <SkeletonRows rows={2} label='Loading' />;
   return (
-    <section aria-label='About this world' className='grid gap-4'>
+    <section aria-label='About this campaign' className='grid gap-4'>
       {one.data.description !== null && one.data.description !== '' && <p className='whitespace-pre-line'>{one.data.description}</p>}
       <OriginOf resource={worlds} id={world} />
       <Scenario world={world} />
@@ -102,7 +102,7 @@ export function WorldPage(params: { world: string }): ReactElement {
     <main className='mx-auto grid w-full max-w-5xl content-start gap-6 px-4 py-8'>
       <PageHeader title={world.data?.name ?? 'Loading'} />
       <WorldNav world={params.world} current='about' />
-      {!can.loaded ? <SkeletonRows rows={2} label='Loading' /> : can.worlds ? <About world={params.world} /> : <Unavailable what='worlds' />}
+      {!can.loaded ? <SkeletonRows rows={2} label='Loading' /> : can.worlds ? <About world={params.world} /> : <Unavailable what='campaigns' />}
     </main>
   );
 }

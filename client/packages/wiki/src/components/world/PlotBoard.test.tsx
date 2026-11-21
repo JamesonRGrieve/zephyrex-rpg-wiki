@@ -18,7 +18,7 @@ describe('PlotBoard', () => {
   it('says what to do with no hooks, and shows loading and a failure with a retry', async () => {
     const onRetry = vi.fn().mockResolvedValue(undefined);
     const { rerender } = render(<PlotBoard hooks={[]} />);
-    expect(screen.getByText('No hooks in this world yet. Add one from Hooks.')).toBeInTheDocument();
+    expect(screen.getByText('No hooks in this campaign yet. Add one from Hooks.')).toBeInTheDocument();
     rerender(<PlotBoard hooks={undefined} />);
     expect(screen.getByText('Loading the plot board')).toBeInTheDocument();
     rerender(<PlotBoard hooks={undefined} error={new Error('offline')} onRetry={onRetry} />);

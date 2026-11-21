@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 'use client';
 /**
- * The person's worlds (rpg_core's campaigns): each opens its places, a new one takes only a name,
- * and deleting one offers an undo. Four states: loading, a load failure with a retry, a first
- * world to make, and the worlds.
+ * A setting's campaigns (rpg_core's; a scenario is one too): each opens its own page, a new one
+ * takes only a name, and deleting one offers an undo. Four states: loading, a load failure with a
+ * retry, a first campaign to make, and the campaigns.
  */
 import { Globe, Trash2 } from 'lucide-react';
 import Link from 'next/link';
@@ -20,7 +20,7 @@ import type { World } from '../../features/data/records';
 import { idOf } from '../../features/data/records';
 import { WriteProblem } from './WriteProblem';
 import { useWikiBase } from '../../base';
-import { kindPath } from '../../lib/paths';
+import { aboutPath } from '../../lib/paths';
 import { HOMEBREW } from '../../lib/provenance';
 
 export function WorldList({
@@ -30,6 +30,9 @@ export function WorldList({
   onCreate,
   onDelete,
   problem = null,
+  newLabel = 'New campaign',
+  listLabel = 'Campaigns',
+  quietEmpty = false,
 }: {
   worlds: readonly World[] | undefined;
   error?: Error;
@@ -38,6 +41,11 @@ export function WorldList({
   onCreate: (name: string) => Promise<boolean>;
   onDelete: (world: World) => void;
   problem?: string | null;
+  /** The new-campaign field's label and the list's name (a setting's own, in a page of settings). */
+  newLabel?: string;
+  listLabel?: string;
+  /** A one-line empty state (many lists on one page) instead of the first-run box. */
+  quietEmpty?: boolean;
 }): ReactElement {
   const base = useWikiBase();
   const [name, setName] = useState('');
@@ -54,13 +62,13 @@ export function WorldList({
         }}
       >
         <div className='grid min-w-0 flex-1 gap-1.5'>
-          <Label htmlFor={nameId}>New world</Label>
+          <Label htmlFor={nameId}>{newLabel}</Label>
           <Input
             id={nameId}
             value={name}
             maxLength={LIMITS.name_characters}
             className='h-11'
-            placeholder='The Salt Coast'
+            placeholder='A name'
             onChange={(event) => setName(event.target.value)}
           />
         </div>
@@ -69,25 +77,26 @@ export function WorldList({
         </Button>
       </form>
       <WriteProblem problem={problem} />
-      {error !== undefined && <LoadProblem what='your worlds' error={error} onRetry={onRetry} />}
-      {worlds === undefined && error === undefined && <SkeletonRows rows={3} label='Loading your worlds' />}
+      {error !== undefined && <LoadProblem what='the campaigns' error={error} onRetry={onRetry} />}
+      {worlds === undefined && error === undefined && <SkeletonRows rows={3} label='Loading the campaigns' />}
       {worlds !== undefined && hidden.shown.length === 0 && !hidden.pending && (
-        <p className='rounded-xl border border-dashed p-8 text-center text-muted-foreground'>
-          No worlds yet. Name one above to start writing it down.
+        <p className={quietEmpty ? 'text-sm text-muted-foreground' : 'rounded-xl border border-dashed p-8 text-center text-muted-foreground'}>
+          No campaigns yet. Name one above to start writing it down.
         </p>
       )}
       {hidden.shown.length > 0 && (
-        <ul aria-label='Your worlds' className='divide-y rounded-xl border'>
+        <ul aria-label={listLabel} className='divide-y rounded-xl border'>
           {hidden.shown.map((world) => (
             <li key={world.id} className='group flex items-center gap-3 p-2'>
               <Link
-                href={kindPath(base, world.id, 'location')}
+                href={aboutPath(base, world.id)}
                 className='flex min-h-12 min-w-0 flex-1 items-center gap-3 rounded-md px-2 hover:bg-accent'
               >
                 <Globe className='size-4 shrink-0 text-muted-foreground' aria-hidden />
                 <span className='min-w-0'>
                   <span className='flex min-w-0 items-center gap-2'>
                     <span className='truncate font-medium'>{world.name}</span>
+                    {world.is_scenario === true && <span className='shrink-0 rounded-full border px-2 py-0.5 text-xs'>Scenario</span>}
                     {world.provenance !== undefined && world.provenance !== null && world.provenance !== HOMEBREW && (
                       <span className='shrink-0 rounded-full border px-2 py-0.5 text-xs capitalize'>{world.provenance}</span>
                     )}

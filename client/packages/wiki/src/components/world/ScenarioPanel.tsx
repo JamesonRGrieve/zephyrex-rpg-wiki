@@ -43,7 +43,7 @@ export function ScenarioPanel({
       </h2>
       {isScenario ? (
         <>
-          <p className='text-sm text-muted-foreground'>Play never changes a scenario: starting it makes a new world with its own copy of everything here.</p>
+          <p className='text-sm text-muted-foreground'>Play never changes a scenario: starting it makes a new campaign with its own copy of everything here.</p>
           {onStart !== undefined && (
             <form onSubmit={(event) => void submit(event)} className='flex flex-wrap items-end gap-2'>
               <div className='grid min-w-0 gap-1'>
