@@ -226,7 +226,7 @@ async function expectSeedShows(page: Page, seeded: Seeded): Promise<void> {
   const shows: [string, string[]][] = [
     ['/w', ['The Salt Coast']],
     [`${w}/location`, ['Port Gull', 'Salt Coast']],
-    [`${w}/person/${seeded.person}`, ['Lamplighters', 'Alive', 'Lantern Guild', 'Captain Ross', 'Rumour', 'guarded (cautious-neutral)', 'Since Find the lost map', '-20', 'The Lantern Keeper', 'Mira: Mind the seventh step.']],
+    [`${w}/person/${seeded.person}`, ['Lamplighters', 'Alive', 'Lantern Guild', 'Captain Ross', 'Rumour', 'guarded (cautious-neutral)', 'Since Find the lost map', '-20', 'The Lantern Keeper', 'Mira: Mind the seventh step.', 'Lantern oil', 'Three flasks']],
     [`${w}/faction/${seeded.faction}`, ['Mira of the Lantern']],
     [`${w}/hook/${seeded.hook}`, ['Find the lost map', 'Mira of the Lantern', 'Can happen now']],
     [`${w}/plot`, ['Recover the relic', 'Hear the vox ghost', 'Rech needs the relic before he can start.', 'Find the lost map']],

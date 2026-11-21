@@ -104,6 +104,8 @@ export async function seedWorld(request: APIRequestContext): Promise<Seeded> {
     session_number: 5,
     mentions: [{ target_entity_type: 'person', target_entity_id: person }],
   });
+  // S4b: a record's own key/values (the metadata extension's routes, served by lite too).
+  await create(request, 'record_metadata', { target_entity_type: 'person', target_entity_id: person, key: 'Lantern oil', value: 'Three flasks' });
   await create(request, 'entity_post', { target_entity_type: 'person', target_entity_id: person, name: 'Rumour', position: 'pinned_top', entry: entry('She once sailed with pirates.') });
   return { setting, world, location, person, faction, item, journal, hook, taxon };
 }

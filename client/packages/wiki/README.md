@@ -85,7 +85,7 @@ An app's lite edition (Next.js only, no server-framework) serves the wiki's API 
    import { wikiLite } from '@zephyrex-rpg/wiki/lite';
    import { prisma } from '~/lib/prisma';
 
-   export const { GET, POST, PUT, DELETE } = wikiLite({ prisma });
+   export const { GET, POST, PUT, PATCH, DELETE } = wikiLite({ prisma });
    ```
 
    The app's own specific routes answer first. Its `GET /v1/extension` lists

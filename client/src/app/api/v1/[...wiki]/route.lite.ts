@@ -4,4 +4,4 @@
 import { wikiLite } from '@zephyrex-rpg/wiki/lite';
 import { prisma } from '~/lib/prisma';
 
-export const { GET, POST, PUT, DELETE } = wikiLite({ prisma });
+export const { GET, POST, PUT, PATCH, DELETE } = wikiLite({ prisma });

@@ -16,4 +16,5 @@ export const WIKI_LITE_EXTENSIONS = [
   { id: 'lite-world_taxonomy', name: 'world_taxonomy', friendly_name: 'Taxonomy', description: 'Tags, categories, races and statuses' },
   { id: 'lite-entity_posts', name: 'entity_posts', friendly_name: 'Posts', description: 'Pinnable posts on any record' },
   { id: 'lite-rpg_core', name: 'rpg_core', friendly_name: 'Worlds', description: 'Worlds, and who and what is in each' },
+  { id: 'lite-metadata', name: 'metadata', friendly_name: 'Properties', description: "A record's own key/values" },
 ] as const;

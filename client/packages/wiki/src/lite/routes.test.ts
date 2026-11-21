@@ -14,7 +14,7 @@ const untouched = new Proxy({} as PrismaClient, {
   },
 });
 const routes = wikiLite({ prisma: untouched });
-const call = (method: 'GET' | 'POST' | 'PUT' | 'DELETE', wiki: string[]) =>
+const call = (method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', wiki: string[]) =>
   routes[method](new NextRequest(`http://localhost/api/v1/${wiki.join('/')}`, { method }), { params: Promise.resolve({ wiki }) });
 
 describe('wikiLite', () => {
@@ -28,8 +28,18 @@ describe('wikiLite', () => {
     ['a path past a record', 'GET', ['person', 'p1', 'more']],
     ['a method a collection has not', 'PUT', ['person']],
     ['a method the sync has not', 'POST', ['world_entity']],
+    ['a method an action has not', 'POST', ['record_metadata', 'of']],
+    ['an unknown record action', 'POST', ['property_kit', 'k1', 'explode']],
+    ['a PATCH on a collection', 'PATCH', ['record_metadata']],
   ] as const)('answers 404 for %s', async (_what, method, wiki) => {
     expect((await call(method, [...wiki])).status).toBe(404);
+  });
+});
+
+describe('named actions', () => {
+  it('answers record_metadata/of as its action, not as a record id', async () => {
+    // Validated before any query: the action ran, and the database was never touched.
+    expect((await call('GET', ['record_metadata', 'of'])).status).toBe(422);
   });
 });
 

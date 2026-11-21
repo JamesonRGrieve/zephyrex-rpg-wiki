@@ -18,8 +18,8 @@ describe('capabilitiesOf', () => {
       taxonomy: true,
       relations: true,
       posts: true,
-      // Lite lists neither until its record_metadata routes land (the next prebuilt set).
-      properties: false,
+      // Properties since its record_metadata routes; kits wait for the apply route (world_properties).
+      properties: true,
       kits: false,
       accounts: false,
     });
