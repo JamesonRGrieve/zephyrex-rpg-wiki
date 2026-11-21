@@ -12,6 +12,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 CONTRACT_PATH = REPOSITORY_ROOT / "contract" / "wiki.json"
 ENTRY_TEXT_CASES_PATH = REPOSITORY_ROOT / "contract" / "entry-text-cases.json"
 SLUG_CASES_PATH = REPOSITORY_ROOT / "contract" / "slug-cases.json"
+KIT_CASES_PATH = REPOSITORY_ROOT / "contract" / "property-kit-cases.json"
 
 CONTRACT: dict[str, Any] = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 LIMITS: dict[str, int] = CONTRACT["limits"]
@@ -29,6 +30,8 @@ ATTITUDE_NUANCES: dict[str, str] = dict(CONTRACT["attitude_nuances"])
 DISPOSITION_TARGETS: tuple[str, ...] = tuple(CONTRACT["disposition_targets"])
 CANON_LEVELS: tuple[str, ...] = tuple(CONTRACT["canon_levels"])
 POST_POSITIONS: tuple[str, ...] = tuple(CONTRACT["post_positions"])
+# How a property's value reads (S4b; the framework's record_metadata value types).
+PROPERTY_VALUE_TYPES: tuple[str, ...] = tuple(CONTRACT["property_value_types"])
 # What a file is to a record (S2c, the framework's attachments): the first is its own picture.
 ATTACHMENT_ROLES: tuple[str, ...] = tuple(CONTRACT["attachment_roles"])
 SETTING_SLUG_PATTERN: str = CONTRACT["setting_slug"]["pattern"]

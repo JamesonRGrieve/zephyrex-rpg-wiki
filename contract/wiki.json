@@ -8,7 +8,10 @@
     "report_mentions": 200,
     "hook_status_characters": 40,
     "requirement_leaves": 200,
-    "requirement_depth": 16
+    "requirement_depth": 16,
+    "property_key_characters": 100,
+    "property_value_characters": 10000,
+    "properties_per_record": 200
   },
   "location_kinds": [
     "system",
@@ -153,6 +156,13 @@
     "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
     "max_characters": 64
   },
+  "property_value_types": [
+    "text",
+    "number",
+    "boolean",
+    "date",
+    "link"
+  ],
   "attachment_roles": [
     "primary_image",
     "header_image",

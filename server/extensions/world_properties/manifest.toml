@@ -1,0 +1,12 @@
+name = "world_properties"
+version = "0.1.0"
+description = "Property kits: keys with types and defaults, applied to any record's properties"
+entry_module = "EXT_WorldProperties"
+minimum_framework_version = "0.0.1"
+# Where this extension's source is offered (AGPL-3.0 section 13).
+repository = "https://github.com/JamesonRGrieve/zephyrex-rpg-wiki"
+
+# A record's properties are the framework's record_metadata; applying a kit writes them.
+[[extension_dependencies]]
+name = "metadata"
+optional = false

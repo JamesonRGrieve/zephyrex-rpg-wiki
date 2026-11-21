@@ -54,6 +54,12 @@ class RPGCoreExtension(AbstractStaticExtension):
                 reason="rpg_core scopes tags, categories and statuses to a campaign",
             ),
             EXT_Dependency(
+                name="world_properties",
+                friendly_name="World: property kits",
+                optional=False,
+                reason="rpg_core scopes property kits to a campaign or setting, and copies a template's properties",
+            ),
+            EXT_Dependency(
                 name="attachments",
                 friendly_name="Attachments",
                 optional=True,

@@ -16,13 +16,14 @@ from fastapi.testclient import TestClient
 from rpg_wiki_app import create
 
 INJECTED = {
-    "persons": {"kind", "campaign_id", "user_id", "location_id", "entry", "setting_id", "canon_level"},
+    "persons": {"kind", "campaign_id", "user_id", "location_id", "entry", "setting_id", "canon_level", "is_template"},
+    "property_kits": {"campaign_id", "setting_id"},
     "campaigns": {"setting_id"},
-    "locations": {"campaign_id", "setting_id", "canon_level"},
-    "factions": {"campaign_id", "setting_id", "canon_level"},
-    "items": {"campaign_id", "setting_id", "canon_level"},
-    "journals": {"campaign_id", "setting_id", "canon_level"},
-    "hooks": {"campaign_id", "setting_id", "canon_level"},
+    "locations": {"campaign_id", "setting_id", "canon_level", "is_template"},
+    "factions": {"campaign_id", "setting_id", "canon_level", "is_template"},
+    "items": {"campaign_id", "setting_id", "canon_level", "is_template"},
+    "journals": {"campaign_id", "setting_id", "canon_level", "is_template"},
+    "hooks": {"campaign_id", "setting_id", "canon_level", "is_template"},
     "taxons": {"campaign_id", "setting_id", "canon_level"},
     "statuses": {"campaign_id", "setting_id", "canon_level"},
     "relationships": {"faction_id", "target_faction_id", "colour", "mirror_relationship_id"},
@@ -37,6 +38,8 @@ FOREIGN_KEYS = {
     ("taxons", "setting_id"): "settings",
     ("statuses", "setting_id"): "settings",
     ("campaigns", "setting_id"): "settings",
+    ("property_kits", "setting_id"): "settings",
+    ("property_kits", "campaign_id"): "campaigns",
     ("persons", "campaign_id"): "campaigns",
     ("persons", "location_id"): "locations",
     ("persons", "user_id"): "users",
@@ -132,7 +135,7 @@ def test_the_migrations_build_every_declared_table_and_column(database: sqlite3.
 
 def test_each_extension_owns_its_tables(database: sqlite3.Connection) -> None:
     tables = {row[0] for row in database.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-    assert {"campaigns", "locations", "factions", "items", "item_instances", "entity_inventories", "journals", "entity_posts", "hooks", "hook_dependencies", "person_hooks", "faction_hooks", "taxons", "entity_taxons", "statuses", "entity_statuses", "dispositions", "relation_influences", "settings"} <= tables
+    assert {"campaigns", "locations", "factions", "items", "item_instances", "entity_inventories", "journals", "entity_posts", "hooks", "hook_dependencies", "person_hooks", "faction_hooks", "taxons", "entity_taxons", "statuses", "entity_statuses", "dispositions", "relation_influences", "settings", "property_kits"} <= tables
 
 
 def test_settings_006_indexes_unique_slugs_and_seeds_the_systems_settings(database: sqlite3.Connection) -> None:

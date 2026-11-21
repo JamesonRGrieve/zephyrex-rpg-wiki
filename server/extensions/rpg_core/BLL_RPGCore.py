@@ -49,16 +49,19 @@ from zephyrex.extensions.world_narrative.BLL_WorldNarrative import (  # type: ig
 )
 from zephyrex.extensions.wiki_shared.Requirements import hook_state  # type: ignore[import-not-found]
 from zephyrex.extensions.world_taxonomy.BLL_WorldTaxonomy import (  # type: ignore[import-not-found]
+    EntityTaxonManager,
     StatusManager,
     StatusModel,
     TaxonManager,
     TaxonModel,
 )
+from zephyrex.extensions.world_properties.BLL_WorldProperties import PropertyKitManager, PropertyKitModel  # type: ignore[import-not-found]
 from zephyrex.extensions.world_social.BLL_WorldSocial import FactionManager, FactionModel  # type: ignore[import-not-found]
 from zephyrex.extensions.world_spatial.BLL_WorldSpatial import LocationManager, LocationModel  # type: ignore[import-not-found]
 from zephyrex.logic.AbstractLogicManager import (
     AbstractBLLManager,
     ApplicationModel,
+    BooleanSearchModel,
     DescriptionMixinModel,
     HookContext,
     HookTiming,
@@ -223,9 +226,10 @@ class RPG_PersonModel(BaseModel):
     """genealogy's Person as the character table: kind, campaign, player, place and entry."""
 
     kind: Optional[str] = Field(None, description="contract/wiki.json person_kinds")
-    campaign_id: Optional[str] = Field(None, description="FK → campaigns.id; none = a template")
+    campaign_id: Optional[str] = Field(None, description="FK → campaigns.id; none = campaign-free, or with a setting its canon")
     setting_id: Optional[str] = Field(None, description="FK → settings.id; with no campaign, the setting\'s canon (S6)")
     canon_level: Optional[str] = Field(None, description="contract/wiki.json canon_levels; unset until decided")
+    is_template: Optional[bool] = Field(None, description="A template (W7): copied into campaigns, never a world fact")
     user_id: Optional[str] = Field(None, description="FK → users.id; the player. None = an NPC")
     location_id: Optional[str] = Field(None, description="FK → locations.id; where they are")
     entry: Optional[str] = Field(None, description="The entry: a Plate value as JSON text")
@@ -235,6 +239,7 @@ class RPG_PersonModel(BaseModel):
         campaign_id: Optional[str] = None
         setting_id: Optional[str] = None
         canon_level: Optional[str] = None
+        is_template: Optional[bool] = None
         user_id: Optional[str] = None
         location_id: Optional[str] = None
         entry: Optional[Any] = None
@@ -250,6 +255,7 @@ class RPG_PersonModel(BaseModel):
         campaign_id: Optional[str] = None
         setting_id: Optional[str] = None
         canon_level: Optional[str] = None
+        is_template: Optional[bool] = None
         user_id: Optional[str] = None
         location_id: Optional[str] = None
         entry: Optional[Any] = None
@@ -265,6 +271,7 @@ class RPG_PersonModel(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
         setting_id: Optional[StringSearchModel] = None
         canon_level: Optional[StringSearchModel] = None
+        is_template: Optional[BooleanSearchModel] = None
         user_id: Optional[StringSearchModel] = None
         location_id: Optional[StringSearchModel] = None
 
@@ -276,21 +283,25 @@ class RPG_LocationModel(BaseModel):
     campaign_id: Optional[str] = Field(None, description="FK → campaigns.id; none = shared across campaigns")
     setting_id: Optional[str] = Field(None, description="FK → settings.id; with no campaign, the setting\'s canon (S6)")
     canon_level: Optional[str] = Field(None, description="contract/wiki.json canon_levels; unset until decided")
+    is_template: Optional[bool] = Field(None, description="A template (W7): copied into campaigns, never a world fact")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
         setting_id: Optional[str] = None
         canon_level: Optional[str] = None
+        is_template: Optional[bool] = None
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
         setting_id: Optional[str] = None
         canon_level: Optional[str] = None
+        is_template: Optional[bool] = None
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
         setting_id: Optional[StringSearchModel] = None
         canon_level: Optional[StringSearchModel] = None
+        is_template: Optional[BooleanSearchModel] = None
 
 
 @extension_model(FactionModel)
@@ -300,21 +311,25 @@ class RPG_FactionModel(BaseModel):
     campaign_id: Optional[str] = Field(None, description="FK → campaigns.id; none = shared across campaigns")
     setting_id: Optional[str] = Field(None, description="FK → settings.id; with no campaign, the setting\'s canon (S6)")
     canon_level: Optional[str] = Field(None, description="contract/wiki.json canon_levels; unset until decided")
+    is_template: Optional[bool] = Field(None, description="A template (W7): copied into campaigns, never a world fact")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
         setting_id: Optional[str] = None
         canon_level: Optional[str] = None
+        is_template: Optional[bool] = None
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
         setting_id: Optional[str] = None
         canon_level: Optional[str] = None
+        is_template: Optional[bool] = None
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
         setting_id: Optional[StringSearchModel] = None
         canon_level: Optional[StringSearchModel] = None
+        is_template: Optional[BooleanSearchModel] = None
 
 
 @extension_model(ItemModel)
@@ -325,21 +340,25 @@ class RPG_ItemModel(BaseModel):
     campaign_id: Optional[str] = Field(None, description="FK → campaigns.id; none = shared across campaigns")
     setting_id: Optional[str] = Field(None, description="FK → settings.id; with no campaign, the setting\'s canon (S6)")
     canon_level: Optional[str] = Field(None, description="contract/wiki.json canon_levels; unset until decided")
+    is_template: Optional[bool] = Field(None, description="A template (W7): copied into campaigns, never a world fact")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
         setting_id: Optional[str] = None
         canon_level: Optional[str] = None
+        is_template: Optional[bool] = None
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
         setting_id: Optional[str] = None
         canon_level: Optional[str] = None
+        is_template: Optional[bool] = None
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
         setting_id: Optional[StringSearchModel] = None
         canon_level: Optional[StringSearchModel] = None
+        is_template: Optional[BooleanSearchModel] = None
 
 
 # ---------------------------------------------------------------------------
@@ -368,8 +387,29 @@ def _world_stays(context: HookContext) -> None:
         raise HTTPException(status_code=422, detail="A record's world is fixed once set: copy it to another world instead")
 
 
-for _manager in (PersonManager, LocationManager, FactionManager, ItemManager, JournalManager, HookManager, TaxonManager, StatusManager):
+for _manager in (PersonManager, LocationManager, FactionManager, ItemManager, JournalManager, HookManager, TaxonManager, StatusManager, PropertyKitManager):
     hook_bll(_manager, timing=HookTiming.BEFORE, priority=20)(_world_stays)
+
+
+def _template_stays(context: HookContext) -> None:
+    """S4b: a record is a template or not from its creation. A record that became one would leave the
+    world sync without a tombstone, so making a template is a copy (template/instantiate)."""
+    if context.method_name != "update":
+        return
+    wanted = context.kwarg("is_template", default=_UNSET)
+    record_id = context.kwarg("id", default=None) or context.arg(0, default=None)
+    if wanted is _UNSET or wanted is None or not record_id:
+        return
+    try:
+        current = bool(getattr(context.manager.get(id=record_id), "is_template", None))
+    except HTTPException:
+        return
+    if bool(wanted) != current:
+        raise HTTPException(status_code=422, detail="A record is a template or not from its creation: copy it instead")
+
+
+for _manager in (PersonManager, LocationManager, FactionManager, ItemManager, JournalManager, HookManager):
+    hook_bll(_manager, timing=HookTiming.BEFORE, priority=20)(_template_stays)
 
 
 def _setting_fits(context: HookContext) -> None:
@@ -438,7 +478,7 @@ def _campaign_setting_stays(context: HookContext) -> None:
             raise HTTPException(status_code=422, detail="That setting is not one of yours") from error
 
 
-for _owner in (PersonManager, LocationManager, FactionManager, ItemManager, JournalManager, HookManager, TaxonManager, StatusManager):
+for _owner in (PersonManager, LocationManager, FactionManager, ItemManager, JournalManager, HookManager, TaxonManager, StatusManager, PropertyKitManager):
     hook_bll(_owner, timing=HookTiming.BEFORE, priority=21)(_setting_fits)
 hook_bll(CampaignManager, timing=HookTiming.BEFORE, priority=21)(_campaign_setting_stays)
 
@@ -451,21 +491,25 @@ class RPG_JournalModel(BaseModel):
     campaign_id: Optional[str] = Field(None, description="FK → campaigns.id; none = shared across campaigns")
     setting_id: Optional[str] = Field(None, description="FK → settings.id; with no campaign, the setting\'s canon (S6)")
     canon_level: Optional[str] = Field(None, description="contract/wiki.json canon_levels; unset until decided")
+    is_template: Optional[bool] = Field(None, description="A template (W7): copied into campaigns, never a world fact")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
         setting_id: Optional[str] = None
         canon_level: Optional[str] = None
+        is_template: Optional[bool] = None
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
         setting_id: Optional[str] = None
         canon_level: Optional[str] = None
+        is_template: Optional[bool] = None
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
         setting_id: Optional[StringSearchModel] = None
         canon_level: Optional[StringSearchModel] = None
+        is_template: Optional[BooleanSearchModel] = None
 
 
 @extension_model(HookModel)
@@ -475,21 +519,25 @@ class RPG_HookModel(BaseModel):
     campaign_id: Optional[str] = Field(None, description="FK → campaigns.id; none = shared across campaigns")
     setting_id: Optional[str] = Field(None, description="FK → settings.id; with no campaign, the setting\'s canon (S6)")
     canon_level: Optional[str] = Field(None, description="contract/wiki.json canon_levels; unset until decided")
+    is_template: Optional[bool] = Field(None, description="A template (W7): copied into campaigns, never a world fact")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
         setting_id: Optional[str] = None
         canon_level: Optional[str] = None
+        is_template: Optional[bool] = None
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
         setting_id: Optional[str] = None
         canon_level: Optional[str] = None
+        is_template: Optional[bool] = None
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
         setting_id: Optional[StringSearchModel] = None
         canon_level: Optional[StringSearchModel] = None
+        is_template: Optional[BooleanSearchModel] = None
 
 
 class _Campaign(BaseModel):
@@ -523,6 +571,26 @@ class RPG_TaxonModel(_Campaign):
 @extension_model(StatusModel)
 class RPG_StatusModel(_Campaign):
     """A status's campaign."""
+
+
+@extension_model(PropertyKitModel)
+class RPG_PropertyKitModel(BaseModel):
+    """A property kit's campaign or setting (S4b): none = the owner's kit for any record."""
+
+    campaign_id: Optional[str] = Field(None, description="FK → campaigns.id; none = for any campaign")
+    setting_id: Optional[str] = Field(None, description="FK → settings.id; a kit for that setting's records")
+
+    class Create(BaseModel):
+        campaign_id: Optional[str] = None
+        setting_id: Optional[str] = None
+
+    class Update(BaseModel):
+        campaign_id: Optional[str] = None
+        setting_id: Optional[str] = None
+
+    class Search(BaseModel):
+        campaign_id: Optional[StringSearchModel] = None
+        setting_id: Optional[StringSearchModel] = None
 
 
 # ---------------------------------------------------------------------------
@@ -791,6 +859,9 @@ def _gather(
                 campaign = getattr(record, "campaign_id", None)
                 if canon_only and campaign is not None:
                     continue
+                # A template (S4b, W7) is copied into campaigns, never a world fact: rpg-ai never sees it.
+                if getattr(record, "is_template", None):
+                    continue
                 entity = WorldEntity(
                     id=str(record.id),
                     kind=kind,
@@ -984,3 +1055,100 @@ def plot_state(model_registry: Any, requester_id: str, campaign_id: str) -> list
             )
         )
     return out
+
+
+# ---------------------------------------------------------------------------
+# Templates (S4b, W7): a record made from a template, with its properties and tags
+# ---------------------------------------------------------------------------
+
+# What a copy never takes from its template: identity, scope, being a template, and what belongs to
+# one play of it (a person's player, a hook's resolution).
+_NOT_COPIED = {"id", "is_template", "campaign_id", "setting_id", "canon_level", "name", "user_id", "resolved_at", "resolved_journal_id"}
+
+
+class TemplateUse(PlainModel):
+    kind: str = Field(..., description="contract/wiki.json entity_types")
+    template_id: str
+    campaign_id: Optional[str] = None
+    setting_id: Optional[str] = None
+    name: Optional[str] = Field(None, description="The copy's name; the template's when not given")
+    as_template: bool = Field(False, description="Make the copy a template itself (Save as template)")
+
+
+class TemplateUseEnvelope(PlainModel):
+    template: TemplateUse
+
+
+class TemplateCopy(PlainModel):
+    kind: str
+    id: str
+    name: str
+    properties: int = Field(..., description="How many of its properties were copied")
+    taxons: int = Field(..., description="How many of its tags and categories were copied")
+
+
+def instantiate(model_registry: Any, requester_id: str, use: TemplateUse) -> TemplateCopy:
+    """A new record from ``use.template_id``: its fields and entry, its properties (record_metadata)
+    and its taxa, in the given campaign or setting under S6's rules. Anyone who can view a template
+    copies it; the copy is the caller's. ``as_template`` copies any record one can view into a new
+    template instead (Save as template), since a record never becomes one in place."""
+    if use.kind not in MANAGER_OF_TYPE:
+        raise HTTPException(status_code=422, detail=f"A template is one of: {', '.join(MANAGER_OF_TYPE)}")
+    records = _manager(model_registry, requester_id, MANAGER_OF_TYPE[use.kind])
+    source = records.get(id=use.template_id)
+    if not use.as_template and not getattr(source, "is_template", None):
+        raise HTTPException(status_code=422, detail="That record isn't a template")
+    writable = set(records._model.Create.model_fields)
+    fields = {name: value for name, value in source.model_dump().items() if name in writable and name not in _NOT_COPIED and value is not None}
+    made = records.create(
+        **fields,
+        name=use.name or source.name,
+        campaign_id=use.campaign_id,
+        setting_id=use.setting_id,
+        is_template=use.as_template or None,
+    )
+    copied_properties = 0
+    if "metadata" in model_registry.loaded_extension_names():
+        from zephyrex.extensions.metadata.BLL_Metadata import RecordMetadataManager, RecordMetadataWrite
+
+        properties = RecordMetadataManager(requester_id=requester_id, model_registry=model_registry)
+        for row in properties.of_route(use.kind, str(source.id)).metadata:
+            properties.add_route(
+                RecordMetadataWrite(
+                    target_entity_type=use.kind,
+                    target_entity_id=str(made.id),
+                    key=row.key,
+                    value=row.value,
+                    value_type=row.value_type,
+                    ordinal=row.ordinal,
+                    is_private=row.is_private,
+                )
+            )
+            copied_properties += 1
+    links = _manager(model_registry, requester_id, EntityTaxonManager)
+    tags = links.list(target_entity_type=use.kind, target_entity_id=str(source.id)) or []
+    for tag in tags:
+        links.create(taxon_id=tag.taxon_id, target_entity_type=use.kind, target_entity_id=str(made.id))
+    return TemplateCopy(kind=use.kind, id=str(made.id), name=str(made.name or ""), properties=copied_properties, taxons=len(tags))
+
+
+class TemplateManager(AbstractBLLManager[Any], RouterMixin):
+    """REST for templates: POST /v1/template/instantiate."""
+
+    prefix: ClassVar[str | None] = "/v1/template"
+    tags: ClassVar[list[str] | None] = ["Templates"]
+    routes_to_register: ClassVar[list[RouteType] | None] = []
+
+    @custom_route(
+        method="POST",
+        path="/instantiate",
+        input_model=TemplateUseEnvelope,
+        output_model=TemplateCopy,
+        authentication_type="jwt",
+        status_code=201,
+        expose_in=(ExposeIn.REST,),
+        openapi_tags=("Templates",),
+        summary="A new record from a template, with its properties and tags (or a new template from a record)",
+    )
+    def instantiate_route(self, template: TemplateUse) -> TemplateCopy:
+        return instantiate(self.model_registry, str(self.requester.id), TemplateUse.model_validate(template))

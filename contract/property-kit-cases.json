@@ -1,0 +1,29 @@
+{
+  "$comment": "How a property kit's keys are checked and normalised (S4b, W4), by both back ends: server/extensions/wiki_shared/Properties_test.py and client/src/lib/properties.test.ts.",
+  "valid": [
+    {
+      "name": "defaults filled in",
+      "properties": [{ "key": "  Height  " }, { "key": "Alive", "value_type": "boolean", "default": true, "is_private": true }],
+      "checked": [
+        { "key": "Height", "value_type": "text", "default": null, "is_private": false, "ordinal": 0 },
+        { "key": "Alive", "value_type": "boolean", "default": "true", "is_private": true, "ordinal": 1 }
+      ]
+    },
+    {
+      "name": "a number default and a given place",
+      "properties": [{ "key": "Wounds", "value_type": "number", "default": 12, "ordinal": 5 }],
+      "checked": [{ "key": "Wounds", "value_type": "number", "default": "12", "is_private": false, "ordinal": 5 }]
+    },
+    { "name": "an empty kit", "properties": [], "checked": [] }
+  ],
+  "invalid": [
+    { "name": "not a list", "properties": { "key": "x" }, "message": "A kit's properties are a list" },
+    { "name": "no key", "properties": [{ "value_type": "text" }], "message": "Each property has a key" },
+    { "name": "a blank key", "properties": [{ "key": "   " }], "message": "Each property has a key" },
+    { "name": "a key twice", "properties": [{ "key": "Age" }, { "key": " Age" }], "message": "The key 'Age' is in the kit twice" },
+    { "name": "an unknown type", "properties": [{ "key": "Age", "value_type": "colour" }], "message": "A value type is one of: text, number, boolean, date, link" },
+    { "name": "a negative place", "properties": [{ "key": "Age", "ordinal": -1 }], "message": "A property's place is a whole number of zero or more" },
+    { "name": "private not a switch", "properties": [{ "key": "Age", "is_private": "yes" }], "message": "is_private is true or false" },
+    { "name": "a default that is a list", "properties": [{ "key": "Age", "default": [1] }], "message": "A default is text, a number or true/false" }
+  ]
+}

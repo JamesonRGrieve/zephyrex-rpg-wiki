@@ -25,8 +25,10 @@ from zephyrex import run
 # isn't loaded until its dependencies (rpg_core's successors rpg_traits, world_inventory) are
 # in this repo; it depended on zephyrex-vtt's rpg_state (2026-11-20). cloud and attachments (the
 # framework's: files in cloud storage, attached to any record) give records their pictures (S2c);
-# a deployment configures a cloud provider (CLOUD_LOCAL_DIRECTORY for a directory on disk).
-EXTENSIONS = "auth_session,genealogy,cloud,attachments,world_spatial,world_social,world_inventory,world_narrative,world_taxonomy,entity_posts,rpg_core"
+# a deployment configures a cloud provider (CLOUD_LOCAL_DIRECTORY for a directory on disk). metadata
+# (the framework's: a record's own key/values) holds records' properties, and world_properties their
+# kits (S4b).
+EXTENSIONS = "auth_session,genealogy,cloud,attachments,metadata,world_spatial,world_social,world_inventory,world_narrative,world_taxonomy,world_properties,entity_posts,rpg_core"
 
 if __name__ == "__main__":
     run(

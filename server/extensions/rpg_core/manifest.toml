@@ -36,6 +36,11 @@ optional = false
 name = "world_taxonomy"
 optional = false
 
+# ...and property kits (world_properties), scoped the same way; a template's properties are copied.
+[[extension_dependencies]]
+name = "world_properties"
+optional = false
+
 # A record's picture (world_entities.picture) is its primary_image attachment, when attachments is loaded.
 [[extension_dependencies]]
 name = "attachments"

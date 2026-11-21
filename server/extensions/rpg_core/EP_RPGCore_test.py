@@ -706,3 +706,78 @@ class TestPictures:
         assert self._pictures(server, person, campaign)["Terra"] == f"/v1/asset/{first['id']}/content"
         assert server.delete(f"/v1/asset/{first['id']}", headers=_headers(person, **if_match_of(first))).status_code == 204
         assert self._pictures(server, person, campaign)["Terra"] is None
+
+
+class TestPropertiesKitsTemplates:
+    """S4b: a record's properties are the framework's record_metadata; a kit adds the keys a record
+    lacks; a template is copied into campaigns with its properties and tags and is never a world fact."""
+
+    @staticmethod
+    def _properties(server: TestClient, user: Any, kind: str, record: dict[str, Any]) -> Any:
+        return server.get("/v1/record_metadata/of", params={"target_entity_type": kind, "target_entity_id": record["id"]}, headers=_headers(user))
+
+    @staticmethod
+    def _property(server: TestClient, user: Any, kind: str, record: dict[str, Any], **fields: Any) -> Any:
+        body = {"record_metadata": {"target_entity_type": kind, "target_entity_id": record["id"], **fields}}
+        return server.post("/v1/record_metadata", json=body, headers=_headers(user))
+
+    @staticmethod
+    def _apply(server: TestClient, user: Any, kit: dict[str, Any], kind: str, record: dict[str, Any]) -> Any:
+        body = {"application": {"target_entity_type": kind, "target_entity_id": record["id"]}}
+        return server.post(f"/v1/property_kit/{kit['id']}/apply", json=body, headers=_headers(user))
+
+    def test_a_kit_adds_the_keys_a_record_lacks(self, server: TestClient, person: Any, other: Any) -> None:
+        campaign = _create(server, person, "campaign", name="Kitted")
+        hive = _create(server, person, "location", name="Hive Sibellus", kind="city", campaign_id=campaign["id"])
+        assert self._property(server, person, "location", hive, key="Population", value="9 billion", value_type="text").status_code == 201
+        kit = _create(
+            server,
+            person,
+            "property_kit",
+            name="City",
+            campaign_id=campaign["id"],
+            properties=[{"key": "Population"}, {"key": "Tithe grade", "default": "Exactus"}, {"key": "Garrison", "value_type": "number", "default": 3, "is_private": True}],
+        )
+        first = self._apply(server, person, kit, "location", hive)
+        assert first.status_code == 200, first.text
+        assert first.json() == {"added": ["Tithe grade", "Garrison"], "skipped": ["Population"]}
+        rows = {row["key"]: row for row in self._properties(server, person, "location", hive).json()["metadata"]}
+        assert (rows["Population"]["value"], rows["Tithe grade"]["value"], rows["Garrison"]["value"]) == ("9 billion", "Exactus", "3")
+        assert (rows["Garrison"]["value_type"], rows["Garrison"]["is_private"]) == ("number", True)
+        assert self._apply(server, person, kit, "location", hive).json() == {"added": [], "skipped": ["Population", "Tithe grade", "Garrison"]}
+        # Someone who can't see the kit, or the record, gets the same 404.
+        theirs = _create(server, other, "location", name="Their Hive", kind="city")
+        assert self._apply(server, other, kit, "location", theirs).status_code == 404
+        assert self._properties(server, other, "location", hive).status_code == 404
+        refused = server.post("/v1/property_kit", json={"property_kit": {"name": "Bad", "properties": [{"key": "A"}, {"key": "A"}]}}, headers=_headers(person))
+        assert refused.status_code == 422, refused.text
+
+    def test_a_template_is_copied_with_its_properties_and_tags_and_never_synced(self, server: TestClient, person: Any) -> None:
+        campaign = _create(server, person, "campaign", name="Templated")
+        template = _create(server, person, "person", name="Arbites Enforcer", kind="npc", is_template=True, entry=ENTRY)
+        assert self._property(server, person, "person", template, key="Wounds", value="12", value_type="number").status_code == 201
+        tag = _create(server, person, "taxon", name="Adeptus Arbites", kind="tag")
+        _create(server, person, "entity_taxon", taxon_id=tag["id"], target_entity_type="person", target_entity_id=template["id"])
+        made = server.post(
+            "/v1/template/instantiate",
+            json={"template": {"kind": "person", "template_id": template["id"], "campaign_id": campaign["id"], "name": "Proctor Vance"}},
+            headers=_headers(person),
+        )
+        assert made.status_code == 201, made.text
+        assert {key: made.json()[key] for key in ("kind", "name", "properties", "taxons")} == {"kind": "person", "name": "Proctor Vance", "properties": 1, "taxons": 1}
+        copy = server.get(f"/v1/person/{made.json()['id']}", headers=_headers(person)).json()["person"]
+        assert (copy["campaign_id"], copy["kind"], copy["is_template"], copy["description"]) == (campaign["id"], "npc", None, template["description"])
+        assert [row["key"] for row in self._properties(server, person, "person", copy).json()["metadata"]] == ["Wounds"]
+        # A campaign's own template stays out of its world sync too.
+        _create(server, person, "location", name="Shrine (template)", kind="building", campaign_id=campaign["id"], is_template=True)
+        synced = server.get(f"/v1/world_entity?campaign_id={campaign['id']}", headers=_headers(person)).json()["world_entities"]
+        assert [entity["name"] for entity in synced] == ["Proctor Vance"]
+        # A record isn't a template, and never becomes one in place: Save as template copies it.
+        plain = server.post("/v1/template/instantiate", json={"template": {"kind": "person", "template_id": copy["id"]}}, headers=_headers(person))
+        assert plain.status_code == 422, plain.text
+        assert _put(server, person, "person", copy, is_template=True).status_code == 422
+        saved = server.post(
+            "/v1/template/instantiate", json={"template": {"kind": "person", "template_id": copy["id"], "as_template": True}}, headers=_headers(person)
+        )
+        assert saved.status_code == 201, saved.text
+        assert server.get(f"/v1/person/{saved.json()['id']}", headers=_headers(person)).json()["person"]["is_template"] is True
