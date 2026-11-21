@@ -326,7 +326,7 @@ class TestWorldEntities:
         assert set(by_name) == {"Harbour", "Dockmaster Ilse", "Harbour Guild", "Cracked lantern"}
         assert by_name["Harbour"] | {"updated_at": None} == {
             "id": harbour["id"], "kind": "location", "name": "Harbour", "aliases": [], "summary": "A port city.",
-            "picture": None, "updated_at": None, "deleted": False,
+            "picture": None, "updated_at": None, "deleted": False, "setting_id": None, "canon": False, "canon_level": None,
         }
         assert page["next"] is None
 
@@ -558,3 +558,51 @@ class TestNarrativeState:
         assert loosened["to_intensity"] == -0.4
         bad = {"relationship_id": tie["id"], "hook_id": found["id"], "to_intensity": 2}
         assert server.post("/v1/relation_influence", json={"relation_influence": bad}, headers=_headers(person)).status_code == 422
+
+
+class TestSettings:
+    """S6 (rpg-ai DESIGN "Settings and systems"): settings enclose campaigns; a setting's records with
+    no campaign are its canon, read by rpg-ai's canon notices."""
+
+    def test_a_setting_encloses_campaigns_and_its_campaign_less_records_are_canon(
+        self, server: TestClient, person: Any, other: Any
+    ) -> None:
+        grim = _create(server, person, "setting", name="The Grim Future", entry=ENTRY)
+        solenne = _create(server, person, "campaign", name="Solenne", setting_id=grim["id"])
+        assert solenne["setting_id"] == grim["id"]
+        canon = _create(server, person, "faction", name="Adeptus Mechanicus", kind="religious", setting_id=grim["id"], canon_level="common")
+        assert (canon["setting_id"], canon["campaign_id"], canon["canon_level"]) == (grim["id"], None, "common")
+        local = _create(server, person, "person", name="Magos Rech", campaign_id=solenne["id"], setting_id=grim["id"])
+        assert local["setting_id"] == grim["id"]
+        elsewhere = _create(server, person, "setting", name="Elsewhere")
+        refused = [
+            ("person", {"name": "Wrong world", "campaign_id": solenne["id"], "setting_id": elsewhere["id"]}),
+            ("faction", {"name": "Odd level", "setting_id": grim["id"], "canon_level": "rumoured"}),
+        ]
+        for resource, body in refused:
+            response = server.post(f"/v1/{resource}", json={resource: body}, headers=_headers(person))
+            assert response.status_code == 422, (resource, response.text)
+        theirs = server.post("/v1/faction", json={"faction": {"name": "Squatters", "setting_id": grim["id"]}}, headers=_headers(other))
+        assert theirs.status_code == 422, theirs.text
+        assert _put(server, person, "faction", canon, setting_id=elsewhere["id"]).status_code == 422
+        assert _put(server, person, "campaign", solenne, setting_id=elsewhere["id"]).status_code == 422
+
+    def test_rpg_ai_reads_a_settings_canon_alone_or_with_a_campaign(self, server: TestClient, person: Any) -> None:
+        from zephyrex.extensions.AbstractExtensionProvider import loaded_ability
+
+        realm = _create(server, person, "setting", name="Realm of Canon")
+        campaign = _create(server, person, "campaign", name="Dunmarch", setting_id=realm["id"])
+        terra = _create(server, person, "location", name="Terra", kind="planet", setting_id=realm["id"], canon_level="common")
+        hive = _create(server, person, "location", name="Hive Dunmarch", kind="city", campaign_id=campaign["id"], setting_id=realm["id"])
+        alone = server.get(f"/v1/world_entity?setting_id={realm['id']}", headers=_headers(person)).json()["world_entities"]
+        assert [(entity["id"], entity["canon"], entity["canon_level"]) for entity in alone] == [(terra["id"], True, "common")]
+        own = server.get(f"/v1/world_entity?campaign_id={campaign['id']}", headers=_headers(person)).json()["world_entities"]
+        assert [entity["id"] for entity in own] == [hive["id"]]
+        both = server.get(f"/v1/world_entity?campaign_id={campaign['id']}&include_setting=true", headers=_headers(person)).json()["world_entities"]
+        assert {(entity["id"], entity["canon"]) for entity in both} == {(terra["id"], True), (hive["id"], False)}
+        assert server.get("/v1/world_entity", headers=_headers(person)).status_code == 422
+        registry = server.app.state.model_registry  # type: ignore[attr-defined]
+        canon = loaded_ability(registry, "rpg_core", "setting_canon")(registry, str(person.id), realm["id"])
+        assert [entity["name"] for entity in canon["world_entities"]] == ["Terra"]
+        synced = loaded_ability(registry, "rpg_core", "world_entities")(registry, str(person.id), campaign["id"], include_setting=True)
+        assert {entity["name"] for entity in synced["world_entities"]} == {"Terra", "Hive Dunmarch"}

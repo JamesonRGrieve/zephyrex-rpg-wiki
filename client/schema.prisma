@@ -13,11 +13,28 @@ generator client {
 }
 
 /// A world: the top-level container every record scopes to (rpg_core's CampaignModel).
+/// A setting (S6): the universe campaigns take place in. Its canon is every world record with this
+/// setting and no campaign. VTT's game systems name settings by id.
+model Setting {
+  id          String   @id @default(uuid())
+  createdById String
+  name        String
+  description String   @default("")
+  entry       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+  updatedById String?
+
+  @@index([createdById])
+}
+
 model Campaign {
   id           String   @id @default(uuid())
   createdById  String
   name         String
   description  String   @default("")
+  /// The setting it takes place in (S6); fixed once set.
+  settingId    String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime
   updatedById  String?
@@ -35,6 +52,9 @@ model Location {
   kind         String?
   parentId     String?
   campaignId   String?
+  /// With no campaign: the setting's canon (S6).
+  settingId   String?
+  canonLevel  String?
   /// The person it belongs to: their equipment slots and body parts (what they wear sits there).
   associatedPersonId String?
   createdAt    DateTime @default(now())
@@ -48,6 +68,7 @@ model Location {
   @@index([campaignId])
   @@index([parentId])
   @@index([associatedPersonId])
+  @@index([settingId])
 }
 
 /// A person or creature (genealogy's PersonModel, with rpg_core's character fields).
@@ -59,6 +80,9 @@ model Person {
   entry        String?
   kind         String?
   campaignId   String?
+  /// With no campaign: the setting's canon (S6).
+  settingId   String?
+  canonLevel  String?
   locationId   String?
   gender       String?
   birthDate    DateTime?
@@ -72,6 +96,7 @@ model Person {
   @@index([createdById])
   @@index([deletedAt])
   @@index([campaignId])
+  @@index([settingId])
 }
 
 /// An organisation or family, under its parent (world_social's FactionModel, with rpg_core's campaign).
@@ -84,6 +109,9 @@ model Faction {
   kind         String?
   parentId     String?
   campaignId   String?
+  /// With no campaign: the setting's canon (S6).
+  settingId   String?
+  canonLevel  String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime
   updatedById  String?
@@ -94,6 +122,7 @@ model Faction {
   @@index([deletedAt])
   @@index([campaignId])
   @@index([parentId])
+  @@index([settingId])
 }
 
 /// A kind of thing, the catalogue (world_inventory's ItemModel, with rpg_core's campaign).
@@ -108,6 +137,9 @@ model Item {
   baseValue    Float?
   stackSize    Int      @default(1)
   campaignId   String?
+  /// With no campaign: the setting's canon (S6).
+  settingId   String?
+  canonLevel  String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime
   updatedById  String?
@@ -117,6 +149,7 @@ model Item {
   @@index([createdById])
   @@index([deletedAt])
   @@index([campaignId])
+  @@index([settingId])
 }
 
 /// One item in the world: where it is, whose it is (de jure), how many.
@@ -166,6 +199,9 @@ model Journal {
   sessionNumber  Int?
   occurredAt     DateTime?
   campaignId     String?
+  /// With no campaign: the setting's canon (S6).
+  settingId     String?
+  canonLevel    String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime
   updatedById    String?
@@ -174,6 +210,7 @@ model Journal {
   @@index([createdById])
   @@index([campaignId])
   @@index([deletedAt])
+  @@index([settingId])
 }
 
 /// A post on any entity (entity_posts' EntityPostModel): pinned_top shows first.
@@ -213,6 +250,9 @@ model Hook {
   resolvedAt     DateTime?
   resolvedJournalId String?
   campaignId     String?
+  /// With no campaign: the setting's canon (S6).
+  settingId     String?
+  canonLevel    String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime
   updatedById    String?
@@ -221,6 +261,7 @@ model Hook {
   @@index([createdById])
   @@index([campaignId])
   @@index([deletedAt])
+  @@index([settingId])
 }
 
 /// An edge of the hook DAG: the child waits on the parent. No cycles (lib/hookGraph.ts).
@@ -285,6 +326,9 @@ model Taxon {
   kind        String?
   colour      String?
   campaignId  String?
+  /// With no campaign: the setting's canon (S6).
+  settingId  String?
+  canonLevel String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime
   updatedById String?
@@ -293,6 +337,7 @@ model Taxon {
   @@index([createdById])
   @@index([campaignId])
   @@index([deletedAt])
+  @@index([settingId])
 }
 
 /// A taxon on any record; once per taxon and record.
@@ -319,6 +364,9 @@ model Status {
   kind        String?
   colour      String?
   campaignId  String?
+  /// With no campaign: the setting's canon (S6).
+  settingId  String?
+  canonLevel String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime
   updatedById String?
@@ -326,6 +374,7 @@ model Status {
 
   @@index([createdById])
   @@index([deletedAt])
+  @@index([settingId])
 }
 
 /// A record's status; one per record.

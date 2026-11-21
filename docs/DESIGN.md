@@ -339,6 +339,14 @@ first-class. A parchment-warm light theme is the default for reading.
 - **Every wiki extension ships its own Alembic migrations**, and rpg_core's adds its injected
   columns to other extensions' tables with real foreign keys.
 
+- **Settings above campaigns (S6; rpg-ai DESIGN "Settings and systems", the operator,
+  2026-11-21).** A setting (Warhammer 40,000, Fallout, Modern…) encloses campaigns; every world
+  record can name its setting, and one with a setting and no campaign is that setting's canon:
+  what anyone in it would know. A campaign's records belong to its campaign's setting, and a
+  record's setting, like its world, is fixed once set. `canon_level` (common, learned, secret) is
+  stored but left unset until the operator decides whether red canon notices use it. VTT's game
+  systems reference settings; mechanics stay VTT's.
+
 ### Database-level guarantees
 
 What the database enforces, and what only the BLL does (a 422) until it can:
@@ -382,6 +390,7 @@ records.
 | S3 | Journals, notes, lore and session reports (`world_narrative`; rpg-ai A24's session_report and session_report_get), posts (`entity_posts`, W3) | Done: both editions, server 51/51 and client checks on 58137; committed with S2b |
 | S3b | The plot-hook DAG in `world_narrative` (hooks, hook_dependencies with a cycle guard, person_hooks, faction_hooks; OBJECT_PLAN §6, moved from vtt's rpg_state), rpg_core's campaign on hooks; hooks kept out of world_entities (GM secrets until W9) | Done: both editions, server 57/57 and client checks on 58137 |
 | S3c | Narrative state from the operator's dh-campaign tracker (W56, W57): hook requirements as all/any expressions with game-system checks (their hooks become the edges), excuse, resolution in a session; `plot_state` (ability) and a plot board; dispositions (party, person or organisation; scale plus nuances; changed by a hook) and relation influences, in `world_narrative` | Done in both editions; server 76/77 on 58137 (the one red is the framework's status bug), client checks and audit green |
+| S6 | Settings (rpg-ai DESIGN b73eb13, the operator, 2026-11-21): a setting encloses campaigns; its campaign-less records are its canon, read by rpg-ai's canon notices (`setting_canon`, `world_entities(include_setting)`); `canon_level` stored, unset until decided; VTT's game systems name a setting | Built in both editions (no UI); the operator's open questions: setting as the top level of /w, canon_level, where a published setting's canon comes from |
 | S4a | Tags, categories, races and statuses (`world_taxonomy`, W6); relations between people and organisations with attitude, colour and mirror (`world_social` on genealogy's relationships, W5) | Done in both editions; server 61/62 on 58137, the one red waiting on the framework's status/statuses fix |
 | S4b | Property kits and values (W4, on the framework's metadata with a polymorphic target), templates (W7) | Waits on that framework change |
 | S2c | Pictures: the framework's new attachments extension (an asset over storage, a polymorphic attachment with role primary_image) on any record; world_entities.picture (rpg-ai A31) | Waits on the framework's new attachments extension (operator's choice, 2026-11-21) |

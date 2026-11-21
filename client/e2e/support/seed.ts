@@ -7,6 +7,7 @@
 import { expect, type APIRequestContext } from '@playwright/test';
 
 export interface Seeded {
+  setting: string;
   world: string;
   location: string;
   person: string;
@@ -27,7 +28,10 @@ async function create(request: APIRequestContext, resource: string, fields: Reco
 const entry = (text: string) => [{ type: 'p', children: [{ text }] }];
 
 export async function seedWorld(request: APIRequestContext): Promise<Seeded> {
-  const world = await create(request, 'campaign', { name: 'The Salt Coast' });
+  // A setting (S6) encloses the world; its campaign-less records are its canon.
+  const setting = await create(request, 'setting', { name: 'The Grim Future', entry: entry('Ten thousand years of war.') });
+  const world = await create(request, 'campaign', { name: 'The Salt Coast', setting_id: setting });
+  await create(request, 'faction', { name: 'Adeptus Mechanicus', kind: 'religious', setting_id: setting, canon_level: 'common' });
   const coast = await create(request, 'location', { name: 'Salt Coast', kind: 'region', campaign_id: world, entry: entry('Cliffs, coves and smugglers.') });
   const location = await create(request, 'location', {
     name: 'Port Gull',
@@ -82,5 +86,5 @@ export async function seedWorld(request: APIRequestContext): Promise<Seeded> {
     mentions: [{ target_entity_type: 'person', target_entity_id: person }],
   });
   await create(request, 'entity_post', { target_entity_type: 'person', target_entity_id: person, name: 'Rumour', position: 'pinned_top', entry: entry('She once sailed with pirates.') });
-  return { world, location, person, faction, item, journal, hook, taxon };
+  return { setting, world, location, person, faction, item, journal, hook, taxon };
 }

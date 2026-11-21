@@ -143,6 +143,11 @@
     "person",
     "faction"
   ],
+  "canon_levels": [
+    "common",
+    "learned",
+    "secret"
+  ],
   "entity_types": [
     "person",
     "location",

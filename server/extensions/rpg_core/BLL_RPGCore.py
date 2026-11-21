@@ -32,7 +32,7 @@ from zephyrex.extensions.wiki_shared.Records import (  # type: ignore[import-not
     checked_name,
     with_entry_text,
 )
-from zephyrex.extensions.wiki_shared.Contract import ENTITY_TYPES, LIMITS  # type: ignore[import-not-found]
+from zephyrex.extensions.wiki_shared.Contract import CANON_LEVELS, ENTITY_TYPES, LIMITS  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Report import report_entry  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Summary import summary  # type: ignore[import-not-found]
 from zephyrex.extensions.world_inventory.BLL_WorldInventory import ItemManager, ItemModel  # type: ignore[import-not-found]
@@ -75,18 +75,68 @@ from zephyrex.pydantic2.registry import BaseModel  # type: ignore[attr-defined]
 from zephyrex.pydantic2.sqlalchemy import extension_model
 
 
+class SettingModel(
+    ApplicationModel.Optional,
+    UpdateMixinModel.Optional,
+    NameMixinModel.Optional,
+    DescriptionMixinModel.Optional,
+    metaclass=ModelMeta,
+):
+    """A setting (S6; rpg-ai DESIGN "Settings and systems", the operator, 2026-11-21): the universe
+    its campaigns take place in (Warhammer 40,000, Fantasy, Fallout, Modern…). Its canon is every
+    world record with this setting and no campaign: what anyone in it would know. VTT's game systems
+    name the settings they play in."""
+
+    Manager: ClassVar[Type["SettingManager"]] = None
+    entry: Optional[str] = Field(None, description="Its tone and vocabulary: a Plate value as JSON text")
+    table_comment: ClassVar[str] = "A setting: the universe campaigns take place in; its canon is its campaign-less records."
+
+    class Create(BaseModel):
+        name: str = Field(...)
+        description: Optional[str] = None
+        entry: Optional[Any] = None
+
+        _name = field_validator("name")(checked_name)
+
+        @model_validator(mode="after")
+        def _entry(self) -> Any:
+            return with_entry_text(self)
+
+    class Update(BaseModel):
+        name: Optional[str] = None
+        description: Optional[str] = None
+        entry: Optional[Any] = None
+
+        _name = field_validator("name")(checked_name)
+
+        @model_validator(mode="after")
+        def _entry(self) -> Any:
+            return with_entry_text(self)
+
+    class Search(ApplicationModel.Search):
+        name: Optional[StringSearchModel] = None
+
+
+class SettingManager(AbstractBLLManager, RouterMixin):
+    _model = SettingModel
+
+
+SettingModel.Manager = SettingManager
+
+
 class CampaignModel(
     ApplicationModel.Optional,
     UpdateMixinModel.Optional,
     NameMixinModel.Optional,
     DescriptionMixinModel.Optional,
     UserModel.Reference.Optional,
+    SettingModel.Reference.Optional,
     metaclass=ModelMeta,
 ):
     Manager: ClassVar[Type["CampaignManager"]] = None
     table_comment: ClassVar[str] = "A world: the top-level container every record scopes to. user_id = its owner."
 
-    class Create(BaseModel, UserModel.Reference.ID.Optional):
+    class Create(BaseModel, UserModel.Reference.ID.Optional, SettingModel.Reference.ID.Optional):
         name: str = Field(...)
         description: Optional[str] = None
 
@@ -95,10 +145,11 @@ class CampaignModel(
     class Update(BaseModel):
         name: Optional[str] = None
         description: Optional[str] = None
+        setting_id: Optional[str] = None
 
         _name = field_validator("name")(checked_name)
 
-    class Search(ApplicationModel.Search, UserModel.Reference.ID.Search):
+    class Search(ApplicationModel.Search, UserModel.Reference.ID.Search, SettingModel.Reference.ID.Search):
         name: Optional[StringSearchModel] = None
 
 
@@ -119,6 +170,8 @@ class RPG_PersonModel(BaseModel):
 
     kind: Optional[str] = Field(None, description="contract/wiki.json person_kinds")
     campaign_id: Optional[str] = Field(None, description="FK → campaigns.id; none = a template")
+    setting_id: Optional[str] = Field(None, description="FK → settings.id; with no campaign, the setting\'s canon (S6)")
+    canon_level: Optional[str] = Field(None, description="contract/wiki.json canon_levels; unset until decided")
     user_id: Optional[str] = Field(None, description="FK → users.id; the player. None = an NPC")
     location_id: Optional[str] = Field(None, description="FK → locations.id; where they are")
     entry: Optional[str] = Field(None, description="The entry: a Plate value as JSON text")
@@ -126,6 +179,8 @@ class RPG_PersonModel(BaseModel):
     class Create(BaseModel):
         kind: Optional[str] = None
         campaign_id: Optional[str] = None
+        setting_id: Optional[str] = None
+        canon_level: Optional[str] = None
         user_id: Optional[str] = None
         location_id: Optional[str] = None
         entry: Optional[Any] = None
@@ -139,6 +194,8 @@ class RPG_PersonModel(BaseModel):
     class Update(BaseModel):
         kind: Optional[str] = None
         campaign_id: Optional[str] = None
+        setting_id: Optional[str] = None
+        canon_level: Optional[str] = None
         user_id: Optional[str] = None
         location_id: Optional[str] = None
         entry: Optional[Any] = None
@@ -152,6 +209,8 @@ class RPG_PersonModel(BaseModel):
     class Search(BaseModel):
         kind: Optional[StringSearchModel] = None
         campaign_id: Optional[StringSearchModel] = None
+        setting_id: Optional[StringSearchModel] = None
+        canon_level: Optional[StringSearchModel] = None
         user_id: Optional[StringSearchModel] = None
         location_id: Optional[StringSearchModel] = None
 
@@ -161,15 +220,23 @@ class RPG_LocationModel(BaseModel):
     """A location's campaign: rpg_core scopes Tier 1 records, never the reverse."""
 
     campaign_id: Optional[str] = Field(None, description="FK → campaigns.id; none = shared across campaigns")
+    setting_id: Optional[str] = Field(None, description="FK → settings.id; with no campaign, the setting\'s canon (S6)")
+    canon_level: Optional[str] = Field(None, description="contract/wiki.json canon_levels; unset until decided")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
+        setting_id: Optional[str] = None
+        canon_level: Optional[str] = None
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
+        setting_id: Optional[str] = None
+        canon_level: Optional[str] = None
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
+        setting_id: Optional[StringSearchModel] = None
+        canon_level: Optional[StringSearchModel] = None
 
 
 @extension_model(FactionModel)
@@ -177,15 +244,23 @@ class RPG_FactionModel(BaseModel):
     """A faction's campaign: rpg_core scopes Tier 1 records, never the reverse."""
 
     campaign_id: Optional[str] = Field(None, description="FK → campaigns.id; none = shared across campaigns")
+    setting_id: Optional[str] = Field(None, description="FK → settings.id; with no campaign, the setting\'s canon (S6)")
+    canon_level: Optional[str] = Field(None, description="contract/wiki.json canon_levels; unset until decided")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
+        setting_id: Optional[str] = None
+        canon_level: Optional[str] = None
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
+        setting_id: Optional[str] = None
+        canon_level: Optional[str] = None
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
+        setting_id: Optional[StringSearchModel] = None
+        canon_level: Optional[StringSearchModel] = None
 
 
 @extension_model(ItemModel)
@@ -194,15 +269,23 @@ class RPG_ItemModel(BaseModel):
     zephyrex-vtt's rpg_systems' to add (game_systems moved there; operator, 2026-11-20)."""
 
     campaign_id: Optional[str] = Field(None, description="FK → campaigns.id; none = shared across campaigns")
+    setting_id: Optional[str] = Field(None, description="FK → settings.id; with no campaign, the setting\'s canon (S6)")
+    canon_level: Optional[str] = Field(None, description="contract/wiki.json canon_levels; unset until decided")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
+        setting_id: Optional[str] = None
+        canon_level: Optional[str] = None
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
+        setting_id: Optional[str] = None
+        canon_level: Optional[str] = None
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
+        setting_id: Optional[StringSearchModel] = None
+        canon_level: Optional[StringSearchModel] = None
 
 
 # ---------------------------------------------------------------------------
@@ -235,21 +318,100 @@ for _manager in (PersonManager, LocationManager, FactionManager, ItemManager, Jo
     hook_bll(_manager, timing=HookTiming.BEFORE, priority=20)(_world_stays)
 
 
+def _setting_fits(context: HookContext) -> None:
+    """S6: a record's setting is one of the caller's, fixed once set, and the same as its campaign's
+    (a campaign record belongs to its campaign's setting); a canon level is from the contract."""
+    if context.method_name not in ("create", "update"):
+        return
+    level = context.kwarg("canon_level", default=None)
+    if level is not None and level not in CANON_LEVELS:
+        raise HTTPException(status_code=422, detail=f"A canon level is one of: {', '.join(CANON_LEVELS)}")
+    wanted_setting = context.kwarg("setting_id", default=_UNSET)
+    wanted_campaign = context.kwarg("campaign_id", default=_UNSET)
+    current = None
+    if context.method_name == "update":
+        record_id = context.kwarg("id", default=None) or context.arg(0, default=None)
+        try:
+            current = context.manager.get(id=record_id) if record_id else None
+        except HTTPException:
+            return
+        held = getattr(current, "setting_id", None)
+        if held is not None and wanted_setting is not _UNSET and wanted_setting != held:
+            raise HTTPException(status_code=422, detail="A record's setting is fixed once set: copy it to another setting instead")
+    setting = wanted_setting if wanted_setting is not _UNSET else getattr(current, "setting_id", None)
+    campaign = wanted_campaign if wanted_campaign is not _UNSET else getattr(current, "campaign_id", None)
+    registry, requester = context.manager.model_registry, str(context.manager.requester.id)
+    if setting:
+        try:
+            _manager(registry, requester, SettingManager).get(id=setting)
+        except HTTPException as error:
+            raise HTTPException(status_code=422, detail="That setting is not one of yours") from error
+    if setting and campaign:
+        try:
+            enclosing = getattr(_manager(registry, requester, CampaignManager).get(id=campaign), "setting_id", None)
+        except HTTPException:
+            return
+        if enclosing != setting:
+            raise HTTPException(status_code=422, detail="A campaign's record belongs to its campaign's setting")
+
+
+def _campaign_setting_stays(context: HookContext) -> None:
+    """A campaign's setting is one of the caller's, and fixed once set, as a record's world is."""
+    if context.method_name not in ("create", "update"):
+        return
+    wanted = context.kwarg("setting_id", default=_UNSET)
+    record_id = context.kwarg("id", default=None) or context.arg(0, default=None)
+    if context.method_name == "create":
+        wanted = context.kwarg("setting_id", default=None)
+        if wanted:
+            try:
+                _manager(context.manager.model_registry, str(context.manager.requester.id), SettingManager).get(id=wanted)
+            except HTTPException as error:
+                raise HTTPException(status_code=422, detail="That setting is not one of yours") from error
+        return
+    if wanted is _UNSET or not record_id:
+        return
+    try:
+        held = getattr(context.manager.get(id=record_id), "setting_id", None)
+    except HTTPException:
+        return
+    if held is not None and wanted != held:
+        raise HTTPException(status_code=422, detail="A campaign's setting is fixed once set")
+    if wanted:
+        try:
+            _manager(context.manager.model_registry, str(context.manager.requester.id), SettingManager).get(id=wanted)
+        except HTTPException as error:
+            raise HTTPException(status_code=422, detail="That setting is not one of yours") from error
+
+
+for _owner in (PersonManager, LocationManager, FactionManager, ItemManager, JournalManager, HookManager, TaxonManager, StatusManager):
+    hook_bll(_owner, timing=HookTiming.BEFORE, priority=21)(_setting_fits)
+hook_bll(CampaignManager, timing=HookTiming.BEFORE, priority=21)(_campaign_setting_stays)
+
+
 
 @extension_model(JournalModel)
 class RPG_JournalModel(BaseModel):
     """A journal's campaign: rpg_core scopes Tier 1 records, never the reverse."""
 
     campaign_id: Optional[str] = Field(None, description="FK → campaigns.id; none = shared across campaigns")
+    setting_id: Optional[str] = Field(None, description="FK → settings.id; with no campaign, the setting\'s canon (S6)")
+    canon_level: Optional[str] = Field(None, description="contract/wiki.json canon_levels; unset until decided")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
+        setting_id: Optional[str] = None
+        canon_level: Optional[str] = None
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
+        setting_id: Optional[str] = None
+        canon_level: Optional[str] = None
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
+        setting_id: Optional[StringSearchModel] = None
+        canon_level: Optional[StringSearchModel] = None
 
 
 @extension_model(HookModel)
@@ -257,30 +419,46 @@ class RPG_HookModel(BaseModel):
     """A hook's campaign. Hooks stay out of world_entities: plot hooks are often GM secrets (W9)."""
 
     campaign_id: Optional[str] = Field(None, description="FK → campaigns.id; none = shared across campaigns")
+    setting_id: Optional[str] = Field(None, description="FK → settings.id; with no campaign, the setting\'s canon (S6)")
+    canon_level: Optional[str] = Field(None, description="contract/wiki.json canon_levels; unset until decided")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
+        setting_id: Optional[str] = None
+        canon_level: Optional[str] = None
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
+        setting_id: Optional[str] = None
+        canon_level: Optional[str] = None
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
+        setting_id: Optional[StringSearchModel] = None
+        canon_level: Optional[StringSearchModel] = None
 
 
 class _Campaign(BaseModel):
     """A taxonomy record's campaign: none = shared across campaigns (a tag set reused everywhere)."""
 
     campaign_id: Optional[str] = Field(None, description="FK → campaigns.id; none = shared across campaigns")
+    setting_id: Optional[str] = Field(None, description="FK → settings.id; with no campaign, the setting\'s canon (S6)")
+    canon_level: Optional[str] = Field(None, description="contract/wiki.json canon_levels; unset until decided")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
+        setting_id: Optional[str] = None
+        canon_level: Optional[str] = None
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
+        setting_id: Optional[str] = None
+        canon_level: Optional[str] = None
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
+        setting_id: Optional[StringSearchModel] = None
+        canon_level: Optional[StringSearchModel] = None
 
 
 @extension_model(TaxonModel)
@@ -487,6 +665,10 @@ class WorldEntity(PlainModel):
     picture: Optional[str]
     updated_at: datetime
     deleted: bool
+    setting_id: Optional[str] = None
+    # Canon (S6): a setting's record with no campaign, which anyone in the setting would know.
+    canon: bool = False
+    canon_level: Optional[str] = None
 
 
 class WorldEntitiesPage(PlainModel):
@@ -520,35 +702,39 @@ def _naive(moment: datetime) -> datetime:
     return moment.astimezone(timezone.utc).replace(tzinfo=None) if moment.tzinfo else moment
 
 
-def world_entities(
-    model_registry: Any,
-    requester_id: str,
-    campaign_id: str,
-    since: Optional[datetime] = None,
-    kinds: Optional[list[str]] = None,
-    after: Optional[str] = None,
-    limit: int = DEFAULT_LIMIT,
-) -> WorldEntitiesPage:
-    """One page of the campaign's changed entities, oldest first, and the cursor for the next."""
+def _checked_page(kinds: Optional[list[str]], limit: int) -> list[str]:
     if not 1 <= limit <= MAX_LIMIT:
         raise HTTPException(status_code=422, detail=f"limit is 1 to {MAX_LIMIT}")
     wanted = kinds or list(WORLD_ENTITY_MANAGERS)
     unknown = [kind for kind in wanted if kind not in WORLD_ENTITY_MANAGERS]
     if unknown:
         raise HTTPException(status_code=422, detail=f"Unknown kinds: {', '.join(unknown)}")
-    _manager(model_registry, requester_id, CampaignManager).get(id=campaign_id)
-    floor = _read_cursor(after) if after else None
-    start = _naive(since) if since else None
-    if floor and (start is None or floor[0] > start):
-        start = floor[0]
+    return wanted
+
+
+def _gather(
+    model_registry: Any,
+    requester_id: str,
+    wanted: list[str],
+    filters: dict[str, Any],
+    canon_only: bool,
+    start: Optional[datetime],
+    floor: Optional[tuple[datetime, str]],
+    limit: int,
+) -> list[WorldEntity]:
+    """The changes matching ``filters`` for each kind, past the cursor; with ``canon_only``, only
+    records with no campaign (a setting's canon)."""
     found: list[WorldEntity] = []
     for kind in wanted:
         manager = _manager(model_registry, requester_id, WORLD_ENTITY_MANAGERS[kind])
         taken, page_after = 0, None
         while taken <= limit:
-            page = manager.changes(since=start, after=page_after, limit=limit + 1, campaign_id=campaign_id)
+            page = manager.changes(since=start, after=page_after, limit=limit + 1, **filters)
             for change in page.changes:
                 record = change.record
+                campaign = getattr(record, "campaign_id", None)
+                if canon_only and campaign is not None:
+                    continue
                 entity = WorldEntity(
                     id=str(record.id),
                     kind=kind,
@@ -558,6 +744,9 @@ def world_entities(
                     picture=None,
                     updated_at=_naive(change.changed_at),
                     deleted=change.deleted_at is not None,
+                    setting_id=getattr(record, "setting_id", None),
+                    canon=campaign is None and getattr(record, "setting_id", None) is not None,
+                    canon_level=getattr(record, "canon_level", None),
                 )
                 if floor and (entity.updated_at, entity.id) <= floor:
                     continue
@@ -566,9 +755,60 @@ def world_entities(
             if not page.next:
                 break
             page_after = page.next
+    return found
+
+
+def _paged(found: list[WorldEntity], limit: int) -> WorldEntitiesPage:
     found.sort(key=lambda entity: (entity.updated_at, entity.id))
     shown = found[:limit]
     return WorldEntitiesPage(world_entities=shown, next=_cursor_of(shown[-1]) if len(found) > limit else None)
+
+
+def _window(since: Optional[datetime], after: Optional[str]) -> tuple[Optional[datetime], Optional[tuple[datetime, str]]]:
+    floor = _read_cursor(after) if after else None
+    start = _naive(since) if since else None
+    if floor and (start is None or floor[0] > start):
+        start = floor[0]
+    return start, floor
+
+
+def world_entities(
+    model_registry: Any,
+    requester_id: str,
+    campaign_id: str,
+    since: Optional[datetime] = None,
+    kinds: Optional[list[str]] = None,
+    after: Optional[str] = None,
+    limit: int = DEFAULT_LIMIT,
+    include_setting: bool = False,
+) -> WorldEntitiesPage:
+    """One page of the campaign's changed entities, oldest first, and the cursor for the next. With
+    ``include_setting``, its setting's canon comes in the same pages (S6)."""
+    wanted = _checked_page(kinds, limit)
+    campaign = _manager(model_registry, requester_id, CampaignManager).get(id=campaign_id)
+    start, floor = _window(since, after)
+    found = _gather(model_registry, requester_id, wanted, {"campaign_id": campaign_id}, False, start, floor, limit)
+    setting_id = getattr(campaign, "setting_id", None)
+    if include_setting and setting_id:
+        found += _gather(model_registry, requester_id, wanted, {"setting_id": setting_id}, True, start, floor, limit)
+    return _paged(found, limit)
+
+
+def setting_canon(
+    model_registry: Any,
+    requester_id: str,
+    setting_id: str,
+    since: Optional[datetime] = None,
+    kinds: Optional[list[str]] = None,
+    after: Optional[str] = None,
+    limit: int = DEFAULT_LIMIT,
+) -> WorldEntitiesPage:
+    """One page of a setting's canon (its records with no campaign) changed since a time, tombstones
+    included, oldest first: what rpg-ai's canon notices check against (S6)."""
+    wanted = _checked_page(kinds, limit)
+    _manager(model_registry, requester_id, SettingManager).get(id=setting_id)
+    start, floor = _window(since, after)
+    return _paged(_gather(model_registry, requester_id, wanted, {"setting_id": setting_id}, True, start, floor, limit), limit)
 
 
 class WorldEntityManager(AbstractBLLManager[Any], RouterMixin):
@@ -585,24 +825,28 @@ class WorldEntityManager(AbstractBLLManager[Any], RouterMixin):
         authentication_type="jwt",
         expose_in=(ExposeIn.REST,),
         openapi_tags=("World entities",),
-        summary="A campaign's places, people, factions, items and journals changed since a time, tombstones included",
+        summary="A campaign's (or a setting's canon) places, people, factions, items and journals changed since a time, tombstones included",
     )
     def list_route(
         self,
-        campaign_id: str,
+        campaign_id: Optional[str] = None,
+        setting_id: Optional[str] = None,
+        include_setting: bool = False,
         since: Optional[datetime] = None,
         kinds: Optional[str] = None,
         after: Optional[str] = None,
         limit: int = DEFAULT_LIMIT,
     ) -> WorldEntitiesPage:
+        """?campaign_id= (with &include_setting=true for its setting's canon too), or ?setting_id= for
+        a setting's canon alone."""
+        wanted = [kind for kind in kinds.split(",") if kind] if kinds else None
+        requester = str(self.requester.id)
+        if (campaign_id is None) == (setting_id is None):
+            raise HTTPException(status_code=422, detail="Name a campaign_id or a setting_id")
+        if setting_id is not None:
+            return setting_canon(self.model_registry, requester, setting_id, since=since, kinds=wanted, after=after, limit=limit)
         return world_entities(
-            self.model_registry,
-            str(self.requester.id),
-            campaign_id,
-            since=since,
-            kinds=[kind for kind in kinds.split(",") if kind] if kinds else None,
-            after=after,
-            limit=limit,
+            self.model_registry, requester, campaign_id or "", since=since, kinds=wanted, after=after, limit=limit, include_setting=include_setting
         )
 
 

@@ -11,6 +11,9 @@ const row = (id: string, updated: string, deleted: string | null = null) => ({
   description: `Text   of\n${id}`,
   updatedAt: at(updated),
   deletedAt: deleted === null ? null : at(deleted),
+  campaignId: 'w1' as string | null,
+  settingId: null as string | null,
+  canonLevel: null as string | null,
 });
 
 describe('entityOf', () => {
@@ -24,8 +27,18 @@ describe('entityOf', () => {
       picture: null,
       updated_at: '2026-11-20T12:00:00.000Z',
       deleted: false,
+      setting_id: null,
+      canon: false,
+      canon_level: null,
     });
     expect(entityOf('item', row('i1', '2026-11-20T13:00:00Z', '2026-11-20T13:00:00Z')).deleted).toBe(true);
+  });
+
+  it('marks a setting’s record with no campaign as canon (S6)', () => {
+    const canon = entityOf('location', { ...row('t1', '2026-11-20T12:00:00Z'), campaignId: null, settingId: 's1', canonLevel: 'common' });
+    expect([canon.canon, canon.setting_id, canon.canon_level]).toEqual([true, 's1', 'common']);
+    const local = entityOf('location', { ...row('h1', '2026-11-20T12:00:00Z'), settingId: 's1' });
+    expect(local.canon).toBe(false);
   });
 });
 

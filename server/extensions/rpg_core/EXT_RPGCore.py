@@ -113,11 +113,31 @@ class RPGCoreExtension(AbstractStaticExtension):
         kinds: Optional[list[str]] = None,
         after: Optional[str] = None,
         limit: int = 100,
+        include_setting: bool = False,
     ) -> dict[str, Any]:
-        """A campaign's changed entities since a time, tombstones included (rpg-ai A15)."""
+        """A campaign's changed entities since a time, tombstones included (rpg-ai A15); with
+        include_setting, its setting's canon too (S6)."""
         from zephyrex.extensions.rpg_core.BLL_RPGCore import world_entities  # type: ignore[import-not-found]
 
-        return world_entities(model_registry, requester_id, campaign_id, since, kinds, after, limit).model_dump(mode="json")
+        return world_entities(model_registry, requester_id, campaign_id, since, kinds, after, limit, include_setting).model_dump(mode="json")
+
+    @classmethod
+    @ability("setting_canon")
+    def setting_canon(
+        cls,
+        model_registry: Any,
+        requester_id: str,
+        setting_id: str,
+        since: Optional[datetime] = None,
+        kinds: Optional[list[str]] = None,
+        after: Optional[str] = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """A setting's canon (its records with no campaign) changed since a time, tombstones included
+        (S6): what rpg-ai's canon notices check against."""
+        from zephyrex.extensions.rpg_core.BLL_RPGCore import setting_canon  # type: ignore[import-not-found]
+
+        return setting_canon(model_registry, requester_id, setting_id, since, kinds, after, limit).model_dump(mode="json")
 
     @classmethod
     @ability("plot_state")

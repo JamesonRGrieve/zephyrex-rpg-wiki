@@ -16,6 +16,9 @@ export interface EntityRow {
   description: string | null;
   updatedAt: Date;
   deletedAt: Date | null;
+  campaignId: string | null;
+  settingId: string | null;
+  canonLevel: string | null;
 }
 
 export interface WorldEntity {
@@ -28,6 +31,10 @@ export interface WorldEntity {
   picture: string | null;
   updated_at: string;
   deleted: boolean;
+  setting_id: string | null;
+  /** Canon (S6): a setting's record with no campaign, which anyone in the setting would know. */
+  canon: boolean;
+  canon_level: string | null;
 }
 
 export const DEFAULT_LIMIT = 100;
@@ -57,6 +64,9 @@ export function entityOf(kind: WorldEntityKind, row: EntityRow): WorldEntity {
     picture: null,
     updated_at: row.updatedAt.toISOString(),
     deleted: row.deletedAt !== null,
+    setting_id: row.settingId,
+    canon: row.campaignId === null && row.settingId !== null,
+    canon_level: row.canonLevel,
   };
 }
 

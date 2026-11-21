@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /**
- * GET /v1/world_entity?campaign_id=&since=&kinds=&after=&limit= — a world's places, people,
+ * GET /v1/world_entity?campaign_id=[&include_setting=true] or ?setting_id= (a setting's canon, S6),
+ * &since=&kinds=&after=&limit= — a world's places, people,
  * factions, items and journals changed since a time, tombstones included (rpg-ai A15), as the server's rpg_core
  * answers it. Lite has one owner, so "under the caller's access" is the owner's own records.
  */
@@ -19,7 +20,16 @@ import {
   type WorldEntityKind,
 } from '~/lib/worldEntities';
 
-const SELECT = { id: true, name: true, description: true, updatedAt: true, deletedAt: true } as const;
+const SELECT = {
+  id: true,
+  name: true,
+  description: true,
+  updatedAt: true,
+  deletedAt: true,
+  campaignId: true,
+  settingId: true,
+  canonLevel: true,
+} as const;
 
 function rowsOf(kind: WorldEntityKind, where: object): Promise<EntityRow[]> {
   switch (kind) {
@@ -40,10 +50,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const owner = await localOwner(request);
     const query = request.nextUrl.searchParams;
-    const campaignId = query.get('campaign_id');
-    if (campaignId === null || campaignId === '') throw validationError('campaign_id is required', 'campaign_id');
-    if ((await prisma.campaign.count({ where: { id: campaignId, createdById: owner.id } })) === 0)
-      throw recordError(404, 'CampaignModel not found');
+    const campaignId = query.get('campaign_id') || null;
+    const settingId = query.get('setting_id') || null;
+    if ((campaignId === null) === (settingId === null)) throw validationError('Name a campaign_id or a setting_id', 'campaign_id');
+    let canonOf: string | null = settingId;
+    if (campaignId !== null) {
+      const campaign = await prisma.campaign.findFirst({ where: { id: campaignId, createdById: owner.id }, select: { settingId: true } });
+      if (campaign === null) throw recordError(404, 'CampaignModel not found');
+      canonOf = query.get('include_setting') === 'true' ? campaign.settingId : null;
+    } else if ((await prisma.setting.count({ where: { id: settingId ?? '', createdById: owner.id } })) === 0) {
+      throw recordError(404, 'SettingModel not found');
+    }
     const sinceText = query.get('since');
     const since = sinceText === null || sinceText === '' ? null : new Date(sinceText);
     if (since !== null && Number.isNaN(since.getTime())) throw validationError('since is not a date', 'since');
@@ -59,9 +76,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const after = afterText === null || afterText === '' ? null : readCursor(afterText);
     if (afterText !== null && afterText !== '' && after === null) throw validationError('after is not a cursor', 'after');
 
-    const where = { createdById: owner.id, campaignId, ...(since === null ? {} : { updatedAt: { gte: since } }) };
+    const changed = since === null ? {} : { updatedAt: { gte: since } };
+    // The campaign's own records, and (asked for, or alone) its setting's canon: no campaign.
+    const scopes: object[] = [
+      ...(campaignId === null ? [] : [{ createdById: owner.id, campaignId, ...changed }]),
+      ...(canonOf === null ? [] : [{ createdById: owner.id, settingId: canonOf, campaignId: null, ...changed }]),
+    ];
     const rows = await Promise.all(
-      (kinds as WorldEntityKind[]).map(async (kind) => (await rowsOf(kind, where)).map((row) => entityOf(kind, row))),
+      scopes.flatMap((where) =>
+        (kinds as WorldEntityKind[]).map(async (kind) => (await rowsOf(kind, where)).map((row) => entityOf(kind, row))),
+      ),
     );
     return NextResponse.json(pageOf(rows.flat(), after, limit));
   } catch (error) {

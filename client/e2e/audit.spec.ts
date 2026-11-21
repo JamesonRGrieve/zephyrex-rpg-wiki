@@ -246,6 +246,12 @@ test.describe.serial('visual audit', () => {
 
   test('a seeded world', async ({ browser, request }, testInfo) => {
     const seeded = await seedWorld(request);
+    // S6: a setting's canon read alone, and with its campaign's records (rpg-ai's canon notices).
+    const canon = (await (await request.get(`/api/v1/world_entity?setting_id=${seeded.setting}`)).json()) as { world_entities: { name: string; canon: boolean }[] };
+    expect(canon.world_entities.map((entity) => [entity.name, entity.canon])).toEqual([['Adeptus Mechanicus', true]]);
+    const both = (await (await request.get(`/api/v1/world_entity?campaign_id=${seeded.world}&include_setting=true`)).json()) as { world_entities: { name: string }[] };
+    expect(both.world_entities.map((entity) => entity.name)).toContain('Adeptus Mechanicus');
+    expect(both.world_entities.map((entity) => entity.name)).toContain('Port Gull');
     const pages = worldPages(seeded);
     const page = await browser.newPage({ baseURL: String(testInfo.project.use.baseURL) });
     await expectSeedShows(page, seeded);

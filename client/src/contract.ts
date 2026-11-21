@@ -19,4 +19,5 @@ export const STATUS_KINDS = contract.status_kinds as readonly string[];
 export const ATTITUDES = contract.attitudes as readonly string[];
 export const ATTITUDE_NUANCES = contract.attitude_nuances as Readonly<Record<string, string>>;
 export const DISPOSITION_TARGETS = contract.disposition_targets as readonly string[];
+export const CANON_LEVELS = contract.canon_levels as readonly string[];
 export const POST_POSITIONS = contract.post_positions as readonly string[];
