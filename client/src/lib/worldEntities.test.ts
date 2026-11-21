@@ -14,10 +14,12 @@ const row = (id: string, updated: string, deleted: string | null = null) => ({
   campaignId: 'w1' as string | null,
   settingId: null as string | null,
   canonLevel: null as string | null,
+  aliases: null as string | null,
+  keywords: null as string | null,
 });
 
 describe('entityOf', () => {
-  it('gives the sync shape: kind, summary from the description, no aliases yet, tombstones', () => {
+  it('gives the sync shape: kind, summary from the description, tombstones', () => {
     expect(entityOf('location', row('l1', '2026-11-20T12:00:00Z'))).toEqual({
       id: 'l1',
       kind: 'location',
@@ -30,8 +32,17 @@ describe('entityOf', () => {
       setting_id: null,
       canon: false,
       canon_level: null,
+      keywords: [],
+      voice: null,
     });
     expect(entityOf('item', row('i1', '2026-11-20T13:00:00Z', '2026-11-20T13:00:00Z')).deleted).toBe(true);
+  });
+
+  it('carries aliases and keywords, and a voice for a person only (S4c)', () => {
+    const voice = '{"personality":"Gruff","speech":"","first_message":"","examples":[]}';
+    const holst = entityOf('person', { ...row('p1', '2026-11-20T12:00:00Z'), aliases: '["Old Holst"]', keywords: '["stable"]', voice });
+    expect([holst.aliases, holst.keywords, holst.voice?.personality]).toEqual([['Old Holst'], ['stable'], 'Gruff']);
+    expect(entityOf('location', { ...row('l1', '2026-11-20T12:00:00Z'), voice }).voice).toBeNull();
   });
 
   it('marks a setting’s record with no campaign as canon (S6)', () => {

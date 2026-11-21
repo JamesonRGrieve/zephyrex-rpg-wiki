@@ -327,6 +327,7 @@ class TestWorldEntities:
         assert by_name["Harbour"] | {"updated_at": None} == {
             "id": harbour["id"], "kind": "location", "name": "Harbour", "aliases": [], "summary": "A port city.",
             "picture": None, "updated_at": None, "deleted": False, "setting_id": None, "canon": False, "canon_level": None,
+            "keywords": [], "voice": None,
         }
         assert page["next"] is None
 
@@ -796,3 +797,27 @@ class TestPropertiesKitsTemplates:
         )
         assert saved.status_code == 201, saved.text
         assert server.get(f"/v1/person/{saved.json()['id']}", headers=_headers(person)).json()["person"]["is_template"] is True
+
+
+class TestNamesAndVoice:
+    """S4c: aliases and keywords on every world record, and a person's AI voice, kept as JSON text
+    and carried by world_entities for rpg-ai's lorebook (activation keys on name, aliases and keywords)."""
+
+    def test_world_entities_carry_aliases_keywords_and_a_persons_voice(self, server: TestClient, person: Any) -> None:
+        campaign = _create(server, person, "campaign", name="Named")
+        marsh = _create(server, person, "location", name="Brindlemarsh", kind="city", campaign_id=campaign["id"], aliases=[" The Marsh Town ", "the marsh town"], keywords=["stilts"])
+        assert (json.loads(marsh["aliases"]), json.loads(marsh["keywords"])) == (["The Marsh Town"], ["stilts"])
+        voice = {"personality": "Gruff", "speech": "Short words.", "first_message": "What?", "examples": ["Holst: No."]}
+        _create(server, person, "person", name="Holst", kind="npc", campaign_id=campaign["id"], aliases=["Old Holst"], voice=voice)
+        listed = server.get(f"/v1/world_entity?campaign_id={campaign['id']}", headers=_headers(person)).json()["world_entities"]
+        by_name = {entity["name"]: entity for entity in listed}
+        assert (by_name["Brindlemarsh"]["aliases"], by_name["Brindlemarsh"]["keywords"], by_name["Brindlemarsh"]["voice"]) == (["The Marsh Town"], ["stilts"], None)
+        assert (by_name["Holst"]["aliases"], by_name["Holst"]["voice"]) == (["Old Holst"], voice)
+        refused = [
+            ("location", {"name": "Bad", "aliases": "not a list"}),
+            ("person", {"name": "Bad", "voice": {"mood": "sad"}}),
+            ("person", {"name": "Bad", "aliases": [f"n{index}" for index in range(51)]}),
+        ]
+        for resource, body in refused:
+            response = server.post(f"/v1/{resource}", json={resource: body}, headers=_headers(person))
+            assert response.status_code == 422, (resource, response.text)

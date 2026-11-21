@@ -5,6 +5,7 @@
  * {id, kind, name, aliases, summary, picture, updated_at, deleted}, paged by (updated_at, id) with an opaque
  * cursor. Deleted ones are tombstones. The paging is pure, here; the lite route reads the rows.
  */
+import { storedNames, storedVoice, type Voice } from '~/lib/names';
 import { summary } from '~/lib/summary';
 
 export const WORLD_ENTITY_KINDS = ['location', 'person', 'faction', 'item', 'journal'] as const;
@@ -19,6 +20,10 @@ export interface EntityRow {
   campaignId: string | null;
   settingId: string | null;
   canonLevel: string | null;
+  aliases: string | null;
+  keywords: string | null;
+  /** A person's AI voice (S4c); other kinds have none. */
+  voice?: string | null;
 }
 
 export interface WorldEntity {
@@ -35,6 +40,10 @@ export interface WorldEntity {
   /** Canon (S6): a setting's record with no campaign, which anyone in the setting would know. */
   canon: boolean;
   canon_level: string | null;
+  /** S4c: what else wakes it in the AI's lorebook, beyond name and aliases. */
+  keywords: string[];
+  /** S4c: how the AI plays a person; null for other kinds. */
+  voice: Voice | null;
 }
 
 export const DEFAULT_LIMIT = 100;
@@ -59,7 +68,7 @@ export function entityOf(kind: WorldEntityKind, row: EntityRow): WorldEntity {
     id: row.id,
     kind,
     name: row.name,
-    aliases: [],
+    aliases: storedNames(row.aliases),
     summary: summary(row.description),
     picture: null,
     updated_at: row.updatedAt.toISOString(),
@@ -67,6 +76,8 @@ export function entityOf(kind: WorldEntityKind, row: EntityRow): WorldEntity {
     setting_id: row.settingId,
     canon: row.campaignId === null && row.settingId !== null,
     canon_level: row.canonLevel,
+    keywords: storedNames(row.keywords),
+    voice: kind === 'person' ? storedVoice(row.voice ?? null) : null,
   };
 }
 

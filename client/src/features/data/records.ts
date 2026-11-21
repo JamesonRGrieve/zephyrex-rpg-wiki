@@ -59,6 +59,9 @@ export const placeSchema = z.object({
   associated_person_id: z.string().nullable(),
   /** A template (S4b, W7): copied into worlds, never a world fact. */
   is_template: z.boolean().nullish(),
+  /** S4c: other names it goes by, and what else wakes it in the AI's lorebook (JSON text). */
+  aliases: z.string().nullish(),
+  keywords: z.string().nullish(),
 });
 export type Place = z.infer<typeof placeSchema>;
 
@@ -72,6 +75,11 @@ export const personSchema = z.object({
   location_id: z.string().nullable(),
   /** A template (S4b, W7): copied into worlds, never a world fact. */
   is_template: z.boolean().nullish(),
+  /** S4c: other names it goes by, and what else wakes it in the AI's lorebook (JSON text). */
+  aliases: z.string().nullish(),
+  keywords: z.string().nullish(),
+  /** S4c: how the AI plays them (JSON text); for the GM. */
+  voice: z.string().nullish(),
 });
 export type Person = z.infer<typeof personSchema>;
 
@@ -85,6 +93,9 @@ export const factionSchema = z.object({
   campaign_id: z.string().nullable(),
   /** A template (S4b, W7): copied into worlds, never a world fact. */
   is_template: z.boolean().nullish(),
+  /** S4c: other names it goes by, and what else wakes it in the AI's lorebook (JSON text). */
+  aliases: z.string().nullish(),
+  keywords: z.string().nullish(),
 });
 export type Faction = z.infer<typeof factionSchema>;
 
@@ -100,6 +111,9 @@ export const itemSchema = z.object({
   campaign_id: z.string().nullable(),
   /** A template (S4b, W7): copied into worlds, never a world fact. */
   is_template: z.boolean().nullish(),
+  /** S4c: other names it goes by, and what else wakes it in the AI's lorebook (JSON text). */
+  aliases: z.string().nullish(),
+  keywords: z.string().nullish(),
 });
 export type Item = z.infer<typeof itemSchema>;
 
@@ -135,6 +149,9 @@ export const journalSchema = z.object({
   campaign_id: z.string().nullable(),
   /** A template (S4b, W7): copied into worlds, never a world fact. */
   is_template: z.boolean().nullish(),
+  /** S4c: other names it goes by, and what else wakes it in the AI's lorebook (JSON text). */
+  aliases: z.string().nullish(),
+  keywords: z.string().nullish(),
 });
 export type Journal = z.infer<typeof journalSchema>;
 
@@ -165,6 +182,9 @@ export const hookSchema = z.object({
   campaign_id: z.string().nullable(),
   /** A template (S4b, W7): copied into worlds, never a world fact. */
   is_template: z.boolean().nullish(),
+  /** S4c: other names it goes by, and what else wakes it in the AI's lorebook (JSON text). */
+  aliases: z.string().nullish(),
+  keywords: z.string().nullish(),
 });
 export type Hook = z.infer<typeof hookSchema>;
 

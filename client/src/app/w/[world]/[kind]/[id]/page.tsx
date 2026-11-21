@@ -19,6 +19,7 @@ import { HookLinks, type LinkedHook, type Taker } from '~/components/world/HookL
 import { type CarriedLine, InventoryList } from '~/components/world/InventoryList';
 import { PostList } from '~/components/world/PostList';
 import { PropertyList } from '~/components/world/PropertyList';
+import { VoicePanel } from '~/components/world/VoicePanel';
 import { type RelationLine, RelationList } from '~/components/world/RelationList';
 import { type Chip, TaxonChips } from '~/components/world/TaxonChips';
 import { ENTITY_KINDS, type EntityKind, isEntityKind } from '~/components/world/kinds';
@@ -48,6 +49,7 @@ import {
   taxa,
 } from '~/features/data/records';
 import { currentAttitude } from '~/lib/dispositions';
+import { storedNames, storedVoice } from '~/lib/names';
 import { describeRequirement } from '~/lib/requirements';
 
 interface Shown {
@@ -56,6 +58,29 @@ interface Shown {
   entry: string | null;
   description: string | null;
   is_template?: boolean | null;
+  aliases?: string | null;
+  keywords?: string | null;
+}
+
+/** Other names a record goes by, and what else wakes it in the AI's lorebook (S4c). */
+function Names({ aliases, keywords }: { aliases: string[]; keywords: string[] }): ReactElement | null {
+  if (aliases.length === 0 && keywords.length === 0) return null;
+  return (
+    <dl className='grid gap-1 text-sm'>
+      {aliases.length > 0 && (
+        <div className='flex flex-wrap gap-x-2'>
+          <dt className='text-muted-foreground'>Also called</dt>
+          <dd className='[overflow-wrap:anywhere]'>{aliases.join(', ')}</dd>
+        </div>
+      )}
+      {keywords.length > 0 && (
+        <div className='flex flex-wrap gap-x-2'>
+          <dt className='text-muted-foreground'>Lorebook keys</dt>
+          <dd className='[overflow-wrap:anywhere]'>{keywords.join(', ')}</dd>
+        </div>
+      )}
+    </dl>
+  );
 }
 
 const propertyId = (row: Property): string => row.id;
@@ -294,6 +319,7 @@ function Record({
           {record.is_template === true && (
             <p className='rounded-md border px-3 py-2 text-sm'>A template: copied into worlds, never one of a world&rsquo;s facts.</p>
           )}
+          <Names aliases={storedNames(record.aliases ?? null)} keywords={storedNames(record.keywords ?? null)} />
           <EntityPage kind={record.kind} entry={record.entry} description={record.description} where={where} />
           {extra}
           {can.properties && <Properties type={kind} id={id} />}
@@ -316,6 +342,24 @@ function PlacePage({ world, id, can }: { world: string; id: string; can: Capabil
   return <Record world={world} kind='location' id={id} record={one.data} error={one.error} onRetry={() => one.mutate()} where={where} canCarry={can.items} canPost={can.posts} />;
 }
 
+/** How the AI plays a person (S4c), edited in place. */
+function Voice({ id }: { id: string }): ReactElement | null {
+  const one = people.useOne(id);
+  const { update } = people.useActions();
+  const writes = useWrites(() => one.mutate());
+  const person = one.data;
+  if (person === undefined) return null;
+  return (
+    <VoicePanel
+      voice={storedVoice(person.voice ?? null)}
+      canEdit
+      onSave={async (voice) =>
+        (await writes.run(update(person, { voice: JSON.stringify(voice) }), 'The voice could not be saved', 'Voice saved')) ? null : 'The voice could not be saved'
+      }
+    />
+  );
+}
+
 function PersonPage({ world, id, can }: { world: string; id: string; can: Capabilities }): ReactElement {
   const one = people.useOne(id);
   const place = places.useOne(one.data?.location_id ?? null);
@@ -331,7 +375,12 @@ function PersonPage({ world, id, can }: { world: string; id: string; can: Capabi
       where={where}
       canCarry={can.items}
       canPost={can.posts}
-      extra={can.hooks ? <Dispositions world={world} id={id} /> : undefined}
+      extra={
+        <>
+          <Voice id={id} />
+          {can.hooks && <Dispositions world={world} id={id} />}
+        </>
+      }
     />
   );
 }

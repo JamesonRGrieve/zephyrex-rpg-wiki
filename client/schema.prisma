@@ -58,6 +58,9 @@ model Location {
   settingId   String?
   canonLevel  String?
   isTemplate  Boolean?
+  /// S4c: other names it goes by, and what else wakes it in the AI's lorebook (JSON text).
+  aliases     String?
+  keywords    String?
   /// The person it belongs to: their equipment slots and body parts (what they wear sits there).
   associatedPersonId String?
   createdAt    DateTime @default(now())
@@ -87,6 +90,11 @@ model Person {
   settingId   String?
   canonLevel  String?
   isTemplate  Boolean?
+  /// S4c: other names it goes by, and what else wakes it in the AI's lorebook (JSON text).
+  aliases     String?
+  keywords    String?
+  /// S4c: how the AI plays them (JSON text: personality, speech, first_message, examples); GM-facing.
+  voice       String?
   locationId   String?
   gender       String?
   birthDate    DateTime?
@@ -117,6 +125,9 @@ model Faction {
   settingId   String?
   canonLevel  String?
   isTemplate  Boolean?
+  /// S4c: other names it goes by, and what else wakes it in the AI's lorebook (JSON text).
+  aliases     String?
+  keywords    String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime
   updatedById  String?
@@ -146,6 +157,9 @@ model Item {
   settingId   String?
   canonLevel  String?
   isTemplate  Boolean?
+  /// S4c: other names it goes by, and what else wakes it in the AI's lorebook (JSON text).
+  aliases     String?
+  keywords    String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime
   updatedById  String?
@@ -209,6 +223,9 @@ model Journal {
   settingId     String?
   canonLevel    String?
   isTemplate    Boolean?
+  /// S4c: other names it goes by, and what else wakes it in the AI's lorebook (JSON text).
+  aliases       String?
+  keywords      String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime
   updatedById    String?
@@ -261,6 +278,9 @@ model Hook {
   settingId     String?
   canonLevel    String?
   isTemplate    Boolean?
+  /// S4c: other names it goes by, and what else wakes it in the AI's lorebook (JSON text).
+  aliases       String?
+  keywords      String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime
   updatedById    String?

@@ -226,7 +226,7 @@ async function expectSeedShows(page: Page, seeded: Seeded): Promise<void> {
   const shows: [string, string[]][] = [
     ['/w', ['The Salt Coast']],
     [`${w}/location`, ['Port Gull', 'Salt Coast']],
-    [`${w}/person/${seeded.person}`, ['Lamplighters', 'Alive', 'Lantern Guild', 'Captain Ross', 'Rumour', 'guarded (cautious-neutral)', 'Since Find the lost map', '-20']],
+    [`${w}/person/${seeded.person}`, ['Lamplighters', 'Alive', 'Lantern Guild', 'Captain Ross', 'Rumour', 'guarded (cautious-neutral)', 'Since Find the lost map', '-20', 'The Lantern Keeper', 'Mira: Mind the seventh step.']],
     [`${w}/faction/${seeded.faction}`, ['Mira of the Lantern']],
     [`${w}/hook/${seeded.hook}`, ['Find the lost map', 'Mira of the Lantern', 'Can happen now']],
     [`${w}/plot`, ['Recover the relic', 'Hear the vox ghost', 'Rech needs the relic before he can start.', 'Find the lost map']],
@@ -282,6 +282,9 @@ test.describe.serial('visual audit', () => {
     expect(template.status(), await template.text()).toBe(201);
     const synced = (await (await request.get(`/api/v1/world_entity?campaign_id=${seeded.world}`)).json()) as { world_entities: { name: string }[] };
     expect(synced.world_entities.map((entity) => entity.name)).not.toContain('Shrine (template)');
+    // S4c: aliases, lorebook keys and a person's voice reach the sync.
+    const mira = (synced.world_entities as { name: string; aliases?: string[]; keywords?: string[]; voice?: { personality: string } | null }[]).find((entity) => entity.name === 'Mira of the Lantern');
+    expect([mira?.aliases, mira?.keywords, mira?.voice?.personality]).toEqual([['The Lantern Keeper'], ['harbour light'], 'Patient, watchful, kind to sailors.']);
     const pages = worldPages(seeded);
     const page = await browser.newPage({ baseURL: String(testInfo.project.use.baseURL) });
     await expectSeedShows(page, seeded);

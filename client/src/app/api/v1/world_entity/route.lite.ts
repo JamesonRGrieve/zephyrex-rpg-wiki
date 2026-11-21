@@ -30,6 +30,8 @@ const SELECT = {
   campaignId: true,
   settingId: true,
   canonLevel: true,
+  aliases: true,
+  keywords: true,
 } as const;
 
 function rowsOf(kind: WorldEntityKind, where: object): Promise<EntityRow[]> {
@@ -37,7 +39,7 @@ function rowsOf(kind: WorldEntityKind, where: object): Promise<EntityRow[]> {
     case 'location':
       return prisma.location.findMany({ where, select: SELECT });
     case 'person':
-      return prisma.person.findMany({ where, select: SELECT });
+      return prisma.person.findMany({ where, select: { ...SELECT, voice: true } });
     case 'faction':
       return prisma.faction.findMany({ where, select: SELECT });
     case 'item':

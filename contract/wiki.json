@@ -11,7 +11,10 @@
     "requirement_depth": 16,
     "property_key_characters": 100,
     "property_value_characters": 10000,
-    "properties_per_record": 200
+    "properties_per_record": 200,
+    "names_per_list": 50,
+    "voice_characters": 20000,
+    "voice_examples": 20
   },
   "location_kinds": [
     "system",

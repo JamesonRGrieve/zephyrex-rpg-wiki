@@ -33,6 +33,7 @@ import { wouldCloseCycle } from '~/lib/hookGraph';
 import { checkedRequirement, leavesOf, RequirementError } from '~/lib/requirements';
 import { prisma } from '~/lib/prisma';
 import { checkedKit, KitError } from '~/lib/properties';
+import { names, voice } from '~/lib/names';
 import { freeSlug, isSlug, SLUG_RULE, slugify } from '~/lib/slug';
 
 const name = z.string().trim().min(1, 'A name is required').max(LIMITS.name_characters);
@@ -98,6 +99,26 @@ function checkWorldStays(current: string | null | undefined, wanted: unknown): v
 }
 
 const canonLevel = kindOf(CANON_LEVELS);
+
+/** S4c: a list of names (aliases, keywords), kept as JSON text, as the server's. */
+const nameList = z.unknown().transform((value, context) => {
+  try {
+    return JSON.stringify(names(value));
+  } catch (error) {
+    context.addIssue({ code: 'custom', message: error instanceof Error ? error.message : String(error) });
+    return z.NEVER;
+  }
+});
+
+/** S4c: a person's AI voice, kept as JSON text, as the server's. */
+const voiceText = z.unknown().transform((value, context) => {
+  try {
+    return JSON.stringify(voice(value));
+  } catch (error) {
+    context.addIssue({ code: 'custom', message: error instanceof Error ? error.message : String(error) });
+    return z.NEVER;
+  }
+});
 
 /** S4b, as the server's rpg_core: a record is a template or not from its creation (making one is a copy). */
 function checkTemplateStays(current: boolean | null, wanted: boolean | null | undefined): void {
@@ -332,6 +353,8 @@ const LOCATION_COLUMNS: Columns = {
   setting_id: plain('settingId'),
   canon_level: plain('canonLevel'),
   is_template: plain('isTemplate'),
+  aliases: plain('aliases'),
+  keywords: plain('keywords'),
   associated_person_id: plain('associatedPersonId'),
 };
 const locationFields = {
@@ -344,6 +367,8 @@ const locationFields = {
   setting_id: reference,
   canon_level: canonLevel,
   is_template: z.boolean().nullable(),
+  aliases: nameList,
+  keywords: nameList,
   associated_person_id: reference,
 };
 const locationCreate = z.object({
@@ -356,6 +381,8 @@ const locationCreate = z.object({
   setting_id: reference.default(null),
   canon_level: canonLevel.default(null),
   is_template: z.boolean().nullable().default(null),
+  aliases: nameList.optional(),
+  keywords: nameList.optional(),
   associated_person_id: reference.default(null),
 });
 const locationUpdate = z.object(locationFields).partial();
@@ -454,6 +481,9 @@ const PERSON_COLUMNS: Columns = {
   setting_id: plain('settingId'),
   canon_level: plain('canonLevel'),
   is_template: plain('isTemplate'),
+  aliases: plain('aliases'),
+  keywords: plain('keywords'),
+  voice: plain('voice'),
   location_id: plain('locationId'),
   gender: plain('gender'),
 };
@@ -466,6 +496,9 @@ const personFields = {
   setting_id: reference,
   canon_level: canonLevel,
   is_template: z.boolean().nullable(),
+  aliases: nameList,
+  keywords: nameList,
+  voice: voiceText,
   location_id: reference,
   gender: z.string().max(LIMITS.name_characters).nullable(),
 };
@@ -478,6 +511,9 @@ const personCreate = z.object({
   setting_id: reference.default(null),
   canon_level: canonLevel.default(null),
   is_template: z.boolean().nullable().default(null),
+  aliases: nameList.optional(),
+  keywords: nameList.optional(),
+  voice: voiceText.optional(),
   location_id: reference.default(null),
   gender: personFields.gender.default(null),
 });
@@ -558,6 +594,8 @@ const FACTION_COLUMNS: Columns = {
   setting_id: plain('settingId'),
   canon_level: plain('canonLevel'),
   is_template: plain('isTemplate'),
+  aliases: plain('aliases'),
+  keywords: plain('keywords'),
 };
 const factionCreate = z.object({
   name,
@@ -569,9 +607,11 @@ const factionCreate = z.object({
   setting_id: reference.default(null),
   canon_level: canonLevel.default(null),
   is_template: z.boolean().nullable().default(null),
+  aliases: nameList.optional(),
+  keywords: nameList.optional(),
 });
 const factionUpdate = z
-  .object({ name, description: z.string(), entry, kind: kindOf(FACTION_KINDS), parent_id: reference, campaign_id: reference, setting_id: reference, canon_level: canonLevel, is_template: z.boolean().nullable() })
+  .object({ name, description: z.string(), entry, kind: kindOf(FACTION_KINDS), parent_id: reference, campaign_id: reference, setting_id: reference, canon_level: canonLevel, is_template: z.boolean().nullable(), aliases: nameList, keywords: nameList })
   .partial();
 type FactionRow = Prisma.FactionGetPayload<object>;
 
@@ -657,6 +697,8 @@ const ITEM_COLUMNS: Columns = {
   setting_id: plain('settingId'),
   canon_level: plain('canonLevel'),
   is_template: plain('isTemplate'),
+  aliases: plain('aliases'),
+  keywords: plain('keywords'),
 };
 const itemCreate = z.object({
   name,
@@ -670,6 +712,8 @@ const itemCreate = z.object({
   setting_id: reference.default(null),
   canon_level: canonLevel.default(null),
   is_template: z.boolean().nullable().default(null),
+  aliases: nameList.optional(),
+  keywords: nameList.optional(),
 });
 const itemUpdate = z
   .object({
@@ -684,6 +728,8 @@ const itemUpdate = z
     setting_id: reference,
     canon_level: canonLevel,
     is_template: z.boolean().nullable(),
+    aliases: nameList,
+    keywords: nameList,
   })
   .partial();
 type ItemRow = Prisma.ItemGetPayload<object>;
@@ -907,6 +953,8 @@ const JOURNAL_COLUMNS: Columns = {
   setting_id: plain('settingId'),
   canon_level: plain('canonLevel'),
   is_template: plain('isTemplate'),
+  aliases: plain('aliases'),
+  keywords: plain('keywords'),
 };
 const sessionNumber = z.number().int().min(1, 'A session number is a whole number of one or more').nullable();
 const moment = z.coerce.date().nullable();
@@ -923,6 +971,8 @@ const journalCreate = z.object({
   setting_id: reference.default(null),
   canon_level: canonLevel.default(null),
   is_template: z.boolean().nullable().default(null),
+  aliases: nameList.optional(),
+  keywords: nameList.optional(),
 });
 const journalUpdate = z
   .object({
@@ -938,6 +988,8 @@ const journalUpdate = z
     setting_id: reference,
     canon_level: canonLevel,
     is_template: z.boolean().nullable(),
+    aliases: nameList,
+    keywords: nameList,
   })
   .partial();
 type JournalRow = Prisma.JournalGetPayload<object>;
@@ -1152,6 +1204,8 @@ const HOOK_COLUMNS: Columns = {
   setting_id: plain('settingId'),
   canon_level: plain('canonLevel'),
   is_template: plain('isTemplate'),
+  aliases: plain('aliases'),
+  keywords: plain('keywords'),
 };
 const hookCreate = z.object({
   name,
@@ -1168,6 +1222,8 @@ const hookCreate = z.object({
   setting_id: reference.default(null),
   canon_level: canonLevel.default(null),
   is_template: z.boolean().nullable().default(null),
+  aliases: nameList.optional(),
+  keywords: nameList.optional(),
 });
 const hookUpdate = z
   .object({
@@ -1185,6 +1241,8 @@ const hookUpdate = z
     setting_id: reference,
     canon_level: canonLevel,
     is_template: z.boolean().nullable(),
+    aliases: nameList,
+    keywords: nameList,
   })
   .partial();
 type HookRow = Prisma.HookGetPayload<object>;

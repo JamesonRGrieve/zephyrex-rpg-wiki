@@ -13,6 +13,7 @@ CONTRACT_PATH = REPOSITORY_ROOT / "contract" / "wiki.json"
 ENTRY_TEXT_CASES_PATH = REPOSITORY_ROOT / "contract" / "entry-text-cases.json"
 SLUG_CASES_PATH = REPOSITORY_ROOT / "contract" / "slug-cases.json"
 KIT_CASES_PATH = REPOSITORY_ROOT / "contract" / "property-kit-cases.json"
+NAME_LIST_CASES_PATH = REPOSITORY_ROOT / "contract" / "name-list-cases.json"
 
 CONTRACT: dict[str, Any] = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 LIMITS: dict[str, int] = CONTRACT["limits"]

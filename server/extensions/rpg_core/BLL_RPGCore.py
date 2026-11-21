@@ -35,6 +35,7 @@ from zephyrex.extensions.wiki_shared.Records import (  # type: ignore[import-not
     slugify,
     with_entry_text,
 )
+from zephyrex.extensions.wiki_shared.Names import names_text, stored_names, stored_voice, voice_text  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Contract import ATTACHMENT_ROLES, CANON_LEVELS, ENTITY_TYPES, LIMITS  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Report import report_entry  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Summary import summary  # type: ignore[import-not-found]
@@ -235,6 +236,9 @@ class RPG_PersonModel(BaseModel):
     setting_id: Optional[str] = Field(None, description="FK → settings.id; with no campaign, the setting\'s canon (S6)")
     canon_level: Optional[str] = Field(None, description="contract/wiki.json canon_levels; unset until decided")
     is_template: Optional[bool] = Field(None, description="A template (W7): copied into campaigns, never a world fact")
+    aliases: Optional[str] = Field(None, description="Other names it goes by, as JSON text (S4c)")
+    keywords: Optional[str] = Field(None, description="What else wakes it in the AI's lorebook, as JSON text (S4c)")
+    voice: Optional[str] = Field(None, description="How the AI plays them: personality, speech, first_message, examples, as JSON text (S4c; GM-facing)")
     user_id: Optional[str] = Field(None, description="FK → users.id; the player. None = an NPC")
     location_id: Optional[str] = Field(None, description="FK → locations.id; where they are")
     entry: Optional[str] = Field(None, description="The entry: a Plate value as JSON text")
@@ -245,6 +249,13 @@ class RPG_PersonModel(BaseModel):
         setting_id: Optional[str] = None
         canon_level: Optional[str] = None
         is_template: Optional[bool] = None
+        aliases: Optional[Any] = None
+        keywords: Optional[Any] = None
+
+        _aliases = field_validator("aliases")(names_text)
+        _keywords = field_validator("keywords")(names_text)
+        voice: Optional[Any] = None
+        _voice = field_validator("voice")(voice_text)
         user_id: Optional[str] = None
         location_id: Optional[str] = None
         entry: Optional[Any] = None
@@ -261,6 +272,13 @@ class RPG_PersonModel(BaseModel):
         setting_id: Optional[str] = None
         canon_level: Optional[str] = None
         is_template: Optional[bool] = None
+        aliases: Optional[Any] = None
+        keywords: Optional[Any] = None
+
+        _aliases = field_validator("aliases")(names_text)
+        _keywords = field_validator("keywords")(names_text)
+        voice: Optional[Any] = None
+        _voice = field_validator("voice")(voice_text)
         user_id: Optional[str] = None
         location_id: Optional[str] = None
         entry: Optional[Any] = None
@@ -289,18 +307,30 @@ class RPG_LocationModel(BaseModel):
     setting_id: Optional[str] = Field(None, description="FK → settings.id; with no campaign, the setting\'s canon (S6)")
     canon_level: Optional[str] = Field(None, description="contract/wiki.json canon_levels; unset until decided")
     is_template: Optional[bool] = Field(None, description="A template (W7): copied into campaigns, never a world fact")
+    aliases: Optional[str] = Field(None, description="Other names it goes by, as JSON text (S4c)")
+    keywords: Optional[str] = Field(None, description="What else wakes it in the AI's lorebook, as JSON text (S4c)")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
         setting_id: Optional[str] = None
         canon_level: Optional[str] = None
         is_template: Optional[bool] = None
+        aliases: Optional[Any] = None
+        keywords: Optional[Any] = None
+
+        _aliases = field_validator("aliases")(names_text)
+        _keywords = field_validator("keywords")(names_text)
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
         setting_id: Optional[str] = None
         canon_level: Optional[str] = None
         is_template: Optional[bool] = None
+        aliases: Optional[Any] = None
+        keywords: Optional[Any] = None
+
+        _aliases = field_validator("aliases")(names_text)
+        _keywords = field_validator("keywords")(names_text)
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
@@ -317,18 +347,30 @@ class RPG_FactionModel(BaseModel):
     setting_id: Optional[str] = Field(None, description="FK → settings.id; with no campaign, the setting\'s canon (S6)")
     canon_level: Optional[str] = Field(None, description="contract/wiki.json canon_levels; unset until decided")
     is_template: Optional[bool] = Field(None, description="A template (W7): copied into campaigns, never a world fact")
+    aliases: Optional[str] = Field(None, description="Other names it goes by, as JSON text (S4c)")
+    keywords: Optional[str] = Field(None, description="What else wakes it in the AI's lorebook, as JSON text (S4c)")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
         setting_id: Optional[str] = None
         canon_level: Optional[str] = None
         is_template: Optional[bool] = None
+        aliases: Optional[Any] = None
+        keywords: Optional[Any] = None
+
+        _aliases = field_validator("aliases")(names_text)
+        _keywords = field_validator("keywords")(names_text)
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
         setting_id: Optional[str] = None
         canon_level: Optional[str] = None
         is_template: Optional[bool] = None
+        aliases: Optional[Any] = None
+        keywords: Optional[Any] = None
+
+        _aliases = field_validator("aliases")(names_text)
+        _keywords = field_validator("keywords")(names_text)
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
@@ -346,18 +388,30 @@ class RPG_ItemModel(BaseModel):
     setting_id: Optional[str] = Field(None, description="FK → settings.id; with no campaign, the setting\'s canon (S6)")
     canon_level: Optional[str] = Field(None, description="contract/wiki.json canon_levels; unset until decided")
     is_template: Optional[bool] = Field(None, description="A template (W7): copied into campaigns, never a world fact")
+    aliases: Optional[str] = Field(None, description="Other names it goes by, as JSON text (S4c)")
+    keywords: Optional[str] = Field(None, description="What else wakes it in the AI's lorebook, as JSON text (S4c)")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
         setting_id: Optional[str] = None
         canon_level: Optional[str] = None
         is_template: Optional[bool] = None
+        aliases: Optional[Any] = None
+        keywords: Optional[Any] = None
+
+        _aliases = field_validator("aliases")(names_text)
+        _keywords = field_validator("keywords")(names_text)
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
         setting_id: Optional[str] = None
         canon_level: Optional[str] = None
         is_template: Optional[bool] = None
+        aliases: Optional[Any] = None
+        keywords: Optional[Any] = None
+
+        _aliases = field_validator("aliases")(names_text)
+        _keywords = field_validator("keywords")(names_text)
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
@@ -497,18 +551,30 @@ class RPG_JournalModel(BaseModel):
     setting_id: Optional[str] = Field(None, description="FK → settings.id; with no campaign, the setting\'s canon (S6)")
     canon_level: Optional[str] = Field(None, description="contract/wiki.json canon_levels; unset until decided")
     is_template: Optional[bool] = Field(None, description="A template (W7): copied into campaigns, never a world fact")
+    aliases: Optional[str] = Field(None, description="Other names it goes by, as JSON text (S4c)")
+    keywords: Optional[str] = Field(None, description="What else wakes it in the AI's lorebook, as JSON text (S4c)")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
         setting_id: Optional[str] = None
         canon_level: Optional[str] = None
         is_template: Optional[bool] = None
+        aliases: Optional[Any] = None
+        keywords: Optional[Any] = None
+
+        _aliases = field_validator("aliases")(names_text)
+        _keywords = field_validator("keywords")(names_text)
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
         setting_id: Optional[str] = None
         canon_level: Optional[str] = None
         is_template: Optional[bool] = None
+        aliases: Optional[Any] = None
+        keywords: Optional[Any] = None
+
+        _aliases = field_validator("aliases")(names_text)
+        _keywords = field_validator("keywords")(names_text)
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
@@ -525,18 +591,30 @@ class RPG_HookModel(BaseModel):
     setting_id: Optional[str] = Field(None, description="FK → settings.id; with no campaign, the setting\'s canon (S6)")
     canon_level: Optional[str] = Field(None, description="contract/wiki.json canon_levels; unset until decided")
     is_template: Optional[bool] = Field(None, description="A template (W7): copied into campaigns, never a world fact")
+    aliases: Optional[str] = Field(None, description="Other names it goes by, as JSON text (S4c)")
+    keywords: Optional[str] = Field(None, description="What else wakes it in the AI's lorebook, as JSON text (S4c)")
 
     class Create(BaseModel):
         campaign_id: Optional[str] = None
         setting_id: Optional[str] = None
         canon_level: Optional[str] = None
         is_template: Optional[bool] = None
+        aliases: Optional[Any] = None
+        keywords: Optional[Any] = None
+
+        _aliases = field_validator("aliases")(names_text)
+        _keywords = field_validator("keywords")(names_text)
 
     class Update(BaseModel):
         campaign_id: Optional[str] = None
         setting_id: Optional[str] = None
         canon_level: Optional[str] = None
         is_template: Optional[bool] = None
+        aliases: Optional[Any] = None
+        keywords: Optional[Any] = None
+
+        _aliases = field_validator("aliases")(names_text)
+        _keywords = field_validator("keywords")(names_text)
 
     class Search(BaseModel):
         campaign_id: Optional[StringSearchModel] = None
@@ -768,7 +846,8 @@ class SessionReportManager(AbstractBLLManager[Any], RouterMixin):
 # ---------------------------------------------------------------------------
 #
 # The same answer as the lite edition's (client/src/lib/worldEntities.ts): each record as
-# {id, kind, name, aliases, summary, picture, updated_at, deleted}, paged by (changed_at, id).
+# {id, kind, name, aliases, keywords, summary, picture, updated_at, deleted} (and a person's voice),
+# paged by (changed_at, id).
 # Built on the framework's changes() per manager, which keeps list's VIEW rule and includes the
 # caller's own tombstones.
 
@@ -798,6 +877,9 @@ class WorldEntity(PlainModel):
     # Canon (S6): a setting's record with no campaign, which anyone in the setting would know.
     canon: bool = False
     canon_level: Optional[str] = None
+    # S4c: what else wakes it in the AI's lorebook (beyond name and aliases), and a person's voice.
+    keywords: list[str] = []
+    voice: Optional[dict[str, Any]] = None
 
 
 class WorldEntitiesPage(PlainModel):
@@ -871,7 +953,9 @@ def _gather(
                     id=str(record.id),
                     kind=kind,
                     name=str(record.name or ""),
-                    aliases=[],
+                    aliases=stored_names(getattr(record, "aliases", None)),
+                    keywords=stored_names(getattr(record, "keywords", None)),
+                    voice=stored_voice(getattr(record, "voice", None)) if kind == "person" else None,
                     summary=summary(getattr(record, "description", None)),
                     picture=None,
                     updated_at=_naive(change.changed_at),

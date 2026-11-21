@@ -1,0 +1,29 @@
+{
+  "$comment": "S4c: a record's aliases and keywords (lists of names, kept as JSON text) and a person's AI voice, checked the same way by both back ends: server/extensions/wiki_shared/Names_test.py and client/src/lib/names.test.ts.",
+  "lists": [
+    { "name": "trimmed, blanks dropped, each once (case aside), in order", "value": ["  The Marsh Town ", "", "the marsh town", "Stilts"], "checked": ["The Marsh Town", "Stilts"] },
+    { "name": "a JSON string reads as the list", "value": "[\"Holst\", \"Old Holst\"]", "checked": ["Holst", "Old Holst"] },
+    { "name": "empty", "value": [], "checked": [] }
+  ],
+  "invalid_lists": [
+    { "name": "not a list", "value": { "a": 1 }, "message": "A list of names is a list of text" },
+    { "name": "a number in it", "value": ["a", 3], "message": "A list of names is a list of text" }
+  ],
+  "voices": [
+    {
+      "name": "every part, trimmed",
+      "value": { "personality": " Gruff ", "speech": "Short words.", "first_message": "What?", "examples": [" Holst: No. ", ""] },
+      "checked": { "personality": "Gruff", "speech": "Short words.", "first_message": "What?", "examples": ["Holst: No."] }
+    },
+    {
+      "name": "parts left out are empty, each example once",
+      "value": { "personality": "Kind", "examples": ["Hi.", " Hi. "] },
+      "checked": { "personality": "Kind", "speech": "", "first_message": "", "examples": ["Hi."] }
+    }
+  ],
+  "invalid_voices": [
+    { "name": "not an object", "value": ["Kind"], "message": "A voice is personality, speech, first_message and examples" },
+    { "name": "an unknown part", "value": { "mood": "sad" }, "message": "A voice is personality, speech, first_message and examples" },
+    { "name": "examples not a list", "value": { "examples": "Hi" }, "message": "A voice's examples are a list of text" }
+  ]
+}

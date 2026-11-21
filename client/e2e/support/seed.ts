@@ -40,7 +40,17 @@ export async function seedWorld(request: APIRequestContext): Promise<Seeded> {
     campaign_id: world,
     entry: entry('A port city of narrow stairs and salt-stained walls.'),
   });
-  const person = await create(request, 'person', { name: 'Mira of the Lantern', kind: 'npc', campaign_id: world, location_id: location, entry: entry('Keeper of the harbour light.') });
+  const person = await create(request, 'person', {
+    name: 'Mira of the Lantern',
+    kind: 'npc',
+    campaign_id: world,
+    location_id: location,
+    entry: entry('Keeper of the harbour light.'),
+    // S4c: other names, lorebook keys and how the AI plays her.
+    aliases: ['The Lantern Keeper'],
+    keywords: ['harbour light'],
+    voice: { personality: 'Patient, watchful, kind to sailors.', speech: 'Speaks softly, in tides and weather.', first_message: 'The light holds. What brings you up the stair?', examples: ['Mira: Mind the seventh step.'] },
+  });
   const rival = await create(request, 'person', { name: 'Captain Ross', kind: 'npc', campaign_id: world });
   const faction = await create(request, 'faction', { name: 'Lantern Guild', kind: 'guild', campaign_id: world, entry: entry('Lamplighters and keepers.') });
   await create(request, 'faction', { name: 'Night Watch', kind: 'military', campaign_id: world });

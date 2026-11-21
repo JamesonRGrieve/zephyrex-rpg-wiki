@@ -16,14 +16,14 @@ from fastapi.testclient import TestClient
 from rpg_wiki_app import create
 
 INJECTED = {
-    "persons": {"kind", "campaign_id", "user_id", "location_id", "entry", "setting_id", "canon_level", "is_template"},
+    "persons": {"kind", "campaign_id", "user_id", "location_id", "entry", "setting_id", "canon_level", "is_template", "aliases", "keywords", "voice"},
     "property_kits": {"campaign_id", "setting_id"},
     "campaigns": {"setting_id"},
-    "locations": {"campaign_id", "setting_id", "canon_level", "is_template"},
-    "factions": {"campaign_id", "setting_id", "canon_level", "is_template"},
-    "items": {"campaign_id", "setting_id", "canon_level", "is_template"},
-    "journals": {"campaign_id", "setting_id", "canon_level", "is_template"},
-    "hooks": {"campaign_id", "setting_id", "canon_level", "is_template"},
+    "locations": {"campaign_id", "setting_id", "canon_level", "is_template", "aliases", "keywords"},
+    "factions": {"campaign_id", "setting_id", "canon_level", "is_template", "aliases", "keywords"},
+    "items": {"campaign_id", "setting_id", "canon_level", "is_template", "aliases", "keywords"},
+    "journals": {"campaign_id", "setting_id", "canon_level", "is_template", "aliases", "keywords"},
+    "hooks": {"campaign_id", "setting_id", "canon_level", "is_template", "aliases", "keywords"},
     "taxons": {"campaign_id", "setting_id", "canon_level"},
     "statuses": {"campaign_id", "setting_id", "canon_level"},
     "relationships": {"faction_id", "target_faction_id", "colour", "mirror_relationship_id"},
