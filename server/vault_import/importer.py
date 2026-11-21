@@ -72,7 +72,7 @@ KIND_SYNONYMS = {
 READ = {
     "entity_type", "kind", "name", "campaign", "setting_wide", "is_private", "tags", "aliases", "status",
     "race", "faction", "location", "relations", "parent_location", "parent", "parent_hook", "depends_on",
-    "holder", "quantity", "session_number", "session_date", "maps", "keywords", "voice", "provenance", "source", "image", "picture",
+    "holder", "quantity", "session_number", "session_date", "maps", "keywords", "voice", "provenance", "source", "image", "picture", "system", "editions", "description",
     *PROPERTIES,
     *KIND_FIELDS.values(),
 }
@@ -165,8 +165,12 @@ class Importer:
         self._provenance: dict[str, dict[str, Any]] = {}
         # A campaign's play-style tags, from its framing note's tags: (seeded ones matched, others made).
         self._play_styles: dict[str, list[str]] = {}
+        # A campaign's framing: its description, game system and other editions (VTT's game systems by slug).
+        self._framing: dict[str, dict[str, Any]] = {}
         self._campaign_rows: dict[str, dict[str, Any]] = {}
         self._touched: set[str] = set()
+        # Pass 1's new records, by kind, made in one plural create each (_flush_new).
+        self._new: dict[str, list[tuple[dict[str, Any], Note]]] = {}
         # Whether the back end serves attachments (asked once, when a first picture comes).
         self._attachments: Optional[bool] = None
 
@@ -234,6 +238,15 @@ class Importer:
             plain = {_style(one) for one in ("journal", word, "framing", "campaign")}
             styles = [str(tag).strip() for tag in _list(note.meta.get("tags")) if _text(tag) and _style(str(tag)) not in plain]
             self._play_styles.setdefault(name, []).extend(one for one in styles if one not in self._play_styles.get(name, []))
+            framing = self._framing.setdefault(name, {})
+            if _text(note.meta.get("description")):
+                framing["description"] = _text(note.meta.get("description"))
+            if _text(note.meta.get("system")):
+                framing["system"] = _text(note.meta.get("system"))
+            editions = [str(one).strip() for one in _list(note.meta.get("editions")) if _text(one)]
+            if editions:
+                framing["editions"] = editions
+            framing["path"] = note.path
             if "provenance" not in note.meta and "source" not in note.meta:
                 continue
             try:
@@ -244,6 +257,84 @@ class Importer:
             held = self._provenance.setdefault(name, wanted)
             if held != wanted:
                 self.report.refused.append((note.path, f"campaign {name!r} is already {held['provenance']} here"))
+
+    def _flush_new(self) -> set[str]:
+        """Pass 1's new records, one plural create per kind (contract order); each placeholder record
+        is filled in place, so the name index and aliases already holding it see the real one.
+
+        A plural create stops at the first record a hook refuses, the ones before it written. Then
+        each queued record is looked up by name in its scope (adopted when it landed) or made alone,
+        so a refusal is reported against its own note and nothing is made twice. Returns the paths
+        of the notes refused."""
+        refused: set[str] = set()
+        for kind in ENTITY_TYPES:
+            queued = self._new.pop(kind, [])
+            fields = [{key: value for key, value in record.items() if key != "id"} for record, _note in queued]
+            try:
+                made: list[Optional[dict[str, Any]]] = list(self.api.create_many(kind, fields))
+            except ApiError:
+                made = [self._one_by_one(kind, one, note, refused) for one, (_record, note) in zip(fields, queued)]
+            for (record, note), real in zip(queued, made):
+                if real is None:
+                    # Refused: links to it resolve to nothing rather than to a placeholder.
+                    for index in self.names.values():
+                        for name in [name for name, (_kind, held) in index.items() if held is record]:
+                            del index[name]
+                    continue
+                record.clear()
+                record.update(real)
+                self._property(kind, str(record["id"]), VAULT_PATH, note.path, private=True)
+        return refused
+
+    def _one_by_one(self, kind: str, fields: dict[str, Any], note: Note, refused: set[str]) -> Optional[dict[str, Any]]:
+        """A record a failed batch may or may not have written: found by name in its scope, or made."""
+        scope = {key: fields.get(key) for key in ("campaign_id", "setting_id") if fields.get(key)}
+        held = [row for row in self.api.list(kind, **scope) if row.get("name") == fields.get("name") and row.get("campaign_id") == fields.get("campaign_id")]
+        if held:
+            return held[0]
+        try:
+            return self.api.create(kind, **fields)
+        except ApiError as error:
+            self.report.refused.append((note.path, str(error.detail)))
+            self.report.created.remove(f"{kind} {note.name}")
+            refused.add(note.path)
+            return None
+
+    def _settle_framing(self) -> None:
+        """A campaign's description, game system and editions as its framing note gives them. The
+        system and editions are VTT's game systems by slug: set where the back end serves them
+        (rpg_systems), reported and skipped where it doesn't; editions are kept as the campaign's
+        "Editions" property (their ids, JSON), for an edition choice at the start."""
+        wanted = {name: framing for name, framing in self._framing.items() if name in self._campaign_rows and len(framing) > 1}
+        if not wanted or self.dry_run:
+            return
+        systems: Optional[dict[str, str]] = None
+        for name, framing in sorted(wanted.items()):
+            row = self._campaign_rows[name]
+            changes: dict[str, Any] = {}
+            if framing.get("description") and row.get("description") != framing["description"]:
+                changes["description"] = framing["description"]
+            slugs = [framing["system"]] if framing.get("system") else []
+            slugs += framing.get("editions", [])
+            if slugs and systems is None:
+                systems = {str(one["slug"]): str(one["id"]) for one in self.api.list("game_system")} if "rpg_systems" in self.api.extensions() else {}
+            if slugs and not systems:
+                self.report.skipped.append((framing["path"], "its system and editions: this back end serves no game systems"))
+            elif slugs:
+                unknown = [slug for slug in slugs if slug not in (systems or {})]
+                if unknown:
+                    self.report.unresolved.setdefault(framing["path"], []).extend(f"game system {slug}" for slug in unknown)
+                system = (systems or {}).get(framing.get("system") or "")
+                if system and row.get("game_system_id") != system:
+                    changes["game_system_id"] = system
+                editions = [(systems or {})[slug] for slug in framing.get("editions", []) if slug in (systems or {})]
+                if editions:
+                    self._property("campaign", str(row["id"]), "Editions", json.dumps(editions))
+            if changes:
+                self._campaign_rows[name] = self.api.update("campaign", str(row["id"]), **changes)
+                label = f"campaign {name}"
+                if label not in self.report.created and label not in self.report.updated:
+                    self.report.updated.append(label)
 
     def _settle_play_styles(self) -> None:
         """A campaign's play-style tags as its framing note gives them: a shared one (seeded) matched by
@@ -368,11 +459,10 @@ class Importer:
             self.report.refused.append((note.path, f"{note.name!r} is already a {held[0]} in this campaign"))
             return None
         fields = {"name": note.name, "kind": self._kind(note, kind), **scope}
-        if self.dry_run:
-            record: dict[str, Any] = {"id": self._placeholder(), **fields}
-        else:
-            record = self.api.create(kind, **fields)
-            self._property(kind, str(record["id"]), VAULT_PATH, note.path, private=True)
+        record: dict[str, Any] = {"id": self._placeholder(), **fields}
+        if not self.dry_run:
+            # Made with the rest of its kind in one plural create (_flush_new), then filled in place.
+            self._new.setdefault(kind, []).append((record, note))
         names[note.name] = (kind, record)
         self._aliases[self._key(scope)].extend((alias, (kind, record)) for alias in placed_aliases)
         self.report.created.append(f"{kind} {note.name}")
@@ -638,6 +728,9 @@ class Importer:
                 continue
             if found is not None:
                 placed.append(found)
+        if not self.dry_run:
+            refused = self._flush_new()
+            placed = [one for one in placed if one.note.path not in refused]
         created = {f"{one.kind} {one.note.name}" for one in placed}
         newly = set(self.report.created)
         for one in placed:
@@ -659,6 +752,7 @@ class Importer:
         try:
             self._settle_provenance()
             self._settle_play_styles()
+            self._settle_framing()
         except ApiError as error:
             self.report.refused.append(("(campaigns)", str(error.detail)))
         return self.report

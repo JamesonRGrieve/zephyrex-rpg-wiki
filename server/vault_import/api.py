@@ -36,6 +36,7 @@ class Api:
     def __init__(self, http: HttpClient, headers: Optional[dict[str, str]] = None, prefix: str = "") -> None:
         self.http = http
         self.headers = headers or {}
+        self._plurals: dict[str, str] = {}
         # "/api" for a lite edition served by Next, "" for the server.
         self.prefix = prefix
 
@@ -66,6 +67,21 @@ class Api:
     def create(self, resource: str, **fields: Any) -> dict[str, Any]:
         record: dict[str, Any] = self._call("POST", f"/v1/{resource}", (200, 201), json={resource: fields}).json()[resource]
         return record
+
+    def plural(self, resource: str) -> str:
+        """The name a resource's list answers under (its plural, as the framework names it)."""
+        if resource not in self._plurals:
+            body = self._call("GET", f"/v1/{resource}", (200,), params={"limit": 1}).json()
+            self._plurals[resource] = next(key for key, value in body.items() if isinstance(value, list))
+        return self._plurals[resource]
+
+    def create_many(self, resource: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Many records in one plural create (each runs the resource's hooks), in the order given."""
+        if not rows:
+            return []
+        plural = self.plural(resource)
+        made: list[dict[str, Any]] = self._call("POST", f"/v1/{resource}", (200, 201), json={plural: rows}).json()[plural]
+        return made
 
     def update(self, resource: str, record_id: str, **fields: Any) -> dict[str, Any]:
         _current, etag = self.get(resource, record_id)

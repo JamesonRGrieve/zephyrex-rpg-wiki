@@ -40,7 +40,11 @@ def test_the_vault_imports_with_its_links_and_a_second_run_changes_nothing(serve
     first = Importer(api, setting_slug="dnd").run(read_vault(FIXTURE))
     assert first.refused == [], first.refused
     assert len(first.created) == 13, first.created  # the campaign and twelve records
-    assert first.skipped == [("Characters/Stray.md", "no campaign: and not setting_wide: true")]
+    assert first.skipped == [
+        ("Characters/Stray.md", "no campaign: and not setting_wide: true"),
+        # The wiki alone serves no game systems (VTT's): its system: waits for a composed app.
+        ("Lore/The Split Antler Framing.md", "its system and editions: this back end serves no game systems"),
+    ]
     assert first.unresolved == {"Characters/Holst.md": ["Nobody Here"]}
     # The vault's own kind fields read as kinds; a word that isn't one is reported, never guessed.
     assert first.unread.get("Locations/The Fens.md") == ["location_type: warp-passage (not one of the location kinds)"]
@@ -51,6 +55,7 @@ def test_the_vault_imports_with_its_links_and_a_second_run_changes_nothing(serve
     # The campaign's provenance is its framing note's; a note's own is its record's (homebrew when none).
     assert (campaign["provenance"], campaign["source"]) == ("adapted", "The Lost Mine of Phandelver, Wizards of the Coast")
     assert campaign["is_scenario"] is True  # play starts a copy of it
+    assert campaign["description"] == "A stable town at the edge of the fens."  # its framing note's
     framing = _one(api, "journal", campaign["id"], "The Split Antler — Framing")
     assert framing["kind"] == "campaign_framing"
     # Its framing note's tags are the campaign's play styles: shared ones matched, the rest its own.
@@ -105,3 +110,30 @@ def test_a_dry_run_writes_nothing(server: TestClient) -> None:
     report = Importer(api, setting_slug="dnd", dry_run=True).run(read_vault(FIXTURE))
     assert len(report.created) == 13
     assert [row for row in api.list("campaign") if row["name"] == "The Split Antler"] == []
+
+
+def test_new_records_are_made_one_plural_create_a_kind(server: TestClient) -> None:
+    """The operator: no one request per entity. Pass 1's new records go one plural create per kind."""
+
+    class Counting(Api):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, **kwargs)
+            self.singles: list[str] = []
+            self.batches: list[tuple[str, int]] = []
+
+        def create(self, resource: str, **fields: Any) -> dict[str, Any]:
+            self.singles.append(resource)
+            return super().create(resource, **fields)
+
+        def create_many(self, resource: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+            self.batches.append((resource, len(rows)))
+            return super().create_many(resource, rows)
+
+    user = create_user(server)
+    api = Counting(server, {"Authorization": f"Bearer {user.jwt}"})
+    report = Importer(api, setting_slug="dnd").run(read_vault(FIXTURE))
+    assert report.refused == [], report.refused
+    kinds = [resource for resource, count in api.batches if count]
+    assert sorted(kinds) == sorted(set(kinds)) and sum(count for _resource, count in api.batches) == 12
+    # No record of the six kinds is made alone (the campaign, its tags and links are their own calls).
+    assert not {"person", "location", "faction", "item", "journal", "hook"} & set(api.singles)
