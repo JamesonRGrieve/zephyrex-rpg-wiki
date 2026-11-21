@@ -4,7 +4,7 @@ import { defineConfig } from 'prisma/config';
 // Prisma 7 reads the connection URL for migrate/introspection commands from here.
 // Runtime connections go through the driver adapter in src/lib/prisma.ts instead.
 export default defineConfig({
-  schema: 'schema.prisma',
+  schema: 'prisma/schema',
   migrations: {
     path: 'prisma/migrations',
   },

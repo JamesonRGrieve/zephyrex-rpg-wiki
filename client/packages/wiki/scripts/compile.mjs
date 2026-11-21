@@ -32,7 +32,7 @@ writeFileSync(contractSource, staged.replace(CONTRACT_IMPORT, "'./contract/wiki.
 
 execFileSync(join(PACKAGE, '../../node_modules/.bin/tsc'), ['-p', join(PACKAGE, 'tsconfig.compile.json')], { stdio: 'inherit' });
 
-const NEXT_SUBPATHS = ['next/link', 'next/navigation'];
+const NEXT_SUBPATHS = ['next/link', 'next/navigation', 'next/server'];
 const files = (directory) =>
   readdirSync(directory).flatMap((name) => {
     const path = join(directory, name);

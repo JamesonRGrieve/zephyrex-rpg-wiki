@@ -1,0 +1,530 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// @zephyrex-rpg/wiki's lite records: the same resources, fields and rules as the SaaS server's
+// extensions (server/extensions/rpg_core, world_*; genealogy's Person). Every record belongs to the
+// one local owner (@zephyrex/lite localOwner). Entries are Plate values as JSON text.
+//
+// A fragment of a Prisma multi-file schema: an app that serves the wiki's lite routes copies it into
+// its prisma/schema folder (scripts/prisma-fragment.mjs) beside its own datasource and generator,
+// and generates its own migrations from the result. Models only; never edit the copy.
+
+/// A world: the top-level container every record scopes to (rpg_core's CampaignModel).
+/// A setting (S6): the universe campaigns take place in. Its canon is every world record with this
+/// setting and no campaign. VTT's game systems name settings by slug.
+model Setting {
+  id          String   @id @default(uuid())
+  createdById String
+  name        String
+  description String   @default("")
+  entry       String?
+  /// Its stable name (contract/wiki.json setting_slug): unique, fixed once set (S6b).
+  slug        String?  @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+  updatedById String?
+
+  @@index([createdById])
+}
+
+model Campaign {
+  id           String   @id @default(uuid())
+  createdById  String
+  name         String
+  description  String   @default("")
+  /// The setting it takes place in (S6); fixed once set.
+  settingId    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime
+  updatedById  String?
+
+  @@index([createdById])
+}
+
+/// A place at any scale, under its parent (world_spatial's LocationModel, with rpg_core's campaign).
+model Location {
+  id           String   @id @default(uuid())
+  createdById  String
+  name         String
+  description  String   @default("")
+  entry        String?
+  kind         String?
+  parentId     String?
+  campaignId   String?
+  /// With no campaign: the setting's canon (S6).
+  settingId   String?
+  canonLevel  String?
+  isTemplate  Boolean?
+  /// S4c: other names it goes by, and what else wakes it in the AI's lorebook (JSON text).
+  aliases     String?
+  keywords    String?
+  /// S4d: its lorebook activation (SillyTavern World Info's fields, JSON text).
+  lore        String?
+  /// The person it belongs to: their equipment slots and body parts (what they wear sits there).
+  associatedPersonId String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime
+  updatedById  String?
+  /// Soft delete: a tombstone a since-sync reads (rpg-ai A15); hidden from normal reads.
+  deletedAt    DateTime?
+
+  @@index([createdById])
+  @@index([deletedAt])
+  @@index([campaignId])
+  @@index([parentId])
+  @@index([associatedPersonId])
+  @@index([settingId])
+}
+
+/// A person or creature (genealogy's PersonModel, with rpg_core's character fields).
+model Person {
+  id           String    @id @default(uuid())
+  createdById  String
+  name         String
+  description  String    @default("")
+  entry        String?
+  kind         String?
+  campaignId   String?
+  /// With no campaign: the setting's canon (S6).
+  settingId   String?
+  canonLevel  String?
+  isTemplate  Boolean?
+  /// S4c: other names it goes by, and what else wakes it in the AI's lorebook (JSON text).
+  aliases     String?
+  keywords    String?
+  /// S4d: its lorebook activation (SillyTavern World Info's fields, JSON text).
+  lore        String?
+  /// S4c: how the AI plays them (JSON text: personality, speech, first_message, examples); GM-facing.
+  voice       String?
+  locationId   String?
+  gender       String?
+  birthDate    DateTime?
+  deathDate    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime
+  updatedById  String?
+  /// Soft delete: a tombstone a since-sync reads (rpg-ai A15); hidden from normal reads.
+  deletedAt    DateTime?
+
+  @@index([createdById])
+  @@index([deletedAt])
+  @@index([campaignId])
+  @@index([settingId])
+}
+
+/// An organisation or family, under its parent (world_social's FactionModel, with rpg_core's campaign).
+model Faction {
+  id           String   @id @default(uuid())
+  createdById  String
+  name         String
+  description  String   @default("")
+  entry        String?
+  kind         String?
+  parentId     String?
+  campaignId   String?
+  /// With no campaign: the setting's canon (S6).
+  settingId   String?
+  canonLevel  String?
+  isTemplate  Boolean?
+  /// S4c: other names it goes by, and what else wakes it in the AI's lorebook (JSON text).
+  aliases     String?
+  keywords    String?
+  /// S4d: its lorebook activation (SillyTavern World Info's fields, JSON text).
+  lore        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime
+  updatedById  String?
+  /// Soft delete: a tombstone a since-sync reads (rpg-ai A15); hidden from normal reads.
+  deletedAt    DateTime?
+
+  @@index([createdById])
+  @@index([deletedAt])
+  @@index([campaignId])
+  @@index([parentId])
+  @@index([settingId])
+}
+
+/// A kind of thing, the catalogue (world_inventory's ItemModel, with rpg_core's campaign).
+model Item {
+  id           String   @id @default(uuid())
+  createdById  String
+  name         String
+  description  String   @default("")
+  entry        String?
+  kind         String?
+  weight       Float?
+  baseValue    Float?
+  stackSize    Int      @default(1)
+  campaignId   String?
+  /// With no campaign: the setting's canon (S6).
+  settingId   String?
+  canonLevel  String?
+  isTemplate  Boolean?
+  /// S4c: other names it goes by, and what else wakes it in the AI's lorebook (JSON text).
+  aliases     String?
+  keywords    String?
+  /// S4d: its lorebook activation (SillyTavern World Info's fields, JSON text).
+  lore        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime
+  updatedById  String?
+  /// Soft delete: a tombstone a since-sync reads (rpg-ai A15); hidden from normal reads.
+  deletedAt    DateTime?
+
+  @@index([createdById])
+  @@index([deletedAt])
+  @@index([campaignId])
+  @@index([settingId])
+}
+
+/// One item in the world: where it is, whose it is (de jure), how many.
+model ItemInstance {
+  id            String   @id @default(uuid())
+  createdById   String
+  itemId        String?
+  locationId    String?
+  ownerPersonId String?
+  quantity      Int      @default(1)
+  durability    Float?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime
+  updatedById   String?
+
+  @@index([createdById])
+  @@index([itemId])
+}
+
+/// What an entity carries now (W8): any person, place, faction or item holding an item instance.
+model EntityInventory {
+  id               String   @id @default(uuid())
+  createdById      String
+  targetEntityType String
+  targetEntityId   String
+  itemInstanceId   String?
+  quantity         Int      @default(1)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime
+  updatedById      String?
+
+  @@index([createdById])
+  @@index([targetEntityId])
+}
+
+/// A journal: session report, diary, lore, handout, note, manuscript, prose or chapter
+/// (world_narrative's JournalModel, with rpg_core's campaign). Soft-deleted, like the other synced kinds.
+model Journal {
+  id             String    @id @default(uuid())
+  createdById    String
+  name           String
+  description    String    @default("")
+  entry          String?
+  kind           String?
+  locationId     String?
+  authorPersonId String?
+  sessionNumber  Int?
+  occurredAt     DateTime?
+  campaignId     String?
+  /// With no campaign: the setting's canon (S6).
+  settingId     String?
+  canonLevel    String?
+  isTemplate    Boolean?
+  /// S4c: other names it goes by, and what else wakes it in the AI's lorebook (JSON text).
+  aliases       String?
+  keywords      String?
+  /// S4d: its lorebook activation (SillyTavern World Info's fields, JSON text).
+  lore          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime
+  updatedById    String?
+  deletedAt      DateTime?
+
+  @@index([createdById])
+  @@index([campaignId])
+  @@index([deletedAt])
+  @@index([settingId])
+}
+
+/// A post on any entity (entity_posts' EntityPostModel): pinned_top shows first.
+model EntityPost {
+  id               String   @id @default(uuid())
+  createdById      String
+  targetEntityType String
+  targetEntityId   String
+  name             String
+  description      String   @default("")
+  entry            String?
+  position         String   @default("default")
+  ordinal          Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime
+  updatedById      String?
+
+  @@index([createdById])
+  @@index([targetEntityId])
+}
+
+/// A plot hook (world_narrative's HookModel, with rpg_core's campaign). Soft-deleted, like the other
+/// world records; its dependencies and progress rows go with it.
+model Hook {
+  id             String    @id @default(uuid())
+  createdById    String
+  name           String
+  description    String    @default("")
+  entry          String?
+  kind           String?
+  giverPersonId  String?
+  giverFactionId String?
+  /// The requirement as JSON: a hook id, all, any or a game-system check (W57).
+  requires       String?
+  /// GM-facing: why it's blocked.
+  excuse         String?
+  resolvedAt     DateTime?
+  resolvedJournalId String?
+  campaignId     String?
+  /// With no campaign: the setting's canon (S6).
+  settingId     String?
+  canonLevel    String?
+  isTemplate    Boolean?
+  /// S4c: other names it goes by, and what else wakes it in the AI's lorebook (JSON text).
+  aliases       String?
+  keywords      String?
+  /// S4d: its lorebook activation (SillyTavern World Info's fields, JSON text).
+  lore          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime
+  updatedById    String?
+  deletedAt      DateTime?
+
+  @@index([createdById])
+  @@index([campaignId])
+  @@index([deletedAt])
+  @@index([settingId])
+}
+
+/// An edge of the hook DAG: the child waits on the parent. No cycles (lib/hookGraph.ts).
+model HookDependency {
+  id           String   @id @default(uuid())
+  createdById  String
+  parentHookId String
+  childHookId  String
+  reason       String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime
+  updatedById  String?
+
+  @@unique([parentHookId, childHookId])
+  @@index([childHookId])
+}
+
+/// A person's progress on a hook; one per person and hook.
+model PersonHook {
+  id          String    @id @default(uuid())
+  createdById String
+  personId    String
+  hookId      String
+  status      String?
+  acceptedAt  DateTime?
+  completedAt DateTime?
+  progress    Float?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime
+  updatedById String?
+
+  @@unique([personId, hookId])
+  @@index([hookId])
+}
+
+/// An organisation's progress on a hook; one per organisation and hook.
+model FactionHook {
+  id          String    @id @default(uuid())
+  createdById String
+  factionId   String
+  hookId      String
+  status      String?
+  acceptedAt  DateTime?
+  completedAt DateTime?
+  progress    Float?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime
+  updatedById String?
+
+  @@unique([factionId, hookId])
+  @@index([hookId])
+}
+
+/// A tag, category, race or other classification, in a tree (world_taxonomy's TaxonModel, with
+/// rpg_core's campaign). Soft-deleted, like the other world records; its links go with it.
+model Taxon {
+  id          String    @id @default(uuid())
+  createdById String
+  name        String
+  description String    @default("")
+  parentId    String?
+  kind        String?
+  colour      String?
+  campaignId  String?
+  /// With no campaign: the setting's canon (S6).
+  settingId  String?
+  canonLevel String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime
+  updatedById String?
+  deletedAt   DateTime?
+
+  @@index([createdById])
+  @@index([campaignId])
+  @@index([deletedAt])
+  @@index([settingId])
+}
+
+/// A taxon on any record; once per taxon and record.
+model EntityTaxon {
+  id               String   @id @default(uuid())
+  createdById      String
+  taxonId          String
+  targetEntityType String
+  targetEntityId   String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime
+  updatedById      String?
+
+  @@unique([taxonId, targetEntityType, targetEntityId])
+  @@index([targetEntityId])
+}
+
+/// A status a record can be in (world_taxonomy's StatusModel, with rpg_core's campaign).
+model Status {
+  id          String    @id @default(uuid())
+  createdById String
+  name        String
+  description String    @default("")
+  kind        String?
+  colour      String?
+  campaignId  String?
+  /// With no campaign: the setting's canon (S6).
+  settingId  String?
+  canonLevel String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime
+  updatedById String?
+  deletedAt   DateTime?
+
+  @@index([createdById])
+  @@index([deletedAt])
+  @@index([settingId])
+}
+
+/// A record's status; one per record.
+model EntityStatus {
+  id               String   @id @default(uuid())
+  createdById      String
+  statusId         String
+  targetEntityType String
+  targetEntityId   String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime
+  updatedById      String?
+
+  @@unique([targetEntityType, targetEntityId])
+}
+
+/// A relation (genealogy's RelationshipModel with world_social's organisation endpoints, colour and
+/// mirror): one person or organisation a side; attitude is intensity, -1 to +1.
+model Relationship {
+  id                   String    @id @default(uuid())
+  createdById          String
+  personId             String?
+  factionId            String?
+  targetPersonId       String?
+  targetFactionId      String?
+  kind                 String?
+  discriminator        String?
+  intensity            Float?
+  qualifier            String?
+  validFrom            DateTime?
+  validTo              DateTime?
+  notes                String?
+  colour               String?
+  mirrorRelationshipId String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime
+  updatedById          String?
+
+  @@index([createdById])
+  @@index([personId])
+  @@index([factionId])
+  @@index([targetPersonId])
+  @@index([targetFactionId])
+}
+
+/// How a person regards the party, a person or an organisation, and the hook that changes it (W56).
+model Disposition {
+  id              String   @id @default(uuid())
+  createdById     String
+  personId        String
+  targetKind      String
+  targetPersonId  String?
+  targetFactionId String?
+  attitude        String
+  isDefault       Boolean  @default(false)
+  triggerHookId   String?
+  note            String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime
+  updatedById     String?
+
+  @@index([personId])
+  @@index([triggerHookId])
+}
+
+/// A hook that changes a relation's attitude when it resolves (W56).
+model RelationInfluence {
+  id             String   @id @default(uuid())
+  createdById    String
+  relationshipId String
+  hookId         String
+  toIntensity    Float
+  note           String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime
+  updatedById    String?
+
+  @@index([relationshipId])
+  @@index([hookId])
+}
+
+/// A record's own key/value (S4b; the framework's record_metadata): one row per key on a record,
+/// read by whoever sees the record, private rows by its editors.
+model RecordMetadata {
+  id               String   @id @default(uuid())
+  createdById      String
+  targetEntityType String
+  targetEntityId   String
+  key              String
+  value            String?
+  valueType        String?
+  ordinal          Int      @default(0)
+  isPrivate        Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime
+  updatedById      String?
+
+  @@unique([targetEntityType, targetEntityId, key])
+  @@index([targetEntityId])
+}
+
+/// A property kit (S4b, world_properties): keys with types and defaults (JSON text), applied to a
+/// record's properties; scoped to a campaign or setting as rpg_core scopes it.
+model PropertyKit {
+  id          String   @id @default(uuid())
+  createdById String
+  name        String
+  description String   @default("")
+  properties  String   @default("[]")
+  campaignId  String?
+  settingId   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+  updatedById String?
+  deletedAt   DateTime?
+
+  @@index([createdById])
+}

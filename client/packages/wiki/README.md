@@ -61,3 +61,28 @@ values as props), `components/world/*`, `features/*` (capabilities and the data 
 ## License
 
 AGPL-3.0-or-later.
+
+## The lite API (`@zephyrex-rpg/wiki/lite`)
+
+An app's lite edition (Next.js only, no server-framework) serves the wiki's API itself:
+
+1. Copy the schema fragment into a Prisma multi-file schema folder, beside the app's own datasource
+   and generator, and keep it current with `--check` in the app's tests:
+
+   ```bash
+   node node_modules/@zephyrex-rpg/wiki/scripts/prisma-fragment.mjs prisma/schema [--check]
+   ```
+
+2. Generate the app's migration from its composed schema (`prisma migrate diff`); the wiki ships no
+   migrations, since history belongs to each database.
+3. Mount the routes behind one catch-all, `app/api/v1/[...wiki]/route.lite.ts`:
+
+   ```ts
+   import { wikiLite } from '@zephyrex-rpg/wiki/lite';
+   import { prisma } from '~/lib/prisma';
+
+   export const { GET, POST, PUT, DELETE } = wikiLite({ prisma });
+   ```
+
+   The app's own specific routes answer first. Its `GET /v1/extension` lists
+   `WIKI_LITE_EXTENSIONS` beside its own.

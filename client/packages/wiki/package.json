@@ -14,6 +14,8 @@
     "./package.json": "./package.json"
   },
   "peerDependencies": {
+    "@prisma/client": "*",
+    "@zephyrex/lite": "*",
     "lucide-react": "*",
     "next": "*",
     "react": "*",
@@ -22,10 +24,20 @@
     "zod": "*"
   },
   "files": [
-    "dist"
+    "dist",
+    "prisma",
+    "scripts/prisma-fragment.mjs"
   ],
   "scripts": {
     "compile": "node scripts/compile.mjs",
     "verify:dist": "node scripts/verify-dist.mjs"
+  },
+  "peerDependenciesMeta": {
+    "@prisma/client": {
+      "optional": true
+    },
+    "@zephyrex/lite": {
+      "optional": true
+    }
   }
 }

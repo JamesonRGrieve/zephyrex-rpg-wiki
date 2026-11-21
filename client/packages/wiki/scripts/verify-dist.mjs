@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /** Imports every module in dist/ under plain Node, as client-framework's verify:dist does: a missing
  * extension, a path into the repository or an unresolvable package fails here, not in a consumer. */
-import { readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -14,6 +14,13 @@ const files = (directory) =>
   });
 const modules = files(DIST).filter((path) => path.endsWith('.js'));
 let failed = 0;
+// The lite API runs on an app's server: no module of it may be a client module.
+for (const module of modules.filter((path) => /[/\\]lite(\.js$|[/\\])/.test(path))) {
+  if (/^\s*['"]use client['"]/.test(readFileSync(module, 'utf8'))) {
+    failed += 1;
+    console.error(`${module}: the lite API is server code, but this module is 'use client'`);
+  }
+}
 for (const module of modules) {
   try {
     await import(pathToFileURL(module).href);

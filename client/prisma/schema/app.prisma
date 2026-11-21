@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// The wiki app's lite database: a Prisma multi-file schema. Its records are @zephyrex-rpg/wiki's
+// (wiki.prisma, copied from packages/wiki/prisma by scripts/prisma-fragment.mjs; never edit it here).
+
+datasource db {
+  provider = "sqlite"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
