@@ -1037,3 +1037,39 @@ class TestWhereTheyAre:
         synced = {row["name"]: row for row in server.get(f"/v1/world_entity?ids={calloway['id']},{crypt['id']},{shrine['id']}", headers=_headers(person)).json()["world_entities"]}
         assert (synced["Calloway"]["location_id"], synced["Crypt"]["parent_id"], synced["The Engine Shrine"]["parent_id"]) == (crypt["id"], shrine["id"], None)
         assert (synced["Calloway"]["parent_id"], synced["Crypt"]["location_id"]) == (None, None)
+
+
+class TestCampaignDocuments:
+    """Parity's data bank: each of a campaign's records' full text, journals first, GM-only marked;
+    and the three abilities rpg-ai calls in process."""
+
+    def test_documents_by_route_and_ability(self, server: TestClient, person: Any, other: Any) -> None:
+        from zephyrex.extensions.AbstractExtensionProvider import loaded_ability
+
+        campaign = _create(server, person, "campaign", name="Documented")
+        truth = _create(server, person, "journal", name="The Truth", kind="lore", campaign_id=campaign["id"], entry=[{"type": "p", "children": [{"text": "The keeper is the thief."}]}])
+        _create(server, person, "person", name="Mira", kind="npc", campaign_id=campaign["id"], entry=[{"type": "p", "children": [{"text": "Keeps the light."}]}])
+        _create(server, person, "location", name="Empty", kind="room", campaign_id=campaign["id"])
+        _create(server, person, "person", name="Mould", kind="npc", campaign_id=campaign["id"], is_template=True, entry=[{"type": "p", "children": [{"text": "A template."}]}])
+        added = server.post(
+            "/v1/record_metadata",
+            json={"record_metadata": {"target_entity_type": "journal", "target_entity_id": truth["id"], "key": "GM only", "value": "true", "value_type": "boolean", "is_private": True}},
+            headers=_headers(person),
+        )
+        assert added.status_code == 201, added.text
+        response = server.get(f"/v1/campaign_document?campaign_id={campaign['id']}", headers=_headers(person))
+        assert response.status_code == 200, response.text
+        documents = response.json()["campaign_documents"]
+        assert [(one["kind"], one["name"], one["text"], one["gm_only"]) for one in documents] == [
+            ("journal", "The Truth", "The keeper is the thief.", True),
+            ("person", "Mira", "Keeps the light.", False),
+        ]
+        assert server.get(f"/v1/campaign_document?campaign_id={campaign['id']}", headers=_headers(other)).status_code == 404
+
+        registry = server.app.state.model_registry  # type: ignore[attr-defined]
+        by_ability = loaded_ability(registry, "rpg_core", "campaign_documents")(registry, str(person.id), campaign["id"])
+        assert [one["name"] for one in by_ability["campaign_documents"]] == ["The Truth", "Mira"]
+        cast = loaded_ability(registry, "rpg_core", "world_entities_by_id")(registry, str(person.id), [truth["id"]])
+        assert [one["name"] for one in cast["world_entities"]] == ["The Truth"]
+        started = loaded_ability(registry, "rpg_core", "instantiate_campaign")(registry, str(person.id), campaign["id"], "Run")
+        assert started["campaign"]["scenario_id"] == campaign["id"] and truth["id"] in started["id_map"]

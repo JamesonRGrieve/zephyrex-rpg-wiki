@@ -159,3 +159,29 @@ class RPGCoreExtension(AbstractStaticExtension):
 
         return [hook.model_dump(mode="json") for hook in plot_state(model_registry, requester_id, campaign_id)]
 
+    @classmethod
+    @ability("world_entities_by_id")
+    def world_entities_by_id(cls, model_registry: Any, requester_id: str, ids: list[str]) -> dict[str, Any]:
+        """The named records, shaped as world_entities shapes them, under the requester's access; an id
+        they can't see is absent (rpg-ai's sandbox cast)."""
+        from zephyrex.extensions.rpg_core.BLL_RPGCore import world_entities_by_id  # type: ignore[import-not-found]
+
+        return world_entities_by_id(model_registry, requester_id, ids).model_dump(mode="json")
+
+    @classmethod
+    @ability("instantiate_campaign")
+    def instantiate_campaign(cls, model_registry: Any, requester_id: str, source_campaign_id: str, name: Optional[str] = None) -> dict[str, Any]:
+        """Copy on start: a playthrough of the scenario, {campaign, id_map} (source id → copy id)."""
+        from zephyrex.extensions.rpg_core.BLL_RPGCore import instantiate_campaign  # type: ignore[import-not-found]
+
+        return instantiate_campaign(model_registry, requester_id, source_campaign_id, name).model_dump(mode="json")
+
+    @classmethod
+    @ability("campaign_documents")
+    def campaign_documents(cls, model_registry: Any, requester_id: str, campaign_id: str) -> dict[str, Any]:
+        """Each of the campaign's records' full text, journals first: {"campaign_documents": [{id, kind,
+        name, text, gm_only}]} (Parity's data bank)."""
+        from zephyrex.extensions.rpg_core.BLL_RPGCore import campaign_documents  # type: ignore[import-not-found]
+
+        return campaign_documents(model_registry, requester_id, campaign_id).model_dump(mode="json")
+

@@ -44,3 +44,5 @@ export const TAGGABLE_TYPES = contract.taggable_types as readonly string[];
 /** The shared play-style tags (taxon kind play_style), everyone's to use. */
 export const SEED_PLAY_STYLES = contract.seed_play_styles as readonly string[];
 export const PLAY_STYLE = 'play_style';
+/** A campaign's documents, in this order (journals first). */
+export const DOCUMENT_KINDS = contract.document_kinds as readonly string[];

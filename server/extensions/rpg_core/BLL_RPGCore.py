@@ -41,7 +41,8 @@ from zephyrex.extensions.wiki_shared.Lore import lore_text, stored_lore  # type:
 from zephyrex.extensions.wiki_shared.Pictures import picture_url as checked_picture_url  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Provenance import HOMEBREW, checked_provenance, checked_source, provenance  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Names import names_text, stored_names, stored_voice, voice_text  # type: ignore[import-not-found]
-from zephyrex.extensions.wiki_shared.Contract import ATTACHMENT_ROLES, CANON_LEVELS, ENTITY_TYPES, GM_ONLY_PROPERTY, LIMITS  # type: ignore[import-not-found]
+from zephyrex.extensions.wiki_shared.Contract import ATTACHMENT_ROLES, CANON_LEVELS, DOCUMENT_KINDS, ENTITY_TYPES, GM_ONLY_PROPERTY, LIMITS  # type: ignore[import-not-found]
+from zephyrex.extensions.wiki_shared.Documents import ordered_documents  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Report import report_entry  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Summary import summary  # type: ignore[import-not-found]
 from zephyrex.extensions.world_inventory.BLL_WorldInventory import (  # type: ignore[import-not-found]
@@ -1240,26 +1241,27 @@ def _with_pictures(model_registry: Any, shown: list[WorldEntity]) -> list[WorldE
     return shown
 
 
-def _with_secrecy(model_registry: Any, shown: list[WorldEntity]) -> list[WorldEntity]:
-    """Each record kept to the GM: its private "GM only" property (contract gm_only_property) is
-    "true", in one query for the page (as SYSTEM: the caller already sees each record). Where the
-    metadata extension isn't loaded, nothing is."""
-    if "metadata" not in model_registry.loaded_extension_names() or not shown:
-        return shown
+def _gm_only(model_registry: Any, ids: list[str]) -> set[tuple[str, str]]:
+    """Which of the records are kept to the GM: their private "GM only" property (contract
+    gm_only_property) is "true", in one query (as SYSTEM: the caller already sees each record).
+    Where the metadata extension isn't loaded, none are."""
+    if "metadata" not in model_registry.loaded_extension_names() or not ids:
+        return set()
     # The metadata extension's own row manager (its record_metadata routes have no model of their own).
     from zephyrex.extensions.metadata.BLL_Metadata import MetadataManager  # type: ignore[import-not-found]
     from zephyrex.logic.AbstractLogicManager.models import FieldComparison
 
     rows = MetadataManager(requester_id=env("SYSTEM_ID"), model_registry=model_registry)
-    secret = {
+    return {
         (row.target_entity_type, row.target_entity_id)
-        for row in rows.list(
-            key=GM_ONLY_PROPERTY,
-            filters=[FieldComparison(rows.Model, "target_entity_id", "in", sorted({entity.id for entity in shown}))],
-        )
-        or []
+        for row in rows.list(key=GM_ONLY_PROPERTY, filters=[FieldComparison(rows.Model, "target_entity_id", "in", sorted(set(ids)))]) or []
         if str(row.value).strip().lower() == "true"
     }
+
+
+def _with_secrecy(model_registry: Any, shown: list[WorldEntity]) -> list[WorldEntity]:
+    """Each record kept to the GM, marked gm_only."""
+    secret = _gm_only(model_registry, [entity.id for entity in shown])
     for entity in shown:
         entity.gm_only = (entity.kind, entity.id) in secret
     return shown
@@ -1343,6 +1345,72 @@ def world_entities_by_id(model_registry: Any, requester_id: str, ids: list[str])
     order = {entity_id: index for index, entity_id in enumerate(wanted)}
     found.sort(key=lambda entity: order[entity.id])
     return WorldEntitiesPage(world_entities=_shown(model_registry, found), next=None)
+
+
+# ---------------------------------------------------------------------------
+# A campaign's documents (Parity's data bank): each record's full text, journals first
+# ---------------------------------------------------------------------------
+
+DOCUMENT_MANAGERS: dict[str, Any] = {
+    "journal": JournalManager,
+    "location": LocationManager,
+    "person": PersonManager,
+    "faction": FactionManager,
+    "item": ItemManager,
+    "hook": HookManager,
+}
+
+
+class CampaignDocument(PlainModel):
+    id: str
+    kind: str = Field(..., description="The record's type: journal, location, person, faction, item or hook")
+    name: str
+    text: str = Field(..., description="Its entry's full plain text")
+    gm_only: bool = Field(False, description="Kept to the GM: never a player's prompt")
+
+
+class CampaignDocuments(PlainModel):
+    campaign_documents: list[CampaignDocument]
+
+
+def campaign_documents(model_registry: Any, requester_id: str, campaign_id: str) -> CampaignDocuments:
+    """The full plain text of each of the campaign's records under the requester's access, journals
+    first (contract/document-cases.json); templates and records with no text left out. A campaign
+    the requester can't see is a 404."""
+    _manager(model_registry, requester_id, CampaignManager).get(id=campaign_id)
+    records: list[dict[str, Any]] = []
+    for kind in DOCUMENT_KINDS:
+        manager = _manager(model_registry, requester_id, DOCUMENT_MANAGERS[kind])
+        records.extend(
+            {"id": str(row.id), "kind": kind, "name": str(row.name or ""), "text": getattr(row, "description", None)}
+            for row in manager.list(campaign_id=campaign_id) or []
+            if not getattr(row, "is_template", None)
+        )
+    documents = ordered_documents(records)
+    secret = _gm_only(model_registry, [document["id"] for document in documents])
+    return CampaignDocuments(
+        campaign_documents=[CampaignDocument(**document, gm_only=(document["kind"], document["id"]) in secret) for document in documents]
+    )
+
+
+class CampaignDocumentManager(AbstractBLLManager[Any], RouterMixin):
+    """REST for Parity's data bank: GET /v1/campaign_document?campaign_id=."""
+
+    prefix: ClassVar[str | None] = "/v1/campaign_document"
+    tags: ClassVar[list[str] | None] = ["Campaign documents"]
+    routes_to_register: ClassVar[list[RouteType] | None] = []
+
+    @custom_route(
+        method="GET",
+        path="",
+        output_model=CampaignDocuments,
+        authentication_type="jwt",
+        expose_in=(ExposeIn.REST,),
+        openapi_tags=("Campaign documents",),
+        summary="The full text of each of a campaign's records, journals first",
+    )
+    def list_route(self, campaign_id: str) -> CampaignDocuments:
+        return campaign_documents(self.model_registry, str(self.requester.id), campaign_id)
 
 
 class WorldEntityManager(AbstractBLLManager[Any], RouterMixin):

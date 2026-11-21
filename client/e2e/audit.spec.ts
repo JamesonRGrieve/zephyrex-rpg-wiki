@@ -301,6 +301,10 @@ test.describe.serial('visual audit', () => {
     // Parity: a record kept to the GM says so, and only it.
     const secrets = (await (await request.get(`/api/v1/world_entity?ids=${seeded.journal},${seeded.person}`)).json()) as { world_entities: { gm_only: boolean }[] };
     expect(secrets.world_entities.map((entity) => entity.gm_only)).toEqual([true, false]);
+    // Parity's data bank: each record's full text, journals first, the GM's own marked.
+    const bank = (await (await request.get(`/api/v1/campaign_document?campaign_id=${seeded.world}`)).json()) as { campaign_documents: { id: string; kind: string; text: string; gm_only: boolean }[] };
+    expect(bank.campaign_documents[0]?.kind).toBe('journal');
+    expect(bank.campaign_documents.find((one) => one.id === seeded.journal)).toMatchObject({ text: 'The party was ambushed on the rocks.', gm_only: true });
     // Parity: where a person is and a place's parent, so a scene knows who's present.
     const placed = (await (await request.get(`/api/v1/world_entity?ids=${seeded.person},${seeded.location}`)).json()) as { world_entities: { location_id: string | null; parent_id: string | null }[] };
     expect(placed.world_entities.map((entity) => [entity.location_id, entity.parent_id !== null])).toEqual([[seeded.location, false], [null, true]]);

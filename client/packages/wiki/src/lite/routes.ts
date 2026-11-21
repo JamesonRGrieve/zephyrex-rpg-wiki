@@ -14,6 +14,7 @@ import { apiErrorResponse, collectionRoutes, localOwner, notFound, recordRoutes,
 import type { NextRequest, NextResponse } from 'next/server';
 import { bindPrisma } from './db';
 import { metadataDelete, metadataOfGet, metadataPatch, metadataPost } from './recordMetadataRoutes';
+import { campaignDocumentsGet } from './campaignDocuments';
 import { campaignInstantiatePost } from './scenarios';
 import { sessionReportGet, sessionReportPost } from './sessionReportRoutes';
 import { worldEntityGet } from './worldEntityRoute';
@@ -85,6 +86,8 @@ const ROUTES: Record<string, Routes> = {
   status: both(statuses),
   taxon: both(taxa),
   world_entity: { collection: { GET: worldEntityGet }, record: {} },
+  // Parity's data bank: a campaign's records' full text.
+  campaign_document: { collection: { GET: campaignDocumentsGet }, record: {} },
   session_report: { collection: { POST: sessionReportPost }, record: { GET: sessionReportGet } },
   // The framework's metadata extension, as the wiki's lite records need it (S4b).
   record_metadata: { collection: { POST: metadataPost }, record: { PATCH: metadataPatch, DELETE: metadataDelete }, actions: { of: { GET: metadataOfGet } } },

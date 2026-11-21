@@ -1,0 +1,63 @@
+{
+  "$comment": "A campaign's documents (Parity's data bank): the full plain text of each record's entry (its description), journals first, then document_kinds' order, by name within a kind; a record with no text is left out. Held by server/extensions/wiki_shared/Documents.py and client packages/wiki/src/lib/documents.ts.",
+  "cases": [
+    {
+      "name": "journals first, by name within a kind, empty ones left out",
+      "records": [
+        {
+          "id": "p1",
+          "kind": "person",
+          "name": "Mira",
+          "text": "Keeper of the light."
+        },
+        {
+          "id": "j2",
+          "kind": "journal",
+          "name": "Session 2",
+          "text": "The map."
+        },
+        {
+          "id": "l1",
+          "kind": "location",
+          "name": "Port Gull",
+          "text": "  "
+        },
+        {
+          "id": "j1",
+          "kind": "journal",
+          "name": "Framing",
+          "text": "Premise: ..."
+        },
+        {
+          "id": "h1",
+          "kind": "hook",
+          "name": "Find the map",
+          "text": "Somewhere."
+        }
+      ],
+      "ids": [
+        "j1",
+        "j2",
+        "p1",
+        "h1"
+      ]
+    },
+    {
+      "name": "text trimmed",
+      "records": [
+        {
+          "id": "j1",
+          "kind": "journal",
+          "name": "A",
+          "text": "  Truth.  "
+        }
+      ],
+      "ids": [
+        "j1"
+      ],
+      "texts": [
+        "Truth."
+      ]
+    }
+  ]
+}

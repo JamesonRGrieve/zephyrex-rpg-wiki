@@ -21,6 +21,14 @@
     "picture_url_characters": 2000
   },
   "gm_only_property": "GM only",
+  "document_kinds": [
+    "journal",
+    "location",
+    "person",
+    "faction",
+    "item",
+    "hook"
+  ],
   "taggable_types": [
     "person",
     "location",
