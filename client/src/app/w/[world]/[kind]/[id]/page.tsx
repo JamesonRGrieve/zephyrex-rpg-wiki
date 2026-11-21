@@ -7,17 +7,31 @@
  */
 import Link from 'next/link';
 import { notFound, useParams } from 'next/navigation';
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { LoadProblem } from 'zephyrex/ui/load-problem';
 import { PageHeader } from 'zephyrex/ui/page-header';
 import { SkeletonRows } from 'zephyrex/ui/skeleton';
 import { EntityPage, type EntityPageProps } from '~/components/world/EntityPage';
+import { HookLinks, type LinkedHook, type Taker } from '~/components/world/HookLinks';
 import { type CarriedLine, InventoryList } from '~/components/world/InventoryList';
 import { PostList } from '~/components/world/PostList';
 import { ENTITY_KINDS, type EntityKind, isEntityKind } from '~/components/world/kinds';
 import { Unavailable } from '~/components/world/Unavailable';
 import { type Capabilities, useCapabilities } from '~/features/capabilities';
-import { carried, factions, itemInstances, items, journals, people, places, posts } from '~/features/data/records';
+import {
+  carried,
+  factionHooks,
+  factions,
+  hookDependencies,
+  hooks,
+  itemInstances,
+  items,
+  journals,
+  people,
+  personHooks,
+  places,
+  posts,
+} from '~/features/data/records';
 
 interface Shown {
   name: string;
@@ -57,6 +71,7 @@ function Record({
   where,
   canCarry,
   canPost,
+  extra,
 }: {
   world: string;
   kind: EntityKind;
@@ -67,6 +82,8 @@ function Record({
   where: EntityPageProps['where'];
   canCarry: boolean;
   canPost: boolean;
+  /** Kind-specific sections, after the entry (a hook's plot links). */
+  extra?: ReactNode;
 }): ReactElement {
   const words = ENTITY_KINDS[kind];
   return (
@@ -80,6 +97,7 @@ function Record({
       {record !== undefined && (
         <>
           <EntityPage kind={record.kind} entry={record.entry} description={record.description} where={where} />
+          {extra}
           {canPost && <Posts type={kind} id={id} />}
           {canCarry && <Carries world={world} type={kind} id={id} />}
         </>
@@ -126,7 +144,72 @@ function JournalPage({ world, id, can }: { world: string; id: string; can: Capab
   );
 }
 
-const PAGES = { location: PlacePage, person: PersonPage, faction: FactionPage, item: ItemPage, journal: JournalPage } as const;
+/** A hook's prerequisites, what it leads to, and who is on it, each named and linked. */
+function Plot({ world, id }: { world: string; id: string }): ReactElement {
+  const waits = hookDependencies.useList({ child_hook_id: id });
+  const leads = hookDependencies.useList({ parent_hook_id: id });
+  const mine = personHooks.useList({ hook_id: id });
+  const theirs = factionHooks.useList({ hook_id: id });
+  const allHooks = hooks.useList({ campaign_id: world });
+  const allPeople = people.useList({ campaign_id: world });
+  const allFactions = factions.useList({ campaign_id: world });
+  const nameOf = (rows: readonly { id: string; name: string }[] | undefined) => new Map((rows ?? []).map((row) => [row.id, row.name]));
+  const hookName = nameOf(allHooks.data);
+  const personName = nameOf(allPeople.data);
+  const factionName = nameOf(allFactions.data);
+  const linked = (hookId: string): LinkedHook => ({ id: hookId, name: hookName.get(hookId) ?? null, href: `/w/${world}/hook/${hookId}` });
+  const takers: Taker[] | undefined =
+    mine.data === undefined || theirs.data === undefined
+      ? undefined
+      : [
+          ...mine.data.map((row) => ({
+            id: row.id,
+            name: personName.get(row.person_id) ?? null,
+            href: `/w/${world}/person/${row.person_id}`,
+            status: row.status,
+            progress: row.progress,
+          })),
+          ...theirs.data.map((row) => ({
+            id: row.id,
+            name: factionName.get(row.faction_id) ?? null,
+            href: `/w/${world}/faction/${row.faction_id}`,
+            status: row.status,
+            progress: row.progress,
+          })),
+        ];
+  const error = waits.error ?? leads.error ?? mine.error ?? theirs.error;
+  return (
+    <HookLinks
+      waitsOn={waits.data?.map((edge) => linked(edge.parent_hook_id))}
+      leadsTo={leads.data?.map((edge) => linked(edge.child_hook_id))}
+      takers={takers}
+      error={error}
+      onRetry={() => Promise.all([waits.mutate(), leads.mutate(), mine.mutate(), theirs.mutate()])}
+    />
+  );
+}
+
+function HookPage({ world, id, can }: { world: string; id: string; can: Capabilities }): ReactElement {
+  const one = hooks.useOne(id);
+  const giver = people.useOne(one.data?.giver_person_id ?? null);
+  const where = giver.data === undefined ? undefined : { label: 'Given by', name: giver.data.name, href: `/w/${world}/person/${giver.data.id}` };
+  return (
+    <Record
+      world={world}
+      kind='hook'
+      id={id}
+      record={one.data}
+      error={one.error}
+      onRetry={() => one.mutate()}
+      where={where}
+      canCarry={false}
+      canPost={can.posts}
+      extra={<Plot world={world} id={id} />}
+    />
+  );
+}
+
+const PAGES = { location: PlacePage, person: PersonPage, faction: FactionPage, item: ItemPage, journal: JournalPage, hook: HookPage } as const;
 
 export default function EntityRecordPage(): ReactElement {
   const params = useParams<{ world: string; kind: string; id: string }>();

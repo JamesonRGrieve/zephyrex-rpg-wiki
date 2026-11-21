@@ -9,9 +9,20 @@
 import type { Prisma } from '@prisma/client';
 import { type ResourceSpec, validationError } from '@zephyrex/lite';
 import { z } from 'zod';
-import { ENTITY_TYPES, FACTION_KINDS, ITEM_KINDS, JOURNAL_KINDS, LIMITS, LOCATION_KINDS, PERSON_KINDS, POST_POSITIONS } from '~/contract';
+import {
+  ENTITY_TYPES,
+  FACTION_KINDS,
+  HOOK_KINDS,
+  ITEM_KINDS,
+  JOURNAL_KINDS,
+  LIMITS,
+  LOCATION_KINDS,
+  PERSON_KINDS,
+  POST_POSITIONS,
+} from '~/contract';
 import { type Columns, columnsOf, fieldsOf, plain } from '~/lib/columns';
 import { EntryError, parseEntry } from '~/lib/entry';
+import { wouldCloseCycle } from '~/lib/hookGraph';
 import { prisma } from '~/lib/prisma';
 
 const name = z.string().trim().min(1, 'A name is required').max(LIMITS.name_characters);
@@ -801,4 +812,270 @@ export const entityPosts: ResourceSpec<PostRow, z.infer<typeof postCreate>, z.in
     await prisma.entityPost.delete({ where: { id } });
   },
   fields: (row) => fieldsOf(POST_COLUMNS, row),
+};
+
+// ---- hook (the plot-hook DAG and who is on each hook) ----------------------------------------
+
+const HOOK_COLUMNS: Columns = {
+  name: plain('name'),
+  description: plain('description'),
+  entry: plain('entry'),
+  kind: plain('kind'),
+  giver_person_id: plain('giverPersonId'),
+  giver_faction_id: plain('giverFactionId'),
+  campaign_id: plain('campaignId'),
+};
+const hookCreate = z.object({
+  name,
+  description: z.string().default(''),
+  entry: entry.optional(),
+  kind: kindOf(HOOK_KINDS).default(null),
+  giver_person_id: reference.default(null),
+  giver_faction_id: reference.default(null),
+  campaign_id: reference.default(null),
+});
+const hookUpdate = z
+  .object({
+    name,
+    description: z.string(),
+    entry,
+    kind: kindOf(HOOK_KINDS),
+    giver_person_id: reference,
+    giver_faction_id: reference,
+    campaign_id: reference,
+  })
+  .partial();
+type HookRow = Prisma.HookGetPayload<object>;
+
+const livePerson = (where: { id: string; createdById: string }) => prisma.person.count({ where: { ...where, deletedAt: null } });
+const liveFaction = (where: { id: string; createdById: string }) => prisma.faction.count({ where: { ...where, deletedAt: null } });
+const liveHook = (where: { id: string; createdById: string }) => prisma.hook.count({ where: { ...where, deletedAt: null } });
+
+async function checkHookRefs(ownerId: string, input: Record<string, unknown>): Promise<void> {
+  await checkWorld(ownerId, input.campaign_id);
+  await checkOwned(ownerId, input.giver_person_id, livePerson, 'That person is not one of yours', 'giver_person_id');
+  await checkOwned(ownerId, input.giver_faction_id, liveFaction, 'That organisation is not one of yours', 'giver_faction_id');
+}
+
+export const hooks: ResourceSpec<HookRow, z.infer<typeof hookCreate>, z.infer<typeof hookUpdate>> = {
+  resource: 'hook',
+  plural: 'hooks',
+  modelName: 'HookModel',
+  createSchema: hookCreate,
+  updateSchema: hookUpdate,
+  list: (ownerId, query) =>
+    prisma.hook.findMany({
+      where: {
+        createdById: ownerId,
+        deletedAt: null,
+        ...filters(query, [
+          ['campaign_id', 'campaignId'],
+          ['kind', 'kind'],
+          ['giver_person_id', 'giverPersonId'],
+          ['giver_faction_id', 'giverFactionId'],
+        ]),
+      },
+      orderBy: { name: 'asc' },
+    }),
+  find: (id, ownerId) => prisma.hook.findFirst({ where: { id, createdById: ownerId, deletedAt: null } }),
+  async insert(ownerId, input, stamp) {
+    await checkHookRefs(ownerId, input);
+    return prisma.hook.create({
+      data: { createdById: ownerId, ...written(HOOK_COLUMNS, input, stamp) } as Prisma.HookUncheckedCreateInput,
+    });
+  },
+  async updateIfCurrent(id, version, input, stamp, userId) {
+    const owner = await prisma.hook.findUnique({ where: { id }, select: { createdById: true, campaignId: true } });
+    checkWorldStays(owner?.campaignId, input.campaign_id);
+    if (owner !== null) await checkHookRefs(owner.createdById, input);
+    const { count } = await prisma.hook.updateMany({
+      where: { id, updatedAt: version },
+      data: written(HOOK_COLUMNS, input, stamp, userId) as Prisma.HookUncheckedUpdateManyInput,
+    });
+    return count === 0 ? null : prisma.hook.findUnique({ where: { id } });
+  },
+  async remove(id) {
+    // Its dependencies (either end) and everyone's progress go with it, as on the server.
+    await prisma.$transaction([
+      prisma.hookDependency.deleteMany({ where: { OR: [{ parentHookId: id }, { childHookId: id }] } }),
+      prisma.personHook.deleteMany({ where: { hookId: id } }),
+      prisma.factionHook.deleteMany({ where: { hookId: id } }),
+      prisma.hook.update({ where: { id }, data: tombstone() }),
+    ]);
+  },
+  fields: (row) => fieldsOf(HOOK_COLUMNS, row),
+};
+
+const DEPENDENCY_COLUMNS: Columns = {
+  parent_hook_id: plain('parentHookId'),
+  child_hook_id: plain('childHookId'),
+  reason: plain('reason'),
+};
+const dependencyCreate = z.object({
+  parent_hook_id: z.string().min(1),
+  child_hook_id: z.string().min(1),
+  reason: z.string().nullable().default(null),
+});
+const dependencyUpdate = z.object({ reason: z.string().nullable() }).partial();
+type DependencyRow = Prisma.HookDependencyGetPayload<object>;
+
+export const hookDependencies: ResourceSpec<DependencyRow, z.infer<typeof dependencyCreate>, z.infer<typeof dependencyUpdate>> = {
+  resource: 'hook_dependency',
+  plural: 'hook_dependencies',
+  modelName: 'HookDependencyModel',
+  createSchema: dependencyCreate,
+  updateSchema: dependencyUpdate,
+  list: (ownerId, query) =>
+    prisma.hookDependency.findMany({
+      where: {
+        createdById: ownerId,
+        ...filters(query, [
+          ['parent_hook_id', 'parentHookId'],
+          ['child_hook_id', 'childHookId'],
+        ]),
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
+  find: (id, ownerId) => prisma.hookDependency.findFirst({ where: { id, createdById: ownerId } }),
+  async insert(ownerId, input, stamp) {
+    await checkOwned(ownerId, input.parent_hook_id, liveHook, 'That hook is not one of yours', 'parent_hook_id');
+    await checkOwned(ownerId, input.child_hook_id, liveHook, 'That hook is not one of yours', 'child_hook_id');
+    const edges = await prisma.hookDependency.findMany({
+      where: { createdById: ownerId },
+      select: { parentHookId: true, childHookId: true },
+    });
+    if (wouldCloseCycle(edges, input.parent_hook_id, input.child_hook_id))
+      throw validationError('A hook can’t wait on itself or on a hook that waits on it', 'child_hook_id');
+    if (edges.some((one) => one.parentHookId === input.parent_hook_id && one.childHookId === input.child_hook_id))
+      throw validationError('That dependency is already there', 'child_hook_id');
+    return prisma.hookDependency.create({
+      data: { createdById: ownerId, ...written(DEPENDENCY_COLUMNS, input, stamp) } as Prisma.HookDependencyUncheckedCreateInput,
+    });
+  },
+  async updateIfCurrent(id, version, input, stamp, userId) {
+    const { count } = await prisma.hookDependency.updateMany({
+      where: { id, updatedAt: version },
+      data: written(DEPENDENCY_COLUMNS, input, stamp, userId) as Prisma.HookDependencyUncheckedUpdateManyInput,
+    });
+    return count === 0 ? null : prisma.hookDependency.findUnique({ where: { id } });
+  },
+  async remove(id) {
+    await prisma.hookDependency.delete({ where: { id } });
+  },
+  fields: (row) => fieldsOf(DEPENDENCY_COLUMNS, row),
+};
+
+const progressFields = {
+  status: z.string().max(LIMITS.hook_status_characters, `A status is at most ${LIMITS.hook_status_characters} characters`).nullable(),
+  accepted_at: z.coerce.date().nullable(),
+  completed_at: z.coerce.date().nullable(),
+  progress: z.number().min(0, 'Progress is zero or more').nullable(),
+};
+const PROGRESS_COLUMNS: Columns = {
+  status: plain('status'),
+  accepted_at: plain('acceptedAt'),
+  completed_at: plain('completedAt'),
+  progress: plain('progress'),
+};
+const progressUpdate = z.object(progressFields).partial();
+const isoOf = (row: { acceptedAt: Date | null; completedAt: Date | null }) => ({
+  accepted_at: row.acceptedAt?.toISOString() ?? null,
+  completed_at: row.completedAt?.toISOString() ?? null,
+});
+
+const PERSON_HOOK_COLUMNS: Columns = { person_id: plain('personId'), hook_id: plain('hookId'), ...PROGRESS_COLUMNS };
+const personHookCreate = z.object({
+  person_id: z.string().min(1),
+  hook_id: z.string().min(1),
+  status: progressFields.status.default(null),
+  accepted_at: progressFields.accepted_at.default(null),
+  completed_at: progressFields.completed_at.default(null),
+  progress: progressFields.progress.default(null),
+});
+type PersonHookRow = Prisma.PersonHookGetPayload<object>;
+
+export const personHooks: ResourceSpec<PersonHookRow, z.infer<typeof personHookCreate>, z.infer<typeof progressUpdate>> = {
+  resource: 'person_hook',
+  plural: 'person_hooks',
+  modelName: 'PersonHookModel',
+  createSchema: personHookCreate,
+  updateSchema: progressUpdate,
+  list: (ownerId, query) =>
+    prisma.personHook.findMany({
+      where: {
+        createdById: ownerId,
+        ...filters(query, [
+          ['person_id', 'personId'],
+          ['hook_id', 'hookId'],
+          ['status', 'status'],
+        ]),
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
+  find: (id, ownerId) => prisma.personHook.findFirst({ where: { id, createdById: ownerId } }),
+  async insert(ownerId, input, stamp) {
+    await checkOwned(ownerId, input.person_id, livePerson, 'That person is not one of yours', 'person_id');
+    await checkOwned(ownerId, input.hook_id, liveHook, 'That hook is not one of yours', 'hook_id');
+    if ((await prisma.personHook.count({ where: { personId: input.person_id, hookId: input.hook_id } })) > 0)
+      throw validationError('That one is already on this hook: update its progress instead', 'hook_id');
+    return prisma.personHook.create({
+      data: { createdById: ownerId, ...written(PERSON_HOOK_COLUMNS, input, stamp) } as Prisma.PersonHookUncheckedCreateInput,
+    });
+  },
+  async updateIfCurrent(id, version, input, stamp, userId) {
+    const { count } = await prisma.personHook.updateMany({
+      where: { id, updatedAt: version },
+      data: written(PROGRESS_COLUMNS, input, stamp, userId) as Prisma.PersonHookUncheckedUpdateManyInput,
+    });
+    return count === 0 ? null : prisma.personHook.findUnique({ where: { id } });
+  },
+  async remove(id) {
+    await prisma.personHook.delete({ where: { id } });
+  },
+  fields: (row) => ({ ...fieldsOf(PERSON_HOOK_COLUMNS, row), ...isoOf(row) }),
+};
+
+const FACTION_HOOK_COLUMNS: Columns = { faction_id: plain('factionId'), hook_id: plain('hookId'), ...PROGRESS_COLUMNS };
+const factionHookCreate = personHookCreate.omit({ person_id: true }).extend({ faction_id: z.string().min(1) });
+type FactionHookRow = Prisma.FactionHookGetPayload<object>;
+
+export const factionHooks: ResourceSpec<FactionHookRow, z.infer<typeof factionHookCreate>, z.infer<typeof progressUpdate>> = {
+  resource: 'faction_hook',
+  plural: 'faction_hooks',
+  modelName: 'FactionHookModel',
+  createSchema: factionHookCreate,
+  updateSchema: progressUpdate,
+  list: (ownerId, query) =>
+    prisma.factionHook.findMany({
+      where: {
+        createdById: ownerId,
+        ...filters(query, [
+          ['faction_id', 'factionId'],
+          ['hook_id', 'hookId'],
+          ['status', 'status'],
+        ]),
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
+  find: (id, ownerId) => prisma.factionHook.findFirst({ where: { id, createdById: ownerId } }),
+  async insert(ownerId, input, stamp) {
+    await checkOwned(ownerId, input.faction_id, liveFaction, 'That organisation is not one of yours', 'faction_id');
+    await checkOwned(ownerId, input.hook_id, liveHook, 'That hook is not one of yours', 'hook_id');
+    if ((await prisma.factionHook.count({ where: { factionId: input.faction_id, hookId: input.hook_id } })) > 0)
+      throw validationError('That one is already on this hook: update its progress instead', 'hook_id');
+    return prisma.factionHook.create({
+      data: { createdById: ownerId, ...written(FACTION_HOOK_COLUMNS, input, stamp) } as Prisma.FactionHookUncheckedCreateInput,
+    });
+  },
+  async updateIfCurrent(id, version, input, stamp, userId) {
+    const { count } = await prisma.factionHook.updateMany({
+      where: { id, updatedAt: version },
+      data: written(PROGRESS_COLUMNS, input, stamp, userId) as Prisma.FactionHookUncheckedUpdateManyInput,
+    });
+    return count === 0 ? null : prisma.factionHook.findUnique({ where: { id } });
+  },
+  async remove(id) {
+    await prisma.factionHook.delete({ where: { id } });
+  },
+  fields: (row) => ({ ...fieldsOf(FACTION_HOOK_COLUMNS, row), ...isoOf(row) }),
 };

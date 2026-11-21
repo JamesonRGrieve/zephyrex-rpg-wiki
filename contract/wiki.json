@@ -5,7 +5,8 @@
     "entry_bytes": 200000,
     "entry_depth": 32,
     "summary_characters": 400,
-    "report_mentions": 200
+    "report_mentions": 200,
+    "hook_status_characters": 40
   },
   "location_kinds": [
     "system",
@@ -67,11 +68,24 @@
     "pinned_top",
     "default"
   ],
+  "hook_kinds": [
+    "major_quest",
+    "side_quest",
+    "objective",
+    "plot_thread",
+    "mystery",
+    "rumor",
+    "obligation",
+    "foreshadowing",
+    "hint",
+    "background"
+  ],
   "entity_types": [
     "person",
     "location",
     "faction",
     "item",
-    "journal"
+    "journal",
+    "hook"
   ]
 }

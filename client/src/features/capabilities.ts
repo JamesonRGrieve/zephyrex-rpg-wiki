@@ -22,6 +22,8 @@ export interface Capabilities {
   items: boolean;
   /** Journals: session reports, diaries, lore, notes (world_narrative). */
   journals: boolean;
+  /** Plot hooks, their prerequisites and who is on them (world_narrative). */
+  hooks: boolean;
   /** Posts on any record (entity_posts). */
   posts: boolean;
   /** Accounts: the same records on every device the person signs in on. */
@@ -37,6 +39,7 @@ export function capabilitiesOf(names: ReadonlySet<string>, loaded: boolean): Cap
     factions: names.has('world_social'),
     items: names.has('world_inventory'),
     journals: names.has('world_narrative'),
+    hooks: names.has('world_narrative'),
     posts: names.has('entity_posts'),
     accounts: names.has('auth_session'),
   };

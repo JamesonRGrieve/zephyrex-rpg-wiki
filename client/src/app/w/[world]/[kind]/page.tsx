@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 'use client';
-/** /w/[world]/[kind]: one world's places, people, organisations, items or journals. Trees show beside places and organisations. */
+/** /w/[world]/[kind]: one world's places, people, organisations, items, journals or hooks. Trees show beside places and organisations. */
 import Link from 'next/link';
 import { notFound, useParams } from 'next/navigation';
 import type { ReactElement } from 'react';
@@ -12,10 +12,10 @@ import { ENTITY_KINDS, type EntityKind, isEntityKind } from '~/components/world/
 import { ParentTree, type TreeRow } from '~/components/world/ParentTree';
 import { Unavailable } from '~/components/world/Unavailable';
 import { useCapabilities } from '~/features/capabilities';
-import { factions, items, journals, people, places, type ResourceHooks, worlds } from '~/features/data/records';
+import { factions, hooks, items, journals, people, places, type ResourceHooks, worlds } from '~/features/data/records';
 
 /** The four resources a world lists, each with the hooks the list uses. */
-const RESOURCES = { location: places, person: people, faction: factions, item: items, journal: journals } as const;
+const RESOURCES = { location: places, person: people, faction: factions, item: items, journal: journals, hook: hooks } as const;
 const TREE_LABELS: Partial<Record<EntityKind, string>> = {
   location: 'Places by where they sit',
   faction: 'Organisations by who they answer to',

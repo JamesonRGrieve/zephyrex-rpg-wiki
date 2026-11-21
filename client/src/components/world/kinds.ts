@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // The record kinds a world's pages list (/w/[world]/[kind]), each with its words and its kinds.
-import { FACTION_KINDS, ITEM_KINDS, JOURNAL_KINDS, LOCATION_KINDS, PERSON_KINDS } from '~/contract';
+import { FACTION_KINDS, HOOK_KINDS, ITEM_KINDS, JOURNAL_KINDS, LOCATION_KINDS, PERSON_KINDS } from '~/contract';
 import type { Capabilities } from '~/features/capabilities';
 
 export const ENTITY_KINDS = {
@@ -9,6 +9,7 @@ export const ENTITY_KINDS = {
   faction: { what: 'organisation', plural: 'organisations', title: 'Organisations', kinds: FACTION_KINDS, needs: 'factions' },
   item: { what: 'item', plural: 'items', title: 'Items', kinds: ITEM_KINDS, needs: 'items' },
   journal: { what: 'journal', plural: 'journals', title: 'Journals', kinds: JOURNAL_KINDS, needs: 'journals' },
+  hook: { what: 'hook', plural: 'hooks', title: 'Hooks', kinds: HOOK_KINDS, needs: 'hooks' },
 } as const satisfies Record<string, { what: string; plural: string; title: string; kinds: readonly string[]; needs: keyof Capabilities }>;
 
 export type EntityKind = keyof typeof ENTITY_KINDS;

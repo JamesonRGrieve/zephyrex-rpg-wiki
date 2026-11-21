@@ -194,3 +194,76 @@ model EntityPost {
   @@index([createdById])
   @@index([targetEntityId])
 }
+
+/// A plot hook (world_narrative's HookModel, with rpg_core's campaign). Soft-deleted, like the other
+/// world records; its dependencies and progress rows go with it.
+model Hook {
+  id             String    @id @default(uuid())
+  createdById    String
+  name           String
+  description    String    @default("")
+  entry          String?
+  kind           String?
+  giverPersonId  String?
+  giverFactionId String?
+  campaignId     String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime
+  updatedById    String?
+  deletedAt      DateTime?
+
+  @@index([createdById])
+  @@index([campaignId])
+  @@index([deletedAt])
+}
+
+/// An edge of the hook DAG: the child waits on the parent. No cycles (lib/hookGraph.ts).
+model HookDependency {
+  id           String   @id @default(uuid())
+  createdById  String
+  parentHookId String
+  childHookId  String
+  reason       String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime
+  updatedById  String?
+
+  @@unique([parentHookId, childHookId])
+  @@index([childHookId])
+}
+
+/// A person's progress on a hook; one per person and hook.
+model PersonHook {
+  id          String    @id @default(uuid())
+  createdById String
+  personId    String
+  hookId      String
+  status      String?
+  acceptedAt  DateTime?
+  completedAt DateTime?
+  progress    Float?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime
+  updatedById String?
+
+  @@unique([personId, hookId])
+  @@index([hookId])
+}
+
+/// An organisation's progress on a hook; one per organisation and hook.
+model FactionHook {
+  id          String    @id @default(uuid())
+  createdById String
+  factionId   String
+  hookId      String
+  status      String?
+  acceptedAt  DateTime?
+  completedAt DateTime?
+  progress    Float?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime
+  updatedById String?
+
+  @@unique([factionId, hookId])
+  @@index([hookId])
+}

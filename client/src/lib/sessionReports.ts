@@ -37,7 +37,9 @@ async function nameIn(ownerId: string, campaignId: string, type: string, id: str
           ? await prisma.faction.findFirst({ where, select })
           : type === 'item'
             ? await prisma.item.findFirst({ where, select })
-            : await prisma.journal.findFirst({ where, select });
+            : type === 'hook'
+              ? await prisma.hook.findFirst({ where, select })
+              : await prisma.journal.findFirst({ where, select });
   if (row === null) throw validationError(`No ${type} ${id} to mention`, 'mentions');
   return row.campaignId === campaignId ? row.name : null;
 }

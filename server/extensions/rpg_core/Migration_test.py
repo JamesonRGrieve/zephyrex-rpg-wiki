@@ -20,6 +20,7 @@ INJECTED = {
     "factions": {"campaign_id"},
     "items": {"campaign_id"},
     "journals": {"campaign_id"},
+    "hooks": {"campaign_id"},
 }
 FOREIGN_KEYS = {
     ("persons", "campaign_id"): "campaigns",
@@ -30,6 +31,15 @@ FOREIGN_KEYS = {
     ("items", "campaign_id"): "campaigns",
     ("journals", "campaign_id"): "campaigns",
     ("journals", "author_person_id"): "persons",
+    ("hooks", "campaign_id"): "campaigns",
+    ("hooks", "giver_person_id"): "persons",
+    ("hooks", "giver_faction_id"): "factions",
+    ("hook_dependencies", "parent_hook_id"): "hooks",
+    ("hook_dependencies", "child_hook_id"): "hooks",
+    ("person_hooks", "person_id"): "persons",
+    ("person_hooks", "hook_id"): "hooks",
+    ("faction_hooks", "faction_id"): "factions",
+    ("faction_hooks", "hook_id"): "hooks",
 }
 
 
@@ -59,4 +69,32 @@ def test_the_injected_references_are_real_foreign_keys(database: sqlite3.Connect
 
 def test_each_extension_owns_its_tables(database: sqlite3.Connection) -> None:
     tables = {row[0] for row in database.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-    assert {"campaigns", "locations", "factions", "items", "item_instances", "entity_inventories", "journals", "entity_posts"} <= tables
+    assert {"campaigns", "locations", "factions", "items", "item_instances", "entity_inventories", "journals", "entity_posts", "hooks", "hook_dependencies", "person_hooks", "faction_hooks"} <= tables
+
+
+def test_hooks_002_keeps_a_create_all_table_and_adds_its_missing_columns() -> None:
+    """vtt's rpg_state made ``hooks`` by create_all, without entry or giver_person_id: 002 keeps its
+    rows and adds those columns, and creates only the tables that aren't there."""
+    import importlib.util
+    from pathlib import Path
+
+    import sqlalchemy as sa
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+
+    path = Path(__file__).parents[1] / "world_narrative" / "migrations" / "versions" / "002_hooks.py"
+    spec = importlib.util.spec_from_file_location("world_narrative_002_hooks", path)
+    assert spec is not None and spec.loader is not None
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+
+    engine = sa.create_engine("sqlite://")
+    with engine.begin() as connection:
+        connection.execute(sa.text("CREATE TABLE hooks (id VARCHAR PRIMARY KEY, name VARCHAR, kind VARCHAR, giver_faction_id VARCHAR, deleted_at DATETIME)"))
+        connection.execute(sa.text("INSERT INTO hooks (id, name, kind) VALUES ('h1', 'Slay the wyrm', 'major_quest')"))
+        with Operations.context(MigrationContext.configure(connection)):
+            migration.upgrade()
+        inspector = sa.inspect(connection)
+        assert {"entry", "giver_person_id"} <= {column["name"] for column in inspector.get_columns("hooks")}
+        assert {"hook_dependencies", "person_hooks", "faction_hooks"} <= set(inspector.get_table_names())
+        assert connection.execute(sa.text("SELECT name, kind FROM hooks")).all() == [("Slay the wyrm", "major_quest")]

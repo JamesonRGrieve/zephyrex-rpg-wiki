@@ -12,7 +12,7 @@
 import useSWR, { type SWRResponse, useSWRConfig } from 'swr';
 import { useClient } from 'zephyrex';
 import { z } from 'zod';
-import { ENTITY_TYPES, FACTION_KINDS, ITEM_KINDS, JOURNAL_KINDS, LOCATION_KINDS, PERSON_KINDS, POST_POSITIONS } from '~/contract';
+import { ENTITY_TYPES, FACTION_KINDS, HOOK_KINDS, ITEM_KINDS, JOURNAL_KINDS, LOCATION_KINDS, PERSON_KINDS, POST_POSITIONS } from '~/contract';
 
 const JSON_BODY = z.json();
 
@@ -129,6 +129,38 @@ export const postSchema = z.object({
 });
 export type Post = z.infer<typeof postSchema>;
 
+export const hookSchema = z.object({
+  ...versioned,
+  name: z.string(),
+  description: z.string().nullable(),
+  entry: z.string().nullable(),
+  kind: kindIn(HOOK_KINDS),
+  giver_person_id: z.string().nullable(),
+  giver_faction_id: z.string().nullable(),
+  campaign_id: z.string().nullable(),
+});
+export type Hook = z.infer<typeof hookSchema>;
+
+export const hookDependencySchema = z.object({
+  ...versioned,
+  parent_hook_id: z.string(),
+  child_hook_id: z.string(),
+  reason: z.string().nullable(),
+});
+export type HookDependency = z.infer<typeof hookDependencySchema>;
+
+const progress = {
+  hook_id: z.string(),
+  status: z.string().nullable(),
+  accepted_at: z.string().nullable(),
+  completed_at: z.string().nullable(),
+  progress: z.number().nullable(),
+};
+export const personHookSchema = z.object({ ...versioned, person_id: z.string(), ...progress });
+export type PersonHook = z.infer<typeof personHookSchema>;
+export const factionHookSchema = z.object({ ...versioned, faction_id: z.string(), ...progress });
+export type FactionHook = z.infer<typeof factionHookSchema>;
+
 type Versioned = { id: string; created_at: string; updated_at: string | null };
 /** What a write may set: a record's own fields (and, for write-only fields, `Extra`). */
 export type Fields<T extends Versioned, Extra = object> = Partial<Omit<T, keyof Versioned>> & Extra;
@@ -236,3 +268,19 @@ export const posts = resource<
   Post,
   Pick<Post, 'target_entity_type' | 'target_entity_id' | 'name'> & Fields<Post, { entry?: unknown }>
 >('entity_post', 'entity_posts', postSchema);
+export const hooks = resource<Hook, Fields<Hook, { entry?: unknown }> & { name: string }>('hook', 'hooks', hookSchema);
+export const hookDependencies = resource<HookDependency, Pick<HookDependency, 'parent_hook_id' | 'child_hook_id'> & Fields<HookDependency>>(
+  'hook_dependency',
+  'hook_dependencies',
+  hookDependencySchema,
+);
+export const personHooks = resource<PersonHook, Pick<PersonHook, 'person_id' | 'hook_id'> & Fields<PersonHook>>(
+  'person_hook',
+  'person_hooks',
+  personHookSchema,
+);
+export const factionHooks = resource<FactionHook, Pick<FactionHook, 'faction_id' | 'hook_id'> & Fields<FactionHook>>(
+  'faction_hook',
+  'faction_hooks',
+  factionHookSchema,
+);

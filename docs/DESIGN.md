@@ -223,7 +223,8 @@ records.
 | S2 | Organisations and families (`world_social`), items and inventory (`world_inventory`, W8), worn vs packed (`associated_person_id`), every extension's migrations | Committed (65248fa) |
 | S2b | rpg-ai A15: world_entities (a world's changes since a time, tombstones included), the summary rule, a record's world fixed once set, lite soft delete | Done, on the framework's changes() (a4d6a3ec); committed with S3 |
 | S3 | Journals, notes, lore and session reports (`world_narrative`; rpg-ai A24's session_report and session_report_get), posts (`entity_posts`, W3) | Done: both editions, server 51/51 and client checks on 58137; committed with S2b |
-| S2c | Pictures: the framework's media extension (assets, attachments with role primary_image) on any record; world_entities.picture (rpg-ai A31) | After S3 |
+| S3b | The plot-hook DAG in `world_narrative` (hooks, hook_dependencies with a cycle guard, person_hooks, faction_hooks; OBJECT_PLAN §6, moved from vtt's rpg_state), rpg_core's campaign on hooks; hooks kept out of world_entities (GM secrets until W9) | Done: both editions, server 57/57 and client checks on 58137 |
+| S2c | Pictures: the framework's media extension (assets, attachments with role primary_image) on any record; world_entities.picture (rpg-ai A31) | Waits on the framework's new attachments extension (operator's choice, 2026-11-21) |
 | S4 | Tags, statuses, categories (W6), property kits and values (W4), templates (W7), relations (W5) | Not started |
 | S5 | Cross-kind search, the mention editor (W2), Kanka import | Not started |
 

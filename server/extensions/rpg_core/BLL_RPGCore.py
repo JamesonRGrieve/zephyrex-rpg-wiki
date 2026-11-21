@@ -36,7 +36,7 @@ from zephyrex.extensions.wiki_shared.Contract import ENTITY_TYPES, LIMITS  # typ
 from zephyrex.extensions.wiki_shared.Report import report_entry  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Summary import summary  # type: ignore[import-not-found]
 from zephyrex.extensions.world_inventory.BLL_WorldInventory import ItemManager, ItemModel  # type: ignore[import-not-found]
-from zephyrex.extensions.world_narrative.BLL_WorldNarrative import JournalManager, JournalModel  # type: ignore[import-not-found]
+from zephyrex.extensions.world_narrative.BLL_WorldNarrative import HookManager, HookModel, JournalManager, JournalModel  # type: ignore[import-not-found]
 from zephyrex.extensions.world_social.BLL_WorldSocial import FactionManager, FactionModel  # type: ignore[import-not-found]
 from zephyrex.extensions.world_spatial.BLL_WorldSpatial import LocationManager, LocationModel  # type: ignore[import-not-found]
 from zephyrex.logic.AbstractLogicManager import (
@@ -217,7 +217,7 @@ def _world_stays(context: HookContext) -> None:
         raise HTTPException(status_code=422, detail="A record's world is fixed once set: copy it to another world instead")
 
 
-for _manager in (PersonManager, LocationManager, FactionManager, ItemManager, JournalManager):
+for _manager in (PersonManager, LocationManager, FactionManager, ItemManager, JournalManager, HookManager):
     hook_bll(_manager, timing=HookTiming.BEFORE, priority=20)(_world_stays)
 
 
@@ -225,6 +225,22 @@ for _manager in (PersonManager, LocationManager, FactionManager, ItemManager, Jo
 @extension_model(JournalModel)
 class RPG_JournalModel(BaseModel):
     """A journal's campaign: rpg_core scopes Tier 1 records, never the reverse."""
+
+    campaign_id: Optional[str] = Field(None, description="FK → campaigns.id; none = shared across campaigns")
+
+    class Create(BaseModel):
+        campaign_id: Optional[str] = None
+
+    class Update(BaseModel):
+        campaign_id: Optional[str] = None
+
+    class Search(BaseModel):
+        campaign_id: Optional[StringSearchModel] = None
+
+
+@extension_model(HookModel)
+class RPG_HookModel(BaseModel):
+    """A hook's campaign. Hooks stay out of world_entities: plot hooks are often GM secrets (W9)."""
 
     campaign_id: Optional[str] = Field(None, description="FK → campaigns.id; none = shared across campaigns")
 
@@ -248,6 +264,7 @@ MANAGER_OF_TYPE: dict[str, Any] = {
     "faction": FactionManager,
     "item": ItemManager,
     "journal": JournalManager,
+    "hook": HookManager,
 }
 MAX_MENTIONS: int = LIMITS["report_mentions"]
 

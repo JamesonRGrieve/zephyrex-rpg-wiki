@@ -210,6 +210,7 @@ class TestWorldIsFixed:
             ("faction", {"name": "Pier Watch", "kind": "military"}),
             ("item", {"name": "Pier lantern", "kind": "misc"}),
             ("person", {"name": "Old Tamsin", "kind": "npc"}),
+            ("hook", {"name": "Who lit the pier?", "kind": "mystery"}),
         ):
             record = _create(server, person, resource, **fields)
             joined = _put(server, person, resource, record, campaign_id=first["id"])
@@ -347,3 +348,66 @@ class TestWorldEntities:
 
         assert server.get(f"/v1/world_entity?campaign_id={world_id}", headers=_headers(other)).status_code == 404
         assert server.get(f"/v1/world_entity?campaign_id={world_id}&kinds=dragon", headers=_headers(person)).status_code == 422
+
+
+class TestHooks:
+    """The plot-hook DAG (OBJECT_PLAN §6, moved from vtt's rpg_state) and who is on each hook."""
+
+    def test_a_hook_has_a_kind_givers_an_entry_and_a_world(self, server: TestClient, person: Any, world: dict[str, Any]) -> None:
+        captain = _create(server, person, "person", name="Captain Ross", campaign_id=world["id"])
+        guild = _create(server, person, "faction", name="Salt Guild", kind="guild", campaign_id=world["id"])
+        hook = _create(
+            server, person, "hook", name="Recover the relic", kind="major_quest", giver_person_id=captain["id"],
+            giver_faction_id=guild["id"], campaign_id=world["id"], entry=ENTRY,
+        )
+        assert (hook["kind"], hook["giver_person_id"], hook["giver_faction_id"], hook["campaign_id"]) == (
+            "major_quest", captain["id"], guild["id"], world["id"],
+        )
+        assert hook["description"] == "A port city."
+        response = server.post("/v1/hook", json={"hook": {"name": "Odd", "kind": "sidequest"}}, headers=_headers(person))
+        assert response.status_code == 422, response.text
+
+    def test_dependencies_form_a_dag_with_no_cycles_or_repeats(self, server: TestClient, person: Any) -> None:
+        find, reach, slay = (_create(server, person, "hook", name=name, kind="objective") for name in ("Find", "Reach", "Slay"))
+        _create(server, person, "hook_dependency", parent_hook_id=find["id"], child_hook_id=reach["id"], reason="The map")
+        _create(server, person, "hook_dependency", parent_hook_id=reach["id"], child_hook_id=slay["id"])
+        for parent, child in ((slay, find), (reach, find), (find, find), (find, reach)):
+            body = {"parent_hook_id": parent["id"], "child_hook_id": child["id"]}
+            response = server.post("/v1/hook_dependency", json={"hook_dependency": body}, headers=_headers(person))
+            assert response.status_code == 422, (parent["name"], child["name"], response.text)
+        waits = server.get(f"/v1/hook_dependency?child_hook_id={slay['id']}", headers=_headers(person)).json()["hook_dependencies"]
+        assert [edge["parent_hook_id"] for edge in waits] == [reach["id"]]
+
+    def test_people_and_organisations_take_a_hook_once_and_progress(self, server: TestClient, person: Any) -> None:
+        hook = _create(server, person, "hook", name="Slay five wolves", kind="side_quest")
+        hunter = _create(server, person, "person", name="Hunter Brin")
+        lodge = _create(server, person, "faction", name="Hunters' Lodge", kind="guild")
+        mine = _create(server, person, "person_hook", person_id=hunter["id"], hook_id=hook["id"], status="active", progress=3)
+        assert (mine["status"], mine["progress"]) == ("active", 3)
+        _create(server, person, "faction_hook", faction_id=lodge["id"], hook_id=hook["id"], status="available")
+        again = server.post("/v1/person_hook", json={"person_hook": {"person_id": hunter["id"], "hook_id": hook["id"]}}, headers=_headers(person))
+        assert again.status_code == 422, again.text
+        done = _put(server, person, "person_hook", mine, status="completed", progress=5)
+        assert done.status_code == 200, done.text
+        for bad in ({"status": "x" * 41}, {"progress": -1}):
+            assert _put(server, person, "person_hook", mine, **bad).status_code == 422, bad
+
+    def test_deleting_a_hook_takes_its_dependencies_and_progress(self, server: TestClient, person: Any) -> None:
+        before, doomed, after = (_create(server, person, "hook", name=name) for name in ("Before", "Doomed", "After"))
+        _create(server, person, "hook_dependency", parent_hook_id=before["id"], child_hook_id=doomed["id"])
+        _create(server, person, "hook_dependency", parent_hook_id=doomed["id"], child_hook_id=after["id"])
+        scout = _create(server, person, "person", name="Scout Ilka")
+        _create(server, person, "person_hook", person_id=scout["id"], hook_id=doomed["id"], status="active")
+        current = server.get(f"/v1/hook/{doomed['id']}", headers=_headers(person))
+        gone = server.delete(f"/v1/hook/{doomed['id']}", headers=_headers(person, **{"If-Match": current.headers["ETag"]}))
+        assert gone.status_code in (200, 204), gone.text
+        for query in (f"parent_hook_id={doomed['id']}", f"child_hook_id={doomed['id']}"):
+            assert server.get(f"/v1/hook_dependency?{query}", headers=_headers(person)).json()["hook_dependencies"] == []
+        assert server.get(f"/v1/person_hook?hook_id={doomed['id']}", headers=_headers(person)).json()["person_hooks"] == []
+
+    def test_hooks_never_reach_the_lorebook_sync(self, server: TestClient, person: Any) -> None:
+        secret_world = _create(server, person, "campaign", name="Secret World")
+        _create(server, person, "hook", name="The baron is the cultist", kind="mystery", campaign_id=secret_world["id"])
+        page = server.get(f"/v1/world_entity?campaign_id={secret_world['id']}", headers=_headers(person)).json()
+        assert page["world_entities"] == []
+        assert server.get(f"/v1/world_entity?campaign_id={secret_world['id']}&kinds=hook", headers=_headers(person)).status_code == 422

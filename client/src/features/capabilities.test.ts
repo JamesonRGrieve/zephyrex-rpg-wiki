@@ -14,6 +14,7 @@ describe('capabilitiesOf', () => {
       factions: true,
       items: true,
       journals: true,
+      hooks: true,
       posts: true,
       accounts: false,
     });
@@ -28,6 +29,7 @@ describe('capabilitiesOf', () => {
       factions: false,
       items: false,
       journals: false,
+      hooks: false,
       posts: false,
       accounts: false,
     });
