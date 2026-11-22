@@ -1623,3 +1623,92 @@ class TestPartyKnowsItself:
         assert synced["Vex"]["relationships"] == []
         by_id = server.get(f"/v1/world_entity?ids={ilsa['id']}", headers=_headers(person)).json()["world_entities"][0]
         assert by_id["relationships"] == synced["Ilsa"]["relationships"]
+
+
+class TestLoreSearch:
+    """Hybrid retrieval (operator, 2026-11-22; design approved): a campaign's passages for a text,
+    the records it names first, then the other ranks fused, kept to its scope and a token budget.
+    Postgres's full-text, trigram and vector parts are first exercised on prod (operator: "Skip PG
+    tests for now"); here SQLite answers with the basic text rank and says so."""
+
+    ENTRY = [
+        {"type": "p", "children": [{"text": "Keeps the Rusty Anchor."}]},
+        {"type": "h2", "children": [{"text": "Motive"}]},
+        {"type": "p", "children": [{"text": "Pay the Guild before winter comes."}]},
+    ]
+
+    def test_passages_in_scope_named_first_then_by_text(self, server: TestClient, person: Any, other: Any) -> None:
+        from zephyrex.extensions.AbstractExtensionProvider import loaded_ability
+
+        setting = _create(server, person, "setting", name="Lore Setting")
+        elsewhere = _create(server, person, "setting", name="Elsewhere Setting")
+        campaign = _create(server, person, "campaign", name="Lore Campaign", setting_id=setting["id"])
+        sibling = _create(server, person, "campaign", name="Lore Sibling", setting_id=setting["id"])
+        tam = _create(server, person, "person", name="Old Tam", kind="npc", campaign_id=campaign["id"], entry=self.ENTRY)
+        guild = _create(server, person, "faction", name="The Coin Guild", campaign_id=campaign["id"],
+                        entry=[{"type": "p", "children": [{"text": "Lends at winter rates to desperate innkeepers."}]}])
+        canon = _create(server, person, "item", name="Storm Lantern", kind="misc", setting_id=setting["id"],
+                        entry=[{"type": "p", "children": [{"text": "Burns through any winter gale."}]}])
+        _create(server, person, "item", name="Far Lantern", kind="misc", setting_id=elsewhere["id"],
+                entry=[{"type": "p", "children": [{"text": "A winter lamp of another world."}]}])
+        _create(server, person, "person", name="Sibling Sal", kind="npc", campaign_id=sibling["id"],
+                entry=[{"type": "p", "children": [{"text": "Hates winter and guilds."}]}])
+
+        registry = server.app.state.model_registry  # type: ignore[attr-defined]
+        search = loaded_ability(registry, "rpg_core", "lore_search")
+        assert search is not None
+        got = search(registry, str(person.id), campaign["id"], "Old Tam frets about the guild and winter")
+        records = [passage["record_id"] for passage in got["passages"]]
+        # Tam is named, so his first passage leads; then the passages sharing the text's words; never
+        # the sibling campaign's or the other setting's.
+        assert records[0] == tam["id"] and got["passages"][0]["path"] == ["Old Tam"] and "exact" in got["passages"][0]["ranks"]
+        assert set(records) == {tam["id"], guild["id"], canon["id"]}
+        motive = next(passage for passage in got["passages"] if passage["path"] == ["Old Tam", "Motive"])
+        assert motive["text"] == "Pay the Guild before winter comes." and motive["tokens"] == 9
+        assert got["methods"]["exact"] == "used" and got["methods"]["text"].startswith("basic")
+        assert got["methods"]["vector"].startswith("unavailable") and got["methods"]["trigram"].startswith("unavailable")
+        # The setting's canon only when asked; record types narrow it; the budget holds.
+        assert canon["id"] not in {p["record_id"] for p in search(registry, str(person.id), campaign["id"], "winter", include_setting=False)["passages"]}
+        assert {p["record_id"] for p in search(registry, str(person.id), campaign["id"], "winter guild", kinds=["faction"])["passages"]} == {guild["id"]}
+        assert sum(p["tokens"] for p in search(registry, str(person.id), campaign["id"], "winter guild Tam", token_budget=12)["passages"]) <= 12
+        # Another user reads nothing of this campaign.
+        refused = server.post(f"/v1/campaign/{campaign['id']}/lore_search", json={"lore_search": {"text": "winter"}}, headers=_headers(other))
+        assert refused.status_code in (403, 404), refused.text
+
+        # A changed entry is cut again; a deleted record's passages go.
+        _put(server, person, "person", tam, entry=[{"type": "p", "children": [{"text": "Sold the inn and sailed south."}]}])
+        texts = [p["text"] for p in search(registry, str(person.id), campaign["id"], "Old Tam sailed")["passages"] if p["record_id"] == tam["id"]]
+        assert texts == ["Sold the inn and sailed south."]
+        current = server.get(f"/v1/faction/{guild['id']}", headers=_headers(person))
+        gone = server.delete(f"/v1/faction/{guild['id']}", headers=_headers(person, **{"If-Match": current.headers["ETag"]}))
+        assert gone.status_code in (200, 204), gone.text
+        assert guild["id"] not in {p["record_id"] for p in search(registry, str(person.id), campaign["id"], "winter rates")["passages"]}
+
+        # The REST twin answers the same; the rebuild finds nothing left to index.
+        posted = server.post(f"/v1/campaign/{campaign['id']}/lore_search", json={"lore_search": {"text": "Old Tam sailed"}}, headers=_headers(person))
+        assert posted.status_code == 200, posted.text
+        assert posted.json()["passages"][0]["record_id"] == tam["id"]
+        rebuild = loaded_ability(registry, "rpg_core", "rebuild_lore_chunks")
+        assert rebuild is not None and set(rebuild(registry, str(person.id)).values()) == {0}
+
+    def test_embedding_waits_for_postgres_and_holds_its_width(self, server: TestClient, person: Any) -> None:
+        from zephyrex.extensions.AbstractExtensionProvider import loaded_ability
+        from zephyrex.extensions.rpg_core import LoreSearch  # type: ignore[import-not-found]
+
+        registry = server.app.state.model_registry  # type: ignore[attr-defined]
+        calls: list[list[str]] = []
+        register = loaded_ability(registry, "rpg_core", "register_embedder")
+        assert register is not None
+        try:
+            register(registry, str(person.id), lambda texts: calls.append(texts) or [[0.0] * 768 for _ in texts], "test-embed")
+            assert LoreSearch.embedder() is not None and LoreSearch.embedder()[1] == "test-embed"  # type: ignore[index]
+            # SQLite has no embedding column: nothing is embedded, and lore_search says why.
+            assert LoreSearch.embed_pending(registry) == 0 and calls == []
+            campaign = _create(server, person, "campaign", name="Vectorless")
+            got = LoreSearch.lore_search(registry, str(person.id), campaign["id"], "anything")
+            assert got.methods["vector"].startswith("unavailable: needs Postgres with pgvector")
+        finally:
+            LoreSearch._registered.clear()
+        # A model of the wrong width is refused by name, never stored.
+        with pytest.raises(ValueError, match="768"):
+            LoreSearch._vector_literal([0.0] * 384)

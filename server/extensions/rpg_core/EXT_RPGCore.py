@@ -275,6 +275,56 @@ class RPGCoreExtension(AbstractStaticExtension):
         return world_entities_matching(model_registry, requester_id, campaign_id, text, limit, include_setting, tags).model_dump(mode="json")
 
     @classmethod
+    @ability("lore_search")
+    def lore_search(
+        cls,
+        model_registry: Any,
+        requester_id: str,
+        campaign_id: str,
+        text: str,
+        k: int = 20,
+        token_budget: int = 2000,
+        kinds: Optional[list[str]] = None,
+        tags: Optional[list[str]] = None,
+        include_setting: bool = True,
+    ) -> dict[str, Any]:
+        """The campaign's lore passages for a text, best first, to ``k`` and ``token_budget``: the
+        records the text names first, then full-text, trigram and vector ranks fused (RRF).
+        {passages: [{id, record_id, record_type, name, path, text, tokens, source, page, score,
+        ranks}], methods: {exact, text, trigram, vector: used | basic | unavailable: why}}."""
+        from zephyrex.extensions.rpg_core.LoreSearch import lore_search  # type: ignore[import-not-found]
+
+        return lore_search(model_registry, requester_id, campaign_id, text, k, token_budget, kinds, tags, include_setting).model_dump(mode="json")
+
+    @classmethod
+    @ability("rebuild_lore_chunks")
+    def rebuild_lore_chunks(cls, model_registry: Any, requester_id: str) -> dict[str, Any]:
+        """Cut the requester's records made before the lore index (rpg_core 017) into passages:
+        {kind: records indexed}. Run once after 017; the hooks keep it current after."""
+        from zephyrex.extensions.rpg_core.LoreSearch import rebuild_lore_chunks  # type: ignore[import-not-found]
+
+        return rebuild_lore_chunks(model_registry, requester_id)
+
+    @classmethod
+    @ability("register_embedder")
+    def register_embedder(cls, model_registry: Any, requester_id: str, embed: Any, model: str) -> dict[str, Any]:
+        """The composing app's embedder (texts in, 768-wide vectors out; rpg-ai's "embed"-role
+        endpoint, nomic-embed-text-v1.5 with no prefixes: the wiki adds "search_document: " and
+        "search_query: "). Recorded on each passage as embedded_model."""
+        from zephyrex.extensions.rpg_core.LoreSearch import register_embedder  # type: ignore[import-not-found]
+
+        register_embedder(embed, model)
+        return {"model": model}
+
+    @classmethod
+    def register_services(cls, model_registry: Any, requester_id: str) -> list[Any]:
+        """The lore embedding loop (LoreSearch.LoreEmbeddingService): idle without an embedder or
+        off Postgres."""
+        from zephyrex.extensions.rpg_core.LoreSearch import LoreEmbeddingService  # type: ignore[import-not-found]
+
+        return [LoreEmbeddingService(requester_id=requester_id, model_registry=model_registry)]
+
+    @classmethod
     @ability("rebuild_world_keys")
     def rebuild_world_keys(cls, model_registry: Any, requester_id: str) -> dict[str, Any]:
         """Index the requester's records made before the key index existed: {kind: records indexed}.

@@ -1771,6 +1771,61 @@ class WorldKeyManager(AbstractBLLManager, RouterMixin):
 
 WorldKeyModel.Manager = WorldKeyManager
 
+
+class LoreChunkModel(ApplicationModel.Optional, UpdateMixinModel.Optional, metaclass=ModelMeta):
+    """One passage of one record, for the narrator's hybrid lore search (rpg_core 017). On Postgres
+    the table also has tsv and embedding columns, written and read by SQL only (LoreSearch.py)."""
+
+    Manager: ClassVar[Type["LoreChunkManager"]] = None
+    table_comment: ClassVar[str] = "A passage of a record, for the narrator's hybrid lore search (lore_search)."
+
+    target_entity_type: Optional[str] = Field(None, description="The record's type")
+    target_entity_id: Optional[str] = Field(None, description="The record")
+    name: Optional[str] = Field(None, description="The record's name (trigram-matched)")
+    campaign_id: Optional[str] = Field(None, description="The record's campaign; none for a setting's canon")
+    setting_id: Optional[str] = Field(None, description="The record's setting")
+    game_system_id: Optional[str] = Field(None, description="The record's game system, when it has one")
+    kind: Optional[str] = Field(None, description="The record's kind")
+    source: Optional[str] = Field(None, description="Its source (a book), when it has one")
+    page: Optional[int] = Field(None, description="The source's page, when known")
+    position: Optional[int] = Field(None, description="The passage's place in the record, from 0")
+    path: Optional[str] = Field(None, description="JSON: the record's name, then its headings")
+    text: Optional[str] = Field(None, description="The passage")
+    tokens: Optional[int] = Field(None, description="Its length in tokens (characters / 4)")
+    embedded_model: Optional[str] = Field(None, description="The model that embedded it")
+    embedded_at: Optional[datetime] = Field(None, description="When it was embedded; none until then")
+
+    class Create(BaseModel):
+        target_entity_type: str = Field(...)
+        target_entity_id: str = Field(...)
+        name: Optional[str] = None
+        campaign_id: Optional[str] = None
+        setting_id: Optional[str] = None
+        game_system_id: Optional[str] = None
+        kind: Optional[str] = None
+        source: Optional[str] = None
+        page: Optional[int] = None
+        position: Optional[int] = None
+        path: Optional[str] = None
+        text: Optional[str] = None
+        tokens: Optional[int] = None
+
+    class Update(BaseModel):
+        pass
+
+    class Search(ApplicationModel.Search):
+        pass
+
+
+class LoreChunkManager(AbstractBLLManager, RouterMixin):
+    """Internal: written by rpg_core's hooks as SYSTEM, read by lore_search."""
+
+    _model = LoreChunkModel
+    routes_to_register: ClassVar[list[RouteType] | None] = []
+
+
+LoreChunkModel.Manager = LoreChunkManager
+
 KEY_BATCH = 500
 
 
@@ -1804,21 +1859,29 @@ def _index_records(model_registry: Any, kind: str, records: list[Any], replace: 
 
 
 def _keys_follow(kind: str) -> Any:
-    """After a record of ``kind`` is made, changed or deleted, its keys follow."""
+    """After a record of ``kind`` is made, changed or deleted, its keys and its lore passages follow."""
 
     def keys_follow(context: HookContext) -> None:
+        from zephyrex.extensions.rpg_core.LoreSearch import index_lore  # type: ignore[import-not-found]
+
         registry = context.manager.model_registry
+
+        def follow(registry: Any, kind: str, records: list[Any], replace: bool = True) -> None:
+            # Its keys (world_entities_matching) and its passages (lore_search) together.
+            _index_records(registry, kind, records, replace)
+            index_lore(registry, kind, records, replace)
+
         if context.method_name == "delete":
             record_id = context.kwarg("id", default=None) or context.arg(0, default=None)
             if record_id:
-                _index_records(registry, kind, [type("Gone", (), {"id": str(record_id), "deleted_at": True})()])
+                follow(registry, kind, [type("Gone", (), {"id": str(record_id), "deleted_at": True})()])
             return
         if context.method_name == "update":
             # The record as it now stands (an update may answer without every field).
             record_id = context.kwarg("id", default=None) or context.arg(0, default=None)
             if record_id:
                 try:
-                    _index_records(registry, kind, [context.manager.get(id=str(record_id))])
+                    follow(registry, kind, [context.manager.get(id=str(record_id))])
                 except HTTPException:
                     pass
             return
@@ -1827,10 +1890,12 @@ def _keys_follow(kind: str) -> Any:
         result = context.result
         records = [one for one in (result if isinstance(result, list) else [result]) if one is not None and getattr(one, "id", None)]
         if records:
-            _index_records(registry, kind, records, replace=False)
+            follow(registry, kind, records, replace=False)
 
     keys_follow.__name__ = keys_follow.__qualname__ = f"world_keys_{kind}"
     return keys_follow
+
+
 
 
 for _kind, _keyed in WORLD_ENTITY_MANAGERS.items():
@@ -1918,7 +1983,7 @@ def rebuild_world_keys(model_registry: Any, requester_id: str) -> dict[str, int]
         ids = [str(record.id) for record in records]
         for start in range(0, len(ids), KEY_BATCH):
             held.update(str(row.target_entity_id) for row in keys.list(filters=[FieldComparison(keys.Model, "target_entity_id", "in", ids[start : start + KEY_BATCH])]) or [])
-        missing = [record for record in records if str(record.id) not in held]
+        missing = [record for record in records if str(record.id) not in held and not getattr(record, "is_template", None) and not getattr(record, "deleted_at", None)]
         _index_records(model_registry, kind, missing, replace=False)
         indexed[kind] = len(missing)
     return indexed
@@ -3043,3 +3108,29 @@ def _copy_record_extras(model_registry: Any, requester_id: str, record_ids: list
 room_of(CampaignManager, lambda campaign: ("campaign", campaign.id))
 # A start's progress reaches the scenario's room (polling GET /v1/campaign_start/{id} is the fallback).
 room_of(CampaignStartManager, lambda start: ("campaign", start.scenario_id))
+
+
+# POST /v1/campaign/{id}/lore_search (LoreSearch.py), attached as matching is.
+def _attach_lore_search() -> None:
+    from zephyrex.extensions.rpg_core.LoreSearch import LoreSearchEnvelope, LoreSearched, lore_search  # type: ignore[import-not-found]
+
+    @custom_route(
+        method="POST",
+        path="/{id}/lore_search",
+        input_model=LoreSearchEnvelope,
+        output_model=LoreSearched,
+        authentication_type="jwt",
+        expose_in=(ExposeIn.REST,),
+        openapi_tags=("Campaigns",),
+        summary="The campaign's lore passages for a text: exact names first, then full-text, trigram and vector ranks fused, to a token budget",
+    )
+    def lore_search_route(self: Any, id: str, lore_search: Any) -> Any:
+        from zephyrex.extensions.rpg_core.LoreSearch import LoreSearchAsk, lore_search as search  # type: ignore[import-not-found]
+
+        asked = LoreSearchAsk.model_validate(lore_search)
+        return search(self.model_registry, str(self.requester.id), id, asked.text, asked.k, asked.token_budget, asked.kinds, asked.tags, asked.include_setting)
+
+    CampaignManager.lore_search_route = lore_search_route  # type: ignore[attr-defined]
+
+
+_attach_lore_search()
