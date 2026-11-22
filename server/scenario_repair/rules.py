@@ -10,7 +10,22 @@ import re
 from typing import Any, Iterable, Optional
 
 from zephyrex.extensions.wiki_shared.Entry import plain_text  # type: ignore[import-not-found]
-from zephyrex.extensions.wiki_shared.WorldKeys import record_keys, text_grams  # type: ignore[import-not-found]
+
+try:
+    from zephyrex.extensions.wiki_shared.WorldKeys import record_keys, text_grams  # type: ignore[import-not-found]
+except ImportError:
+    # An installed wiki older than b2effb7 (prod's cd32e9e) has no WorldKeys: the same file is loaded
+    # from beside this package (server/extensions/wiki_shared/WorldKeys.py; it needs only the
+    # standard library), so the repair runs in process on that build.
+    import importlib.util
+    from pathlib import Path
+
+    _spec = importlib.util.spec_from_file_location("scenario_repair_world_keys", Path(__file__).resolve().parents[1] / "extensions" / "wiki_shared" / "WorldKeys.py")
+    if _spec is None or _spec.loader is None:
+        raise
+    _world_keys = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_world_keys)
+    record_keys, text_grams = _world_keys.record_keys, _world_keys.text_grams
 
 OPENING = re.compile(r"^opening\b", re.IGNORECASE)
 START = re.compile(r"^start(ing)?\s+(location|place)\b", re.IGNORECASE)
@@ -178,10 +193,12 @@ def unmended(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
-def scenario_problems(persons: list[dict[str, Any]], framing_blocks: Optional[list[dict[str, Any]]], locations: list[dict[str, Any]]) -> list[str]:
+def scenario_problems(
+    persons: list[dict[str, Any]], framing_blocks: Optional[list[dict[str, Any]]], locations: list[dict[str, Any]], sheetless: Optional[list[str]] = None
+) -> list[str]:
     """What makes a scenario unplayable: people with no kind, no framing or an opening that only
-    points elsewhere, no places."""
-    problems: list[str] = []
+    points elsewhere, no places, and (where the back end serves character sheets) a PC with none."""
+    problems: list[str] = [f"{name} has no character sheet" for name in sorted(sheetless or [])]
     kindless = sorted(str(row.get("name") or row["id"]) for row in persons if not row.get("kind"))
     if kindless:
         problems.append(f"{len(kindless)} people have no kind: {', '.join(kindless[:5])}{'…' if len(kindless) > 5 else ''}")

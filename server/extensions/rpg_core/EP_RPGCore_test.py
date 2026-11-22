@@ -1222,6 +1222,16 @@ class TestPregens:
             {"id": akra["id"], "name": "Akra (Dragonborn Cleric, 2014)", "summary": "Level 1 Dragonborn Cleric.", "picture_url": None, "tags": ["Pregen", "Cleric"], "source": None}
         ]
 
+        # Operator, 2026-11-22: "The inventory and character sheets of prefab characters should all be
+        # done already at start". What a pregen carries comes with it (its sheet is VTT's, copied by
+        # VTT's AFTER_INSTANTIATE through the same id map).
+        kit = []
+        for name in ("Mace", "Holy symbol"):
+            item = _create(server, person, "item", name=name, kind="misc", setting_id=setting["id"])
+            instance = _create(server, person, "item_instance", item_id=item["id"], owner_person_id=akra["id"])
+            _create(server, person, "entity_inventory", item_instance_id=instance["id"], target_entity_type="person", target_entity_id=akra["id"])
+            kit.append((item, instance))
+
         scenario = _create(server, person, "campaign", name="Pregen Scenario", setting_id=setting["id"], is_scenario=True)
         refused = server.post(f"/v1/campaign/{scenario['id']}/instantiate", json={"instantiate": {"pregens": [plain["id"]]}}, headers=_headers(person))
         assert refused.status_code == 422, refused.text
@@ -1230,6 +1240,14 @@ class TestPregens:
         assert (copy["name"], copy["campaign_id"], copy["kind"]) == ("Akra (Dragonborn Cleric, 2014)", run["id"], "pc")
         copied_tags = {row["taxon_id"] for row in server.get(f"/v1/entity_taxon?target_entity_type=person&target_entity_id={copy['id']}", headers=_headers(person)).json()["entity_taxons"]}
         assert copied_tags == {pregen["id"], cleric["id"]}
+        # Its kit: both items carried by the copy, each a new instance it owns, of the same item.
+        carried = server.get(f"/v1/entity_inventory?target_entity_type=person&target_entity_id={copy['id']}", headers=_headers(person)).json()["entity_inventories"]
+        assert len(carried) == 2
+        instances = [server.get(f"/v1/item_instance/{row['item_instance_id']}", headers=_headers(person)).json()["item_instance"] for row in carried]
+        assert sorted(one["item_id"] for one in instances) == sorted(item["id"] for item, _instance in kit)
+        assert {one["owner_person_id"] for one in instances} == {copy["id"]} and not {one["id"] for one in instances} & {instance["id"] for _item, instance in kit}
+        held = server.get(f"/v1/entity_inventory?target_entity_type=person&target_entity_id={akra['id']}", headers=_headers(person)).json()["entity_inventories"]
+        assert len(held) == 2
         # The setting's own is untouched, and still listed.
         original = server.get(f"/v1/person/{akra['id']}", headers=_headers(person)).json()["person"]
         assert original["campaign_id"] is None

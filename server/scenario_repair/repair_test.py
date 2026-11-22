@@ -65,6 +65,8 @@ def test_the_rules_see_sullenmires_shape() -> None:
         f"the Opening Situation only points elsewhere: {POINTER[:120]!r}",
         "no places",
     ]
+    # A PC with no character sheet (where VTT serves sheets) is named first.
+    assert scenario_problems([{"id": "d", "name": "Dex Calloran", "kind": "pc"}], _framing("b"), [{"id": "p"}], sheetless=["Dex Calloran"])[0] == "Dex Calloran has no character sheet"
 
 
 @pytest.fixture(scope="module")
@@ -110,3 +112,22 @@ def test_sullenmire_is_mended_and_stays_mended(api: Api) -> None:
     assert again[scenario["id"]].kinds == {} and again[scenario["id"]].opening is None and again[scenario["id"]].start is None
     assert api.get("journal", framing["id"])[0]["entry"] == entry
     assert validate(api, scenario["id"]) == []
+
+
+def test_it_loads_on_a_wiki_older_than_world_keys() -> None:
+    """Prod's cd32e9e has no wiki_shared.WorldKeys: the rules load the same file by path."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    code = (
+        # As the app (or conftest) does: its extensions directory on zephyrex.extensions' path.
+        "import sys, zephyrex.extensions as ext; ext.__path__ = ['extensions', *ext.__path__]\n"
+        "sys.modules['zephyrex.extensions.wiki_shared.WorldKeys'] = None\n"
+        "import scenario_repair.rules as rules\n"
+        "assert rules.record_keys.__module__ == 'scenario_repair_world_keys', rules.record_keys.__module__\n"
+        "print(sorted(rules.text_grams('Old Tam waves')))"
+    )
+    done = subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, check=False)
+    assert done.returncode == 0, done.stderr
+    assert "'old tam'" in done.stdout

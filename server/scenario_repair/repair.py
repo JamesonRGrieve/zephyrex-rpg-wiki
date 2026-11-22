@@ -61,12 +61,23 @@ def _framing(api: Api, campaign_id: str) -> tuple[Optional[dict[str, Any]], Opti
     return (framings[0] if framings else None), (briefings[0] if briefings else None)
 
 
+SHEETS = "rpg_traits"  # VTT's: a person's character sheet is its person_trait rows
+
+
+def _sheetless(api: Api, persons: list[dict[str, Any]]) -> list[str]:
+    """The PCs with no character sheet, where the back end serves sheets (VTT's rpg_traits)."""
+    pcs = [row for row in persons if row.get("kind") == "pc"]
+    if not pcs or SHEETS not in api.extensions():
+        return []
+    return [str(row.get("name") or row["id"]) for row in pcs if not api.list("person_trait", person_id=str(row["id"]))]
+
+
 def validate(api: Api, campaign_id: str) -> list[str]:
     """What makes the campaign unplayable (empty when it's fine)."""
     persons = api.list("person", campaign_id=campaign_id)
     locations = api.list("location", campaign_id=campaign_id)
     framing, _briefing = _framing(api, campaign_id)
-    return scenario_problems(persons, blocks_of(framing.get("entry")) if framing else None, locations)
+    return scenario_problems(persons, blocks_of(framing.get("entry")) if framing else None, locations, _sheetless(api, persons))
 
 
 def _origin_of(api: Api, campaign: dict[str, Any], framing: Optional[dict[str, Any]], origins: dict[str, str]) -> Optional[str]:
