@@ -28,7 +28,8 @@ export interface LoreDatabase {
   prepare(sql: string): LoreStatement;
   exec(sql: string): unknown;
   pragma(source: string): unknown;
-  transaction<F extends (...args: never[]) => unknown>(fn: F): F;
+  transaction(fn: () => void): () => void;
+  loadExtension(file: string, entryPoint?: string): unknown;
 }
 export type LoreDatabaseClass = new (path: string) => LoreDatabase;
 type LoadVec = (db: LoreDatabase) => void;
