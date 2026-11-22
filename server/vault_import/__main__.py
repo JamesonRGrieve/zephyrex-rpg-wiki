@@ -15,7 +15,6 @@ import sys
 from pathlib import Path
 
 from vault_import.connect import connection
-from vault_import.importer import Importer
 from vault_import.notes import read_vault
 
 
@@ -36,6 +35,10 @@ def main(argv: list[str] | None = None) -> int:
     connect = connection(args.base_url, args.lite, args.app, args.owner)
     notes = [note for vault in args.vaults for note in read_vault(vault)]
     with connect as api:
+        # The importer imports the wiki's shared code (zephyrex.extensions.wiki_shared), which exists
+        # only once the connection has made the app (in process) or put the checkout's on the path.
+        from vault_import.importer import Importer
+
         report = Importer(api, setting_slug=args.setting, dry_run=args.dry_run).run(notes)
     print(report.text(args.dry_run))
     return 1 if report.refused or report.unplayable else 0

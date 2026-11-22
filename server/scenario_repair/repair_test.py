@@ -131,3 +131,20 @@ def test_it_loads_on_a_wiki_older_than_world_keys() -> None:
     done = subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, check=False)
     assert done.returncode == 0, done.stderr
     assert "'old tam'" in done.stdout
+
+
+def test_the_commands_import_before_any_app_exists() -> None:
+    """Zephyrex RPG on prod: zephyrex.extensions exists only once --app has made the app, so the
+    commands' modules must import without it; the wiki's code is imported inside main."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    code = (
+        "import sys; sys.modules['zephyrex.extensions'] = None\n"
+        "import scenario_repair.__main__, vault_import.__main__, book_import.__main__\n"
+        "print('imported')"
+    )
+    done = subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, check=False)
+    assert done.returncode == 0, done.stderr
+    assert "imported" in done.stdout

@@ -10,7 +10,6 @@ import json
 import sys
 from pathlib import Path
 
-from scenario_repair.repair import repair
 from vault_import.connect import connection
 
 
@@ -27,6 +26,10 @@ def main(argv: list[str] | None = None) -> int:
     origins = json.loads(args.origins.read_text(encoding="utf-8")) if args.origins else {}
     seated = {line.strip() for line in args.seated.read_text(encoding="utf-8").splitlines() if line.strip()} if args.seated else set()
     with connection(args.base_url, args.lite, args.app, args.owner) as api:
+        # The rules import the wiki's shared code (zephyrex.extensions.wiki_shared), which exists
+        # only once the connection has made the app (in process) or put the checkout's on the path.
+        from scenario_repair.repair import repair
+
         report = repair(api, dry_run=not args.apply, origins=origins, seated=seated)
     print(("DRY RUN: nothing written\n" if not args.apply else "") + "\n".join(mended.line() for mended in report))
     return 1 if any(mended.problems_after for mended in report) else 0

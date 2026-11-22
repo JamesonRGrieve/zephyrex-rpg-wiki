@@ -12,11 +12,27 @@ import importlib
 import os
 import sys
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Any, ContextManager, Iterator, Optional
 
 from vault_import.api import Api
 
 SESSION_HOURS = 1
+# This checkout's server extensions (wiki_shared among them), beside the importers.
+CHECKOUT_EXTENSIONS = Path(__file__).resolve().parents[1] / "extensions"
+
+
+def wiki_shared_on_path() -> None:
+    """zephyrex.extensions.wiki_shared importable: as the app made it (in process), else this
+    checkout's extensions/ added to the namespace (over HTTP, run from a wiki checkout)."""
+    try:
+        importlib.import_module("zephyrex.extensions.wiki_shared")
+        return
+    except ImportError:
+        pass
+    extensions = importlib.import_module("zephyrex.extensions")
+    if CHECKOUT_EXTENSIONS.is_dir() and str(CHECKOUT_EXTENSIONS) not in list(extensions.__path__):
+        extensions.__path__ = [str(CHECKOUT_EXTENSIONS), *extensions.__path__]
 
 
 @contextmanager
@@ -28,6 +44,7 @@ def over_http(base_url: str, lite: bool) -> Iterator[Api]:
     if lite:
         # The lite edition refuses cross-site writes; a same-origin fetch says so.
         headers["Sec-Fetch-Site"] = "same-origin"
+    wiki_shared_on_path()
     with httpx.Client(base_url=base_url, timeout=60) as http:
         yield Api(http, headers, prefix="/api" if lite else "")
 
@@ -47,6 +64,7 @@ def in_process(app_path: str, owner: str) -> Iterator[Api]:
         token = UserManager.generate_jwt_token(
             user_id=str(user.id), email=str(user.email), expiration_hours=SESSION_HOURS, model_registry=registry
         )
+        wiki_shared_on_path()
         api = Api(http, {"Authorization": f"Bearer {token}"})
         # For an importer that calls an ability in process (book_import): the app's registry and owner.
         api.model_registry = registry  # type: ignore[attr-defined]
