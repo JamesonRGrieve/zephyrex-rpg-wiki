@@ -174,3 +174,33 @@ def test_a_plural_create_over_the_batch_limit_goes_in_chunks(api: Api, monkeypat
     campaign = api.create("campaign", name="Chunked")
     made = api.create_many("person", [{"name": f"Crew {number}", "kind": "npc", "campaign_id": campaign["id"]} for number in range(7)])
     assert [row["name"] for row in made] == [f"Crew {number}" for number in range(7)]
+
+
+def test_a_setting_pregen_note_is_a_listed_pregen_with_its_sheet(server: TestClient, tmp_path: Path) -> None:
+    """Vault Author's setting-wide pregens (dh-campaign Setting/Pregens): vocabulary tags read as
+    names, the role capitalised, type tags left out; the base64 build a private character sheet."""
+    import base64
+
+    build = {"homeworld": "voidborn", "role": "warrior", "characteristics": {"WS": 40, "BS": 35}, "wounds": 12}
+    note = tmp_path / "Setting" / "Pregens" / "Dark Heresy 2e" / "Gerta Skaal.md"
+    note.parent.mkdir(parents=True)
+    note.write_text(
+        "---\nentity_type: character\nkind: pc\nname: Gerta Skaal\nsetting_wide: true\nsystem: dark-heresy-2e\n"
+        "role: Warrior (Feral World · Imperial Guard)\nprovenance: adapted\nsource: Dark Heresy 2e Core Rulebook pp.28–90\n"
+        "tags: [character, pc, pregen, warrior, dark-heresy-2e]\n"
+        f"initial_build: {base64.b64encode(json.dumps(build).encode()).decode()}\n"
+        "canonical_sheet: {source: initial_build, advancements: [], items: []}\n---\n**A feral world warrior.**\n\nShe hunts.\n",
+        encoding="utf-8",
+    )
+    user = create_user(server)
+    api = Api(server, {"Authorization": f"Bearer {user.jwt}"})
+    report = Importer(api, setting_slug="warhammer-40000").run(read_vault(tmp_path))
+    assert report.refused == [] and report.skipped == [], (report.refused, report.skipped)
+    assert not any(key.startswith(("initial_build", "canonical_sheet")) for keys in report.unread.values() for key in keys), report.unread
+    [setting] = [one for one in api.list("setting") if one.get("slug") == "warhammer-40000"]
+    pregens = server.get(f"/v1/setting/{setting['id']}/pregen", headers={"Authorization": f"Bearer {user.jwt}"}).json()["pregens"]
+    [gerta] = [one for one in pregens if one["name"] == "Gerta Skaal"]
+    assert gerta["tags"] == ["Pregen", "Dark Heresy 2nd Edition", "Warrior"]
+    sheets = {row["key"]: row for row in api.properties("person", gerta["id"])}
+    assert json.loads(sheets["Character sheet"]["value"]) == build and sheets["Character sheet"]["is_private"] is True
+    assert json.loads(sheets["Canonical sheet"]["value"])["source"] == "initial_build"

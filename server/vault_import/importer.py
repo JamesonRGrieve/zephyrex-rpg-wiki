@@ -73,11 +73,59 @@ KIND_SYNONYMS = {
 READ = {
     "entity_type", "kind", "name", "campaign", "setting_wide", "is_private", "tags", "aliases", "status",
     "race", "faction", "location", "relations", "parent_location", "parent", "parent_hook", "depends_on",
+    "initial_build", "canonical_sheet",
     "holder", "quantity", "session_number", "session_date", "maps", "keywords", "voice", "provenance", "source", "image", "picture", "system", "editions", "description",
     *PROPERTIES,
     *(one for fields in KIND_FIELDS.values() for one in fields),
 }
 STATUS_KIND = {"hook": "quest_status"}
+# A setting's pregen (operator, 2026-11-21): the vault's vocabulary tags read as names, its
+# lowercase role tag capitalised, and the tags that only repeat its type left out.
+PREGEN_TAG = "pregen"
+TAG_NAMES = {
+    "pregen": "Pregen",
+    "dark-heresy-2e": "Dark Heresy 2nd Edition",
+    "dark-heresy-1e": "Dark Heresy",
+    "dark-heresy": "Dark Heresy",
+    "rogue-trader": "Rogue Trader",
+    "deathwatch": "Deathwatch",
+    "black-crusade": "Black Crusade",
+    "only-war": "Only War",
+    "imperium-maledictum": "Imperium Maledictum",
+}
+TYPE_TAGS = {"character", "pc", "person"}
+
+
+def _tags(meta: dict[str, Any], kind: str) -> list[str]:
+    """A note's tags as taxa names; a pregen's read as names (see TAG_NAMES)."""
+    raw = [str(tag).strip() for tag in _list(meta.get("tags")) if _text(tag) and str(tag) != kind]
+    if not any(tag.casefold() == PREGEN_TAG for tag in raw):
+        return raw
+    named: list[str] = []
+    for tag in raw:
+        if tag.casefold() in TYPE_TAGS:
+            continue
+        name = TAG_NAMES.get(tag.casefold()) or (tag[:1].upper() + tag[1:] if tag == tag.lower() else tag)
+        if name not in named:
+            named.append(name)
+    return named
+
+
+def _sheet(value: Any) -> Optional[str]:
+    """A character's build (the vault's initial_build: base64 of JSON, or JSON) as JSON text."""
+    import base64
+
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)
+    text = _text(value)
+    if text is None:
+        return None
+    for decode in (lambda raw: base64.b64decode(raw, validate=True).decode("utf-8"), lambda raw: raw):
+        try:
+            return json.dumps(json.loads(decode(text)), ensure_ascii=False)
+        except (ValueError, UnicodeDecodeError):
+            continue
+    return None
 
 
 @dataclass
@@ -602,12 +650,19 @@ class Importer:
                 changed |= self._property(kind, record_id, label, value, value_type)
         if meta.get("is_private") is True:
             changed |= self._property(kind, record_id, GM_ONLY_PROPERTY, "true", "boolean", private=True)
+        # A character's build and its sheet for the VTT, kept as they are, private.
+        for key, label in (("initial_build", "Character sheet"), ("canonical_sheet", "Canonical sheet")):
+            sheet = _sheet(meta.get(key))
+            if sheet is not None:
+                changed |= self._property(kind, record_id, label, sheet, private=True)
+            elif meta.get(key) not in (None, ""):
+                self.report.unread.setdefault(placed.note.path, []).append(f"{key} (not JSON or base64 JSON)")
         if self.dry_run or record_id.startswith("(new"):
             return changed
         tagged = {one["taxon_id"] for one in self.api.list("entity_taxon", target_entity_type=kind, target_entity_id=record_id)}
         # A framing note's tags are its campaign's play styles (_settle_play_styles), not its own.
         framing = kind == "journal" and (_text(meta.get("kind")) or _text(meta.get("journal_type")) or "").lower().replace("-", "_") == "campaign_framing"
-        wanted = [] if framing else [(str(tag), "tag") for tag in _list(meta.get("tags")) if _text(tag) and str(tag) != kind]
+        wanted = [] if framing else [(tag, "tag") for tag in _tags(meta, kind)]
         if _text(meta.get("race")):
             wanted.append((str(meta["race"]).strip(), "race"))
         for name, taxon_kind in wanted:
