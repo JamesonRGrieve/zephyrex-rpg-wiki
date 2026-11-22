@@ -80,7 +80,7 @@ def merge(planned: list[tuple[Document, dnd5e.Planned]], order: list[str], label
             if record.texts and any(EDITION_LABELS[one.edition] == held for held, _text in record.texts[1:]):
                 heading = f"{EDITION_LABELS[one.edition]}: {one.category or one.kind}"
             record.texts.append((heading, one.markdown))
-        for value, into in ((one.source, record.sources), (one.uuid, record.uuids), (one.category, record.categories)):
+        for value, into in ((one.source, record.sources), (one.uuid, record.uuids), *((tag, record.categories) for tag in [one.category, *one.tags])):
             if value and value not in into:
                 into.append(value)
         record.keywords.extend(word for word in one.keywords if word not in record.keywords)

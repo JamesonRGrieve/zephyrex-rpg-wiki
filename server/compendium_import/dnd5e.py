@@ -14,7 +14,7 @@ from compendium_import.richtext import to_markdown
 # The packs, in import order; the rest of the system's packs stay out.
 PACKS = (
     "rules", "content24", "classes", "classes24", "subclasses", "classfeatures", "races", "origins24",
-    "backgrounds", "feats24", "spells", "spells24", "items", "equipment24", "tradegoods", "monsters", "actors24",
+    "backgrounds", "feats24", "spells", "spells24", "items", "equipment24", "tradegoods", "monsters", "actors24", "heroes",
 )
 SRD_51 = "D&D 5e SRD 5.1 (CC-BY-4.0)"
 SRD_521 = "D&D 5e SRD 5.2.1 (CC-BY-4.0)"
@@ -61,6 +61,8 @@ class Planned:
     stats: Optional[dict[str, Any]] = None
     # A real picture of it, by link (picture_url), where the pack gives one.
     picture: Optional[str] = None
+    # More tags beside its category (a pregen's "Pregen" and its class).
+    tags: list[str] = field(default_factory=list)
 
 
 def _description(document: Document) -> str:
@@ -127,6 +129,59 @@ def _stat_block(document: Document) -> dict[str, Any]:
     return {key: value for key, value in block.items() if value not in (None, {}, "")}
 
 
+PREGEN = "Pregen"
+EDITION_NAMES = {"2014": "2014", "2024": "2024"}
+
+
+def _species(name: str) -> str:
+    """The pack's species name read naturally: "Elf, High" is "High Elf"."""
+    head, _, tail = name.partition(", ")
+    return f"{tail} {head}" if tail else name
+
+
+def _pregen(document: Document, edition: str, common: dict[str, Any]) -> Optional[Planned]:
+    """A starter hero at level 1 as a pregenerated player character of the setting (operator,
+    2026-11-21: setting-wide characters to pick from, a couple per class). Other levels stay out."""
+    items = [item for item in document.data.get("items") or [] if isinstance(item, dict)]
+    classes = [item for item in items if item.get("type") == "class"]
+    if not classes or any(int((item.get("system") or {}).get("levels") or 1) != 1 for item in classes):
+        return None
+    klass = str(classes[0].get("name") or "").strip()
+    species = next((_species(str(item.get("name") or "")) for item in items if item.get("type") in ("race", "species")), "")
+    background = next((str(item.get("name") or "") for item in items if item.get("type") == "background"), "")
+    first = document.name.split(" (")[0].strip()
+    name = f"{first} ({' '.join(part for part in (species, klass) if part)}, {EDITION_NAMES[edition]})"
+    system = document.system
+    details = system.get("details") if isinstance(system.get("details"), dict) else {}
+    biography = details.get("biography") if isinstance(details.get("biography"), dict) else {}
+    line = f"Level 1 {' '.join(part for part in (species, klass) if part)}" + (f", {background} background" if background else "") + f" (SRD {'5.2.1' if edition == '2024' else '5.1'})."
+    story = to_markdown(str(biography.get("value") or ""), {"@name": first})
+    abilities = system.get("abilities") if isinstance(system.get("abilities"), dict) else {}
+    attributes = system.get("attributes") if isinstance(system.get("attributes"), dict) else {}
+    hp = attributes.get("hp") if isinstance(attributes.get("hp"), dict) else {}
+    ac = attributes.get("ac") if isinstance(attributes.get("ac"), dict) else {}
+    sheet = {
+        "level": 1,
+        "class": klass,
+        "species": species or None,
+        "background": background or None,
+        "abilities": {key: value.get("value") for key, value in abilities.items() if isinstance(value, dict)},
+        "hp": hp.get("max") or hp.get("value"),
+        "ac": ac.get("flat") or ac.get("value"),
+        "equipment": sorted({str(item.get("name")) for item in items if item.get("type") in ("weapon", "equipment", "consumable", "container", "loot", "tool")}),
+    }
+    common = {**common, "name": name}
+    return Planned(
+        "person",
+        "pc",
+        markdown="\n\n".join(part for part in (line, story) if part),
+        category=PREGEN,
+        tags=[klass],
+        stats={key: value for key, value in sheet.items() if value not in (None, "", [], {})},
+        **{key: value for key, value in common.items() if key != "markdown"},
+    )
+
+
 def plan(document: Document) -> tuple[Optional[Planned], Optional[str]]:
     """The record ``document`` becomes, or why it stays out."""
     if not document.name:
@@ -146,7 +201,8 @@ def plan(document: Document) -> tuple[Optional[Planned], Optional[str]]:
         return Planned("journal", "lore", markdown="\n\n".join(sections), category="Rules", keywords=["rules"], **common), None
     if document.document_type == "Actor":
         if document.type == "character":
-            return None, "a starter hero (a player character, not canon)"
+            pregen = _pregen(document, edition, common)
+            return (pregen, None) if pregen is not None else (None, "a starter hero above level 1")
         kind = "vehicle" if document.type == "vehicle" else "monster"
         creature = (document.system.get("details") or {}).get("type") if isinstance(document.system.get("details"), dict) else None
         category = str(creature.get("value") or "").title() if isinstance(creature, dict) and creature.get("value") else None
@@ -173,4 +229,5 @@ def stat_property(planned: Planned) -> Optional[tuple[str, str]]:
     """The private property that keeps a creature's numbers: its key and JSON value."""
     if not planned.stats:
         return None
-    return f"Stat block ({planned.edition})", json.dumps(planned.stats, ensure_ascii=False, sort_keys=True)
+    label = "Character sheet" if planned.kind == "pc" else "Stat block"
+    return f"{label} ({planned.edition})", json.dumps(planned.stats, ensure_ascii=False, sort_keys=True)

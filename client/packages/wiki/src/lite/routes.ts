@@ -16,6 +16,7 @@ import { bindPrisma } from './db';
 import { metadataDelete, metadataOfGet, metadataPatch, metadataPost } from './recordMetadataRoutes';
 import { campaignDocumentsGet } from './campaignDocuments';
 import { campaignPersonPost } from './ensurePerson';
+import { settingPregensGet } from './pregens';
 import { campaignInstantiatePost, campaignStartGet } from './scenarios';
 import { clockGet, clockPost, personMovePost, personMovesGet } from './worldTick';
 import { sessionReportGet, sessionReportPost } from './sessionReportRoutes';
@@ -91,7 +92,8 @@ const ROUTES: Record<string, Routes> = {
   property_kit: both(propertyKits),
   relation_influence: both(relationInfluences),
   relationship: both(relationships),
-  setting: both(settings),
+  // A setting's pregenerated player characters (GET /v1/setting/{id}/pregen).
+  setting: { ...both(settings), recordActions: { pregen: { GET: settingPregensGet } } },
   status: both(statuses),
   taxon: both(taxa),
   world_entity: { collection: { GET: worldEntityGet }, record: {} },

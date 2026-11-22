@@ -37,8 +37,8 @@ def test_the_srd_imports_as_canon_and_a_second_run_changes_nothing(server: TestC
 
     first = CompendiumImporter(api, "dnd").run(documents)
     assert first.refused == [], first.refused
-    # The starter hero (a player character) stays out; everything else is made.
-    assert [why for _path, why in first.skipped] == ["a starter hero (a player character, not canon)"]
+    # Nothing stays out: the level-1 starter hero is the setting's pregen.
+    assert first.skipped == []
     assert sorted(first.created) == sorted(
         [
             "journal Appendix A: Conditions",
@@ -48,6 +48,7 @@ def test_the_srd_imports_as_canon_and_a_second_run_changes_nothing(server: TestC
             "item Adamantine Breastplate",
             "person Goblin",
             "person Goblin Warrior",
+            "person Akra (Dragonborn Cleric, 2024)",
         ]
     )
     [setting] = [one for one in api.list("setting") if one.get("slug") == "dnd"]
@@ -71,10 +72,17 @@ def test_the_srd_imports_as_canon_and_a_second_run_changes_nothing(server: TestC
     assert json.loads(stats["Stat block (2014)"]["value"])["hp"] == 7
     assert _canon(api, "item", setting["id"])["Adamantine Breastplate"]["kind"] == "armour"
     assert "Creative Commons Attribution 4.0" in journals[dnd5e.ATTRIBUTION_NAME]["entry"]
+    # The starter hero: a pc of the setting, tagged Pregen and its class, its sheet private.
+    akra = people["Akra (Dragonborn Cleric, 2024)"]
+    assert akra["kind"] == "pc" and "Level 1 Dragonborn Cleric" in akra["entry"]
+    pregens = server.get(f"/v1/setting/{setting['id']}/pregen", headers={"Authorization": f"Bearer {user.jwt}"}).json()["pregens"]
+    assert [(one["name"], one["tags"]) for one in pregens if one["id"] == akra["id"]] == [("Akra (Dragonborn Cleric, 2024)", ["Pregen", "Cleric"])]
+    sheet = {row["key"]: row for row in api.properties("person", str(akra["id"]))}
+    assert json.loads(sheet["Character sheet (2024)"]["value"])["class"] == "Cleric"
 
     second = CompendiumImporter(api, "dnd").run(read_packs(FIXTURE, PACKS))
     assert (second.created, second.updated, second.refused) == ([], [], [])
-    assert len(second.unchanged) == 7
+    assert len(second.unchanged) == 8
 
 
 def test_a_dry_run_writes_nothing(server: TestClient) -> None:

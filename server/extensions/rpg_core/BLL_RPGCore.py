@@ -153,8 +153,33 @@ class SettingModel(
         slug: Optional[StringSearchModel] = None
 
 
+class SettingPregen(PlainModel):
+    id: str
+    name: str
+    summary: str = Field(..., description="Its one line: the first line of its entry")
+    picture_url: Optional[str] = None
+    tags: list[str] = Field(..., description="Its tags' names: Pregen, its class or role, …")
+    source: Optional[str] = None
+
+
+class SettingPregens(PlainModel):
+    pregens: list[SettingPregen]
+
+
 class SettingManager(AbstractBLLManager, RouterMixin):
     _model = SettingModel
+
+    @custom_route(
+        method="GET",
+        path="/{id}/pregen",
+        output_model=SettingPregens,
+        authentication_type="jwt",
+        expose_in=(ExposeIn.REST,),
+        openapi_tags=("Settings",),
+        summary="The setting's pregenerated player characters, to pick from at a start (canon pcs tagged Pregen)",
+    )
+    def pregen_route(self, id: str) -> SettingPregens:
+        return setting_pregens(self.model_registry, str(self.requester.id), id)
 
 
 def _slug_taken(manager: Any, slug: str) -> bool:
@@ -249,6 +274,7 @@ class CampaignModel(
 
 class CampaignStart(PlainModel):
     name: Optional[str] = Field(None, description="The playthrough's name; the scenario's when not given")
+    pregens: Optional[list[str]] = Field(None, description="The setting's pregens (person ids) the party picked: each copied into the playthrough")
 
 
 class CampaignStartEnvelope(PlainModel):
@@ -386,7 +412,7 @@ class CampaignManager(AbstractBLLManager, RouterMixin):
     )
     def instantiate_route(self, id: str, instantiate: CampaignStart) -> CampaignStartAccepted:
         start = CampaignStart.model_validate(instantiate)
-        return start_campaign(self.model_registry, str(self.requester.id), id, start.name)
+        return start_campaign(self.model_registry, str(self.requester.id), id, start.name, start.pregens or [])
 
     @custom_route(
         method="POST",
@@ -2028,24 +2054,89 @@ def _scenario_links() -> list[tuple[Any, tuple[str, ...]]]:
 
 
 def instantiate_campaign(
-    model_registry: Any, requester_id: str, source_campaign_id: str, name: Optional[str] = None, progress: Optional[Any] = None
+    model_registry: Any,
+    requester_id: str,
+    source_campaign_id: str,
+    name: Optional[str] = None,
+    progress: Optional[Any] = None,
+    pregens: Optional[list[str]] = None,
 ) -> CampaignStarted:
     """A playthrough of a scenario: a new campaign (its scenario_id the source's, its provenance the
     source's) with the requester's own copy of every record the scenario holds and every link
     between them, references turned to the copies (Scenarios.py). The setting's canon stays shared;
-    templates stay with the scenario. Returns the campaign and the id map, source → copy."""
+    templates stay with the scenario. ``pregens``, the setting's pregenerated characters the party
+    picked, are copied in too (the setting's own stay untouched). Returns the campaign and the id
+    map, source → copy."""
     from zephyrex.extensions.rpg_core.Scenarios import Copying, undo  # type: ignore[import-not-found]
 
     campaigns = _manager(model_registry, requester_id, CampaignManager)
     source = campaigns.get(id=source_campaign_id)
+    picked = _pregen_rows(model_registry, requester_id, getattr(source, "setting_id", None), pregens or [])
     copying = Copying()
     try:
-        made = _instantiate(model_registry, requester_id, campaigns, source, copying, name, progress or (lambda *_args: None))
+        made = _instantiate(model_registry, requester_id, campaigns, source, copying, name, progress or (lambda *_args: None), picked)
     except BaseException:
         # All or nothing: a start that fails partway leaves no half-copied campaign.
         undo(copying)
         raise
     return CampaignStarted(campaign=_manager(model_registry, requester_id, CampaignManager).get(id=str(made.id)).model_dump(mode="json"), id_map=copying.id_map)
+
+
+PREGEN_TAG = "pregen"
+
+
+def manager_classes_person(manager: Any) -> bool:
+    return isinstance(manager, PersonManager)
+
+
+def _pregen_ids(model_registry: Any, requester_id: str, setting_id: str) -> tuple[set[str], dict[str, list[str]]]:
+    """The setting's canon pcs tagged Pregen (any kind of tag named so), and every record's tag names."""
+    from zephyrex.logic.AbstractLogicManager.models import FieldComparison
+
+    taxa = {str(row.id): str(row.name) for row in _manager(model_registry, requester_id, TaxonManager).list(setting_id=setting_id) or []}
+    pregen_taxa = [one for one, name in taxa.items() if name.strip().casefold() == PREGEN_TAG]
+    links = _manager(model_registry, requester_id, EntityTaxonManager)
+    tagged = {str(row.target_entity_id) for row in links.list(filters=[FieldComparison(links.Model, "taxon_id", "in", pregen_taxa)]) or [] if row.target_entity_type == "person"} if pregen_taxa else set()
+    names: dict[str, list[str]] = {}
+    if tagged:
+        for row in links.list(filters=[FieldComparison(links.Model, "target_entity_id", "in", sorted(tagged))]) or []:
+            if str(row.taxon_id) in taxa:
+                names.setdefault(str(row.target_entity_id), []).append(taxa[str(row.taxon_id)])
+    return tagged, names
+
+
+def setting_pregens(model_registry: Any, requester_id: str, setting_id: str) -> SettingPregens:
+    """The setting's pregenerated player characters (operator, 2026-11-21: setting-wide characters to
+    pick from, a couple per class): its canon persons of kind pc tagged Pregen, by name."""
+    _manager(model_registry, requester_id, SettingManager).get(id=setting_id)
+    tagged, names = _pregen_ids(model_registry, requester_id, setting_id)
+    people = [row for row in _manager(model_registry, requester_id, PersonManager).list(setting_id=setting_id) or [] if not row.campaign_id and row.kind == "pc" and str(row.id) in tagged]
+    found = []
+    for row in sorted(people, key=lambda one: str(one.name).casefold()):
+        first = next((line for line in str(getattr(row, "description", "") or "").splitlines() if line.strip()), "")
+        tags = sorted(names.get(str(row.id), []), key=lambda name: (name.casefold() != PREGEN_TAG, name.casefold()))
+        found.append(SettingPregen(id=str(row.id), name=str(row.name), summary=summary(first), picture_url=getattr(row, "picture_url", None), tags=tags, source=getattr(row, "source", None)))
+    return SettingPregens(pregens=found)
+
+
+def _pregen_rows(model_registry: Any, requester_id: str, setting_id: Optional[str], ids: list[str]) -> list[Any]:
+    """The picked pregens' rows: each must be a pregen of the scenario's setting (422 otherwise)."""
+    if not ids:
+        return []
+    if not setting_id:
+        raise HTTPException(status_code=422, detail="This scenario has no setting, so no pregens to pick from")
+    tagged, _names = _pregen_ids(model_registry, requester_id, setting_id)
+    people = _manager(model_registry, requester_id, PersonManager)
+    rows = []
+    for one in dict.fromkeys(ids):
+        try:
+            row = people.get(id=one)
+        except HTTPException:
+            row = None
+        if row is None or row.campaign_id or str(getattr(row, "setting_id", "") or "") != str(setting_id) or one not in tagged:
+            raise HTTPException(status_code=422, detail=f"{one} isn't one of this setting's pregens")
+        rows.append(row)
+    return rows
 
 
 # A start's steps, in order, as its progress names them (each record kind, then the rest).
@@ -2066,7 +2157,7 @@ START_STEPS = (
 )
 
 
-def _instantiate(model_registry: Any, requester_id: str, campaigns: Any, source: Any, copying: Any, name: Optional[str], progress: Any) -> Any:
+def _instantiate(model_registry: Any, requester_id: str, campaigns: Any, source: Any, copying: Any, name: Optional[str], progress: Any, picked: Optional[list[Any]] = None) -> Any:
     """instantiate_campaign's copy, each thing it makes recorded on ``copying`` (for undo).
     ``progress(step, done, campaign_id)`` is told each step as it starts (START_STEPS)."""
     from zephyrex.extensions.rpg_core.Scenarios import copy_rows, finish, touching  # type: ignore[import-not-found]
@@ -2078,6 +2169,7 @@ def _instantiate(model_registry: Any, requester_id: str, campaigns: Any, source:
         rows = [row for row in manager.list(campaign_id=source_campaign_id) or [] if not getattr(row, "is_template", None)]
         gathered.append((manager, rows))
         copying.pending.update(str(row.id) for row in rows)
+    copying.pending.update(str(row.id) for row in picked or [])
     made = campaigns.create(
         name=name or source.name,
         description=source.description,
@@ -2092,6 +2184,9 @@ def _instantiate(model_registry: Any, requester_id: str, campaigns: Any, source:
     for done, (manager, rows) in enumerate(gathered):
         progress(START_STEPS[done], done, str(made.id))
         copy_rows(manager, rows, copying)
+        if manager_classes_person(manager) and picked:
+            # The party's pregens: the setting's characters, now the playthrough's own.
+            copy_rows(manager, picked, copying, fixed={"campaign_id": str(made.id), "setting_id": None})
     step = len(gathered)
     progress(START_STEPS[step], step, str(made.id))
     record_ids = [one for one in copying.id_map if one != str(source.id)]
@@ -2116,7 +2211,7 @@ def _instantiate(model_registry: Any, requester_id: str, campaigns: Any, source:
 START_IN_BACKGROUND = True
 
 
-def start_campaign(model_registry: Any, requester_id: str, source_campaign_id: str, name: Optional[str] = None) -> CampaignStartAccepted:
+def start_campaign(model_registry: Any, requester_id: str, source_campaign_id: str, name: Optional[str] = None, pregens: Optional[list[str]] = None) -> CampaignStartAccepted:
     """instantiate_campaign in the background, under the requester: answered at once with the
     start (state running), its row updated at each step (and published to the scenario's room), and
     done with the playthrough and its id map, or failed with why (the copy undone)."""
@@ -2124,8 +2219,10 @@ def start_campaign(model_registry: Any, requester_id: str, source_campaign_id: s
     import json
     import threading
 
-    # The scenario must be the requester's to read before anything starts (404 otherwise).
-    _manager(model_registry, requester_id, CampaignManager).get(id=source_campaign_id)
+    # The scenario must be the requester's to read, and the pregens its setting's, before anything
+    # starts (404, 422 otherwise).
+    scenario = _manager(model_registry, requester_id, CampaignManager).get(id=source_campaign_id)
+    _pregen_rows(model_registry, requester_id, getattr(scenario, "setting_id", None), pregens or [])
     starts = _manager(model_registry, requester_id, CampaignStartManager)
     row = starts.create(scenario_id=source_campaign_id, name=name, state="running", done=0, total=len(START_STEPS), step=START_STEPS[0])
     start_id = str(row.id)
@@ -2139,7 +2236,7 @@ def start_campaign(model_registry: Any, requester_id: str, source_campaign_id: s
 
         set_request_deadline_ms(None)
         try:
-            started = instantiate_campaign(model_registry, requester_id, source_campaign_id, name, progress=report)
+            started = instantiate_campaign(model_registry, requester_id, source_campaign_id, name, progress=report, pregens=pregens)
         except Exception as error:  # noqa: BLE001 - the start's row says why; the copy was undone
             detail = getattr(error, "detail", None) or str(error) or type(error).__name__
             _manager(model_registry, requester_id, CampaignStartManager).update(id=start_id, state="failed", error=str(detail))

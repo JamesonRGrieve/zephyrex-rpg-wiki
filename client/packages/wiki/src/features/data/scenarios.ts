@@ -5,7 +5,7 @@
  * it's done"); GET /v1/campaign_start/{id} reports its progress, then the playthrough (both editions).
  */
 import { useCallback } from 'react';
-import { useSWRConfig } from 'swr';
+import useSWR, { useSWRConfig } from 'swr';
 import { useClient } from 'zephyrex';
 import { z } from 'zod';
 import { worldSchema } from './records';
@@ -37,12 +37,13 @@ const wait = (ms: number): Promise<void> =>
 
 /** Starts the scenario and follows it to the end: its new playthrough and the map of each copied
  * record's id to its copy's. ``onProgress`` hears each report while it runs. */
-export function useStartScenario(): (scenarioId: string, name?: string, onProgress?: (start: Start) => void) => Promise<Started> {
+export function useStartScenario(): (scenarioId: string, name?: string, onProgress?: (start: Start) => void, pregens?: readonly string[]) => Promise<Started> {
   const client = useClient();
   const { mutate } = useSWRConfig();
   return useCallback(
-    async (scenarioId: string, name?: string, onProgress?: (start: Start) => void): Promise<Started> => {
-      let start = accepted.parse(await client.post(`/v1/campaign/${encodeURIComponent(scenarioId)}/instantiate`, { instantiate: name ? { name } : {} })).start;
+    async (scenarioId: string, name?: string, onProgress?: (start: Start) => void, pregens?: readonly string[]): Promise<Started> => {
+      const instantiate = { ...(name ? { name } : {}), ...(pregens && pregens.length > 0 ? { pregens } : {}) };
+      let start = accepted.parse(await client.post(`/v1/campaign/${encodeURIComponent(scenarioId)}/instantiate`, { instantiate })).start;
       onProgress?.(start);
       while (start.state === 'running') {
         // eslint-disable-next-line no-await-in-loop -- one report at a time, until it ends
@@ -59,4 +60,22 @@ export function useStartScenario(): (scenarioId: string, name?: string, onProgre
     },
     [client, mutate],
   );
+}
+
+export const pregenSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  summary: z.string(),
+  picture_url: z.string().nullish(),
+  tags: z.array(z.string()),
+  source: z.string().nullish(),
+});
+export type Pregen = z.infer<typeof pregenSchema>;
+
+/** A setting's pregenerated player characters, to pick from at a start (GET /v1/setting/{id}/pregen). */
+export function usePregens(settingId: string | null | undefined): { data: Pregen[] | undefined; error: Error | undefined } {
+  const client = useClient();
+  const path = settingId ? `/v1/setting/${encodeURIComponent(settingId)}/pregen` : null;
+  const { data, error } = useSWR<Pregen[], Error>(path, async () => z.object({ pregens: z.array(pregenSchema) }).parse(await client.get(path ?? '')).pregens);
+  return { data, error };
 }

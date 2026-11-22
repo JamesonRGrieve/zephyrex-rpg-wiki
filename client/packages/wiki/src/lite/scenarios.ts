@@ -16,6 +16,7 @@ import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from './db';
+import { pregenRows } from './pregens';
 import { campaigns } from './worldRecords';
 
 type Row = Record<string, unknown> & { id: string };
@@ -96,6 +97,7 @@ export async function instantiateCampaign(
   ownerId: string,
   sourceId: string,
   name: string | null,
+  pregens: readonly string[] = [],
 ): Promise<{ campaign: Prisma.CampaignGetPayload<object>; idMap: Record<string, string> }> {
   return prisma.$transaction(async (tx) => {
     // Every model by name, for the one generic copier; each is written only with rows of its own.
@@ -118,6 +120,10 @@ export async function instantiateCampaign(
       assign(rows);
       copied.push([model, rows]);
     }
+    // The party's pregens: the setting's characters, copied in as the playthrough's own.
+    const picked: Row[] = (await pregenRows(tx, ownerId, source.settingId, pregens)).map((row) => ({ ...(row as Row), campaignId: source.id, settingId: null }));
+    assign(picked);
+    copied.push(['person', picked]);
     for (const [model, anchors] of LINKS) {
       const table = tableOf(tables, model);
       const known = [...ids.keys()];
@@ -148,7 +154,7 @@ export async function instantiateCampaign(
   });
 }
 
-const start = z.object({ name: z.string().trim().min(1).nullish() });
+const start = z.object({ name: z.string().trim().min(1).nullish(), pregens: z.array(z.string()).nullish() });
 
 /** A start, as the server's campaign_start rows: lite's copy is one quick transaction, so a start
  * is done (or failed) before it's answered; kept in this process for GET /v1/campaign_start/{id}. */
@@ -175,7 +181,7 @@ export async function campaignInstantiatePost(request: NextRequest, context: Con
     const owner = localOwner(request);
     const id = (await context.params).id ?? '';
     const input = parseBody(start, await readJsonObject(request), 'instantiate');
-    const { campaign, idMap } = await instantiateCampaign(owner.id, id, input.name ?? null);
+    const { campaign, idMap } = await instantiateCampaign(owner.id, id, input.name ?? null, input.pregens ?? []);
     const row: CampaignStartRow = {
       id: crypto.randomUUID(),
       scenario_id: id,

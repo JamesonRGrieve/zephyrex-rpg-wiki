@@ -990,6 +990,21 @@ def _start(server: TestClient, user: Any, scenario_id: str, name: Optional[str] 
     return start
 
 
+def _start_with(server: TestClient, user: Any, scenario_id: str, pregens: list[str]) -> dict[str, Any]:
+    """A start with the party's pregens, followed to its end."""
+    import time
+
+    accepted = server.post(f"/v1/campaign/{scenario_id}/instantiate", json={"instantiate": {"pregens": pregens}}, headers=_headers(user))
+    assert accepted.status_code == 202, accepted.text
+    start = accepted.json()["start"]
+    deadline = time.monotonic() + 60
+    while start["state"] == "running":
+        assert time.monotonic() < deadline, start
+        time.sleep(0.5)
+        start = server.get(f"/v1/campaign_start/{start['id']}", headers=_headers(user)).json()["campaign_start"]
+    return start
+
+
 def _started(server: TestClient, user: Any, start: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str]]:
     """A done start's playthrough and id map."""
     assert start["state"] == "done", start
@@ -1180,6 +1195,39 @@ class TestEnsurePerson:
         assert refused.status_code == 404, refused.text
         names = sorted(one["name"] for one in _rows(server.get(f"/v1/person?campaign_id={campaign['id']}", headers=_headers(person)).json()))
         assert names == ["A Hooded Stranger", "The Barkeep"]
+
+
+class TestPregens:
+    """Operator, 2026-11-21: setting-wide characters to pick from at a start, a couple per class."""
+
+    def test_listed_by_setting_and_copied_in_on_start(self, server: TestClient, person: Any) -> None:
+        setting = _create(server, person, "setting", name="Pregen Setting")
+        akra = _create(server, person, "person", name="Akra (Dragonborn Cleric, 2014)", kind="pc", setting_id=setting["id"],
+                       entry=[{"type": "p", "children": [{"text": "Level 1 Dragonborn Cleric."}]}, {"type": "p", "children": [{"text": "Devout."}]}])
+        plain = _create(server, person, "person", name="Not a pregen", kind="pc", setting_id=setting["id"])
+        pregen = _create(server, person, "taxon", name="Pregen", kind="category", setting_id=setting["id"])
+        cleric = _create(server, person, "taxon", name="Cleric", kind="category", setting_id=setting["id"])
+        for taxon in (pregen, cleric):
+            _create(server, person, "entity_taxon", taxon_id=taxon["id"], target_entity_type="person", target_entity_id=akra["id"])
+
+        listed = server.get(f"/v1/setting/{setting['id']}/pregen", headers=_headers(person))
+        assert listed.status_code == 200, listed.text
+        assert listed.json()["pregens"] == [
+            {"id": akra["id"], "name": "Akra (Dragonborn Cleric, 2014)", "summary": "Level 1 Dragonborn Cleric.", "picture_url": None, "tags": ["Pregen", "Cleric"], "source": None}
+        ]
+
+        scenario = _create(server, person, "campaign", name="Pregen Scenario", setting_id=setting["id"], is_scenario=True)
+        refused = server.post(f"/v1/campaign/{scenario['id']}/instantiate", json={"instantiate": {"pregens": [plain["id"]]}}, headers=_headers(person))
+        assert refused.status_code == 422, refused.text
+        run, ids = _started(server, person, _start_with(server, person, scenario["id"], [akra["id"]]))
+        copy = server.get(f"/v1/person/{ids[akra['id']]}", headers=_headers(person)).json()["person"]
+        assert (copy["name"], copy["campaign_id"], copy["kind"]) == ("Akra (Dragonborn Cleric, 2014)", run["id"], "pc")
+        copied_tags = {row["taxon_id"] for row in server.get(f"/v1/entity_taxon?target_entity_type=person&target_entity_id={copy['id']}", headers=_headers(person)).json()["entity_taxons"]}
+        assert copied_tags == {pregen["id"], cleric["id"]}
+        # The setting's own is untouched, and still listed.
+        original = server.get(f"/v1/person/{akra['id']}", headers=_headers(person)).json()["person"]
+        assert original["campaign_id"] is None
+        assert [one["id"] for one in server.get(f"/v1/setting/{setting['id']}/pregen", headers=_headers(person)).json()["pregens"]] == [akra["id"]]
 
 
 class TestWhereTheyAre:

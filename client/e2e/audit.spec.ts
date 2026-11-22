@@ -352,6 +352,20 @@ test.describe.serial('visual audit', () => {
     expect(again.person).toEqual({ id: barkeep.person.id, name: 'The Barkeep', created: false });
     const hidden = (await (await request.get(`/api/v1/record_metadata/of?target_entity_type=person&target_entity_id=${barkeep.person.id}`)).json()) as { metadata: { key: string; value: string }[] };
     expect(hidden.metadata.map((row) => [row.key, row.value]).sort()).toEqual([['GM only', 'true'], ['Made in play', 'By the narrator']]);
+    // The setting's pregens: listed for a party picker, and a picked one copied in on a start.
+    const made = async (resource: string, body: Record<string, unknown>): Promise<string> =>
+      ((await (await request.post(`/api/v1/${resource}`, { data: { [resource]: body } })).json()) as Record<string, { id: string }>)[resource]!.id;
+    const akra = await made('person', { name: 'Akra (Dragonborn Cleric, 2014)', kind: 'pc', setting_id: seeded.setting });
+    for (const name of ['Pregen', 'Cleric']) {
+      const taxon = await made('taxon', { name, kind: 'category', setting_id: seeded.setting });
+      await made('entity_taxon', { taxon_id: taxon, target_entity_type: 'person', target_entity_id: akra });
+    }
+    const pregenList = (await (await request.get(`/api/v1/setting/${seeded.setting}/pregen`)).json()) as { pregens: { id: string; tags: string[] }[] };
+    expect(pregenList.pregens).toEqual([expect.objectContaining({ id: akra, tags: ['Pregen', 'Cleric'] })]);
+    const withParty = (await (await request.post(`/api/v1/campaign/${seeded.world}/instantiate`, { data: { instantiate: { name: 'With Akra', pregens: [akra] } } })).json()) as { start: { id_map: string; campaign_id: string } };
+    const partyMap = JSON.parse(withParty.start.id_map) as Record<string, string>;
+    const copiedAkra = (await (await request.get(`/api/v1/person/${partyMap[akra]}`)).json()) as { person: { campaign_id: string } };
+    expect(copiedAkra.person.campaign_id).toBe(withParty.start.campaign_id);
     const original = (await (await request.get(`/api/v1/person/${seeded.person}`)).json()) as { person: { campaign_id: string } };
     expect(original.person.campaign_id).toBe(seeded.world);
     const pages = worldPages(seeded);

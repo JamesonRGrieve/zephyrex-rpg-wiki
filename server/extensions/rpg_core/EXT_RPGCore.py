@@ -170,11 +170,23 @@ class RPGCoreExtension(AbstractStaticExtension):
 
     @classmethod
     @ability("instantiate_campaign")
-    def instantiate_campaign(cls, model_registry: Any, requester_id: str, source_campaign_id: str, name: Optional[str] = None) -> dict[str, Any]:
-        """Copy on start: a playthrough of the scenario, {campaign, id_map} (source id → copy id)."""
+    def instantiate_campaign(
+        cls, model_registry: Any, requester_id: str, source_campaign_id: str, name: Optional[str] = None, pregens: Optional[list[str]] = None
+    ) -> dict[str, Any]:
+        """Copy on start: a playthrough of the scenario, with the setting's pregens picked (person
+        ids) copied in too, {campaign, id_map} (source id → copy id)."""
         from zephyrex.extensions.rpg_core.BLL_RPGCore import instantiate_campaign  # type: ignore[import-not-found]
 
-        return instantiate_campaign(model_registry, requester_id, source_campaign_id, name).model_dump(mode="json")
+        return instantiate_campaign(model_registry, requester_id, source_campaign_id, name, pregens=pregens).model_dump(mode="json")
+
+    @classmethod
+    @ability("setting_pregens")
+    def setting_pregens(cls, model_registry: Any, requester_id: str, setting_id: str) -> dict[str, Any]:
+        """The setting's pregenerated player characters: {pregens: [{id, name, summary, picture_url,
+        tags, source}]} (canon pcs tagged Pregen), for a party picker."""
+        from zephyrex.extensions.rpg_core.BLL_RPGCore import setting_pregens  # type: ignore[import-not-found]
+
+        return setting_pregens(model_registry, requester_id, setting_id).model_dump(mode="json")
 
     @classmethod
     @ability("campaign_clock")
