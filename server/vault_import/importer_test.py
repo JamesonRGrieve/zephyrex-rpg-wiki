@@ -60,8 +60,12 @@ def test_the_vault_imports_with_its_links_and_a_second_run_changes_nothing(serve
     assert framing["kind"] == "campaign_framing"
     # Its framing note's tags are the campaign's play styles: shared ones matched, the rest its own.
     styles = {str(row["id"]): str(row["name"]) for row in api.list("taxon", kind="play_style")}
-    tagged = sorted(styles[str(row["taxon_id"])] for row in api.list("entity_taxon", target_entity_type="campaign", target_entity_id=campaign["id"]))
+    links = api.list("entity_taxon", target_entity_type="campaign", target_entity_id=campaign["id"])
+    tagged = sorted(styles[str(row["taxon_id"])] for row in links if str(row["taxon_id"]) in styles)
     assert tagged == ["combat-heavy", "mystery", "slow burn"]
+    # Imported from a vault: scenario_repair's origin tag (a category), checked at the run's end.
+    categories = {str(row["id"]): str(row["name"]) for row in api.list("taxon", kind="category")}
+    assert [categories[str(row["taxon_id"])] for row in links if str(row["taxon_id"]) in categories] == ["Imported"]
     assert api.list("entity_taxon", target_entity_type="journal", target_entity_id=framing["id"]) == []
     world = campaign["id"]
     fens, marsh, stable = (_one(api, "location", world, name) for name in ("The Fens", "Brindlemarsh", "Brindlemarsh Stable"))
@@ -225,3 +229,24 @@ def test_a_setting_pregen_note_is_a_listed_pregen_with_its_sheet(server: TestCli
     Importer(api, setting_slug="warhammer-40000").run(read_vault(tmp_path))
     pregens = server.get(f"/v1/setting/{setting['id']}/pregen", headers={"Authorization": f"Bearer {user.jwt}"}).json()["pregens"]
     assert [one["tags"] for one in pregens if one["name"] == "Brother Castellan Varro"] == [["Pregen", "Deathwatch", "Tactical Marine"]]
+
+
+def test_a_scenario_left_unplayable_is_reported_loudly(api: Api, tmp_path: Path) -> None:
+    """Sullenmire's shape: an opening that only points elsewhere, nothing to write one from, and no
+    places. The import says so (and the command exits 1), instead of leaving a broken scenario."""
+    (tmp_path / "Lore").mkdir()
+    (tmp_path / "Characters").mkdir()
+    (tmp_path / "Lore" / "Pointer Framing.md").write_text(
+        "---\nentity_type: journal\nkind: campaign_framing\nname: Pointer Framing\ncampaign: Pointer Hold\n---\n"
+        "## Opening Situation\n\nSee [[Pointer Briefing]]; the event graph is [[Pointer Quest]].\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "Characters" / "Kindless.md").write_text("---\nentity_type: character\nname: Kindless\ncampaign: Pointer Hold\n---\nA guard.\n", encoding="utf-8")
+    report = Importer(api).run(read_vault(tmp_path))
+    problems = report.unplayable["Pointer Hold"]
+    # The person got a kind at import (an NPC); the opening and the places couldn't be mended.
+    assert not any("no kind" in problem for problem in problems)
+    assert any("only points elsewhere" in problem for problem in problems) and "no places" in problems
+    assert "UNPLAYABLE Pointer Hold" in report.text(False)
+    [held] = [row for row in api.list("person") if row["name"] == "Kindless"]
+    assert held["kind"] == "npc"

@@ -142,6 +142,8 @@ class Report:
     refused: list[tuple[str, str]] = field(default_factory=list)
     unresolved: dict[str, list[str]] = field(default_factory=dict)
     unread: dict[str, list[str]] = field(default_factory=dict)
+    # Each campaign the run touched that still isn't playable (scenario_repair.rules.scenario_problems).
+    unplayable: dict[str, list[str]] = field(default_factory=dict)
 
     def text(self, dry_run: bool) -> str:
         made = "would create" if dry_run else "created"
@@ -153,6 +155,7 @@ class Report:
         lines += [f"  refused {path}: {why}" for path, why in self.refused]
         lines += [f"  unresolved in {path}: {', '.join(sorted(set(names)))}" for path, names in sorted(self.unresolved.items())]
         lines += [f"  unread in {path}: {', '.join(keys)}" for path, keys in sorted(self.unread.items())]
+        lines += [f"  UNPLAYABLE {name}: {'; '.join(problems)}" for name, problems in sorted(self.unplayable.items())]
         return "\n".join(lines)
 
 
@@ -491,13 +494,14 @@ class Importer:
             # A vehicle note is a vessel.
             if entity == "location" and str(note.meta.get("entity_type") or "").strip().lower() == "vehicle":
                 return "vessel"
-            return None
+            # Anyone else with no kind is an NPC (Sullenmire's people had none: no cast, no party).
+            return "npc" if entity == "person" else None
         kind = word.strip().lower().replace("-", "_").replace(" ", "_")
         kind = KIND_SYNONYMS.get(entity, {}).get(kind, kind)
         if kind in KINDS.get(entity, ()):
             return kind
         self.report.unread.setdefault(note.path, []).append(f"{field_name}: {word} (not one of the {entity} kinds)")
-        return None
+        return "npc" if entity == "person" else None
 
     # ---- pass 1 ----------------------------------------------------------------------------
 
@@ -625,7 +629,14 @@ class Importer:
         for name, value in fields.items():
             if name in ("entry", "aliases", "keywords", "voice", "lore"):
                 held = record.get(name)
-                if (json.loads(held) if isinstance(held, str) and held else None) != value:
+                loaded = json.loads(held) if isinstance(held, str) and held else None
+                if name == "entry" and placed.kind == "journal" and record.get("kind") == "campaign_framing" and isinstance(loaded, list):
+                    # What scenario_repair added (a written opening, a starting place) isn't a change
+                    # the vault made: compared without it, so a second run leaves the mended framing be.
+                    from scenario_repair.rules import unmended
+
+                    loaded = unmended(loaded)
+                if loaded != value:
                     changed[name] = value
             elif name == "provenance":
                 if (record.get(name) or HOMEBREW) != value:
@@ -823,4 +834,22 @@ class Importer:
             self._settle_framing()
         except ApiError as error:
             self.report.refused.append(("(campaigns)", str(error.detail)))
+        if not self.dry_run:
+            self._mend_and_validate()
         return self.report
+
+    def _mend_and_validate(self) -> None:
+        """Each scenario the run touched mended as scenario_repair mends it (a pointer opening written
+        out, a starting place), then checked: what still makes one unplayable is reported loudly."""
+        from scenario_repair.repair import mend
+
+        for name, campaign_id in sorted(self.campaigns.items()):
+            try:
+                campaign, _etag = self.api.get("campaign", campaign_id)
+                if not campaign.get("is_scenario"):
+                    continue
+                problems = mend(self.api, campaign, True, dry_run=False).problems_after
+            except ApiError as error:
+                problems = [f"could not be checked: {error.detail}"]
+            if problems:
+                self.report.unplayable[name] = problems

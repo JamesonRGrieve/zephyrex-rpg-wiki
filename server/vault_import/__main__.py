@@ -38,7 +38,7 @@ def main(argv: list[str] | None = None) -> int:
     with connect as api:
         report = Importer(api, setting_slug=args.setting, dry_run=args.dry_run).run(notes)
     print(report.text(args.dry_run))
-    return 1 if report.refused else 0
+    return 1 if report.refused or report.unplayable else 0
 
 
 if __name__ == "__main__":
