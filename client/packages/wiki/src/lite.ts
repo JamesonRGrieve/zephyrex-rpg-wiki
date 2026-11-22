@@ -6,3 +6,4 @@
  */
 export { WIKI_LITE_EXTENSIONS } from './lite/extensions';
 export { WIKI_LITE_RESOURCES, wikiLite, type WikiLiteOptions } from './lite/routes';
+export { onAfterInstantiate, type AfterInstantiate, type Instantiated } from './lite/afterInstantiate';

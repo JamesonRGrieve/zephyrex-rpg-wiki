@@ -16,6 +16,7 @@ import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from './db';
+import { afterInstantiate } from './afterInstantiate';
 import { pregenRows } from './pregens';
 import { campaigns } from './worldRecords';
 
@@ -182,6 +183,8 @@ export async function campaignInstantiatePost(request: NextRequest, context: Con
     const id = (await context.params).id ?? '';
     const input = parseBody(start, await readJsonObject(request), 'instantiate');
     const { campaign, idMap } = await instantiateCampaign(owner.id, id, input.name ?? null, input.pregens ?? []);
+    // The app's own part of a start (rpg-ai's campaign frame), once the copy has committed.
+    await afterInstantiate({ ownerId: owner.id, sourceCampaignId: id, newCampaignId: campaign.id, idMap });
     const row: CampaignStartRow = {
       id: crypto.randomUUID(),
       scenario_id: id,
