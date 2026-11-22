@@ -261,6 +261,27 @@ class RPGCoreExtension(AbstractStaticExtension):
         return elevate_person(model_registry, requester_id, person_id).model_dump(mode="json")
 
     @classmethod
+    @ability("world_entities_matching")
+    def world_entities_matching(
+        cls, model_registry: Any, requester_id: str, campaign_id: str, text: str, limit: int = 50, include_setting: bool = True, tags: Optional[list[str]] = None
+    ) -> dict[str, Any]:
+        """Only the records the text names (name, alias or keyword, whole words, any case) plus the
+        always-active, from the campaign and its setting's canon, through the key index:
+        {world_entities: [...], matched: {id: [keys]}}. The narrator's relevance read."""
+        from zephyrex.extensions.rpg_core.BLL_RPGCore import world_entities_matching  # type: ignore[import-not-found]
+
+        return world_entities_matching(model_registry, requester_id, campaign_id, text, limit, include_setting, tags).model_dump(mode="json")
+
+    @classmethod
+    @ability("rebuild_world_keys")
+    def rebuild_world_keys(cls, model_registry: Any, requester_id: str) -> dict[str, Any]:
+        """Index the requester's records made before the key index existed: {kind: records indexed}.
+        Run once after rpg_core 016; the hooks keep it current after."""
+        from zephyrex.extensions.rpg_core.BLL_RPGCore import rebuild_world_keys  # type: ignore[import-not-found]
+
+        return rebuild_world_keys(model_registry, requester_id)
+
+    @classmethod
     @ability("campaign_documents")
     def campaign_documents(cls, model_registry: Any, requester_id: str, campaign_id: str) -> dict[str, Any]:
         """Each of the campaign's records' full text, journals first: {"campaign_documents": [{id, kind,

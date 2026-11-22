@@ -5,7 +5,9 @@
  * factions, items and journals changed since a time, tombstones included (rpg-ai A15), as the server's rpg_core
  * answers it. Lite has one owner, so "under the caller's access" is the owner's own records.
  */
-import { apiErrorResponse, localOwner, recordError, validationError } from '@zephyrex/lite';
+import { apiErrorResponse, localOwner, parseBody, readJsonObject, recordError, validationError } from '@zephyrex/lite';
+import { z } from 'zod';
+import { ALWAYS, recordKeys, textGrams } from '../lib/worldKeys';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { prisma } from './db';
@@ -171,6 +173,52 @@ export async function worldEntityGet(request: NextRequest): Promise<NextResponse
     );
     const page = pageOf(rows.flat(), after, limit);
     return NextResponse.json({ ...page, world_entities: await withTagsAndTies(owner.id, await withSecrecy(page.world_entities)) });
+  } catch (error) {
+    return apiErrorResponse(error);
+  }
+}
+
+const matchingBody = z.object({
+  text: z.string(),
+  limit: z.number().int().min(1).max(100).default(50),
+  include_setting: z.boolean().default(true),
+  tags: z.array(z.string()).nullish(),
+});
+
+/**
+ * POST /v1/campaign/{id}/matching {"matching": {text, limit?, include_setting?, tags?}} →
+ * {world_entities, matched: {id: [keys]}}, as the server's world_entities_matching: only the
+ * campaign's records (and its setting's canon) whose name, alias or keyword the text names, plus
+ * the always-active, most specific first (lib/worldKeys). Lite reads its one owner's names here
+ * rather than through a key table; the server's index serves the full libraries.
+ */
+export async function campaignMatchingPost(request: NextRequest, context: { params: Promise<Record<string, string>> }): Promise<NextResponse> {
+  try {
+    const owner = await localOwner(request);
+    const campaignId = (await context.params).id ?? '';
+    const input = parseBody(matchingBody, await readJsonObject(request), 'matching');
+    const campaign = await prisma.campaign.findFirst({ where: { id: campaignId, createdById: owner.id }, select: { settingId: true } });
+    if (campaign === null) throw recordError(404, 'CampaignModel not found');
+    const live = { OR: [{ isTemplate: null }, { isTemplate: false }], deletedAt: null };
+    const scopes: object[] = [
+      { createdById: owner.id, campaignId, ...live },
+      ...(input.include_setting && campaign.settingId ? [{ createdById: owner.id, settingId: campaign.settingId, campaignId: null, ...live }] : []),
+    ];
+    const rows = (await Promise.all(scopes.flatMap((where) => WORLD_ENTITY_KINDS.map(async (kind) => (await rowsOf(kind, where)).map((row) => entityOf(kind, row)))))).flat();
+    const grams = textGrams(input.text);
+    grams.add(ALWAYS);
+    const matched = new Map<string, string[]>();
+    for (const entity of rows) {
+      const keys = recordKeys(entity.name, entity.aliases ?? [], entity.keywords ?? [], entity.lore?.always_active === true).filter((key) => grams.has(key));
+      if (keys.length > 0) matched.set(entity.id, keys);
+    }
+    const weight = (id: string): number => Math.max(...(matched.get(id) ?? []).map((key) => (key === ALWAYS ? 0 : key.split(' ').length)));
+    const ranked = rows.filter((entity) => matched.has(entity.id)).sort((one, two) => weight(two.id) - weight(one.id) || one.id.localeCompare(two.id));
+    const wanted = new Set((input.tags ?? []).map((tag) => tag.trim().toLocaleLowerCase()).filter((tag) => tag !== ''));
+    const shown = (await withTagsAndTies(owner.id, await withSecrecy(ranked)))
+      .filter((entity) => wanted.size === 0 || entity.tags.some((tag: string) => wanted.has(tag.toLocaleLowerCase())))
+      .slice(0, input.limit);
+    return NextResponse.json({ world_entities: shown, matched: Object.fromEntries(shown.map((entity) => [entity.id, [...new Set(matched.get(entity.id))].sort()])) });
   } catch (error) {
     return apiErrorResponse(error);
   }

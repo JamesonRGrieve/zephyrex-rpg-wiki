@@ -22,7 +22,7 @@ import { settingPregensGet } from './pregens';
 import { campaignInstantiatePost, campaignStartGet } from './scenarios';
 import { clockGet, clockPost, personMovePost, personMovesGet } from './worldTick';
 import { sessionReportGet, sessionReportPost } from './sessionReportRoutes';
-import { worldEntityGet } from './worldEntityRoute';
+import { worldEntityGet, campaignMatchingPost } from './worldEntityRoute';
 import {
   campaigns,
   dispositions,
@@ -70,7 +70,7 @@ const ROUTES: Record<string, Routes> = {
   // Copy on start: POST /v1/campaign/{id}/instantiate.
   campaign: {
     ...both(campaigns),
-    recordActions: { instantiate: { POST: campaignInstantiatePost }, clock: { GET: clockGet, POST: clockPost }, person: { POST: campaignPersonPost }, framing: { GET: campaignFramingGet }, fill_person: { POST: campaignFillPersonPost }, elevate: { POST: campaignElevatePost } },
+    recordActions: { instantiate: { POST: campaignInstantiatePost }, clock: { GET: clockGet, POST: clockPost }, person: { POST: campaignPersonPost }, framing: { GET: campaignFramingGet }, fill_person: { POST: campaignFillPersonPost }, elevate: { POST: campaignElevatePost }, matching: { POST: campaignMatchingPost } },
   },
   // The world tick: people moved by the GM, each move kept.
   person_move: { collection: { GET: personMovesGet, POST: personMovePost }, record: {} },

@@ -1,0 +1,27 @@
+{
+  "_comment": "The world's activation index (world_entities_matching): a record's keys are its name, aliases and keywords, each normalised (accents dropped, case folded, anything not a letter or digit a single space) and kept when 2 to 8 words and 2 or more characters; a key written as a regular expression (/…/) is left out; an always-active record also has the key \"*\". A text matches a key when the key is one of its word n-grams (1 to 8 words), as the text is normalised the same way.",
+  "normalised": [
+    {"name": "accents, case and punctuation", "value": "  Ébène's   ROOK-tower! ", "normalised": "ebene s rook tower"},
+    {"name": "digits stay", "value": "Hive Desoleum 9", "normalised": "hive desoleum 9"}
+  ],
+  "keys": [
+    {
+      "name": "name, aliases and keywords, each once; a regex and a one-letter key left out",
+      "record": {"name": "Old Tam", "aliases": ["Tam", "the Barkeep", "old tam"], "keywords": ["/tam.*/", "X", "Rusty Anchor"], "always_active": false},
+      "keys": ["old tam", "rusty anchor", "tam", "the barkeep"]
+    },
+    {
+      "name": "an always-active record also answers \"*\"; a key over 8 words is left out",
+      "record": {"name": "The Emperor", "aliases": ["one two three four five six seven eight nine"], "keywords": [], "always_active": true},
+      "keys": ["*", "the emperor"]
+    }
+  ],
+  "matches": [
+    {
+      "name": "whole words only, any case, a multi-word key in order",
+      "text": "Old Tam pours. Tamsin waits at the Rusty Anchor's door.",
+      "keys": ["old tam", "tam", "tamsin", "rusty anchor", "anchor door", "the barkeep"],
+      "matched": ["old tam", "rusty anchor", "tam", "tamsin"]
+    }
+  ]
+}

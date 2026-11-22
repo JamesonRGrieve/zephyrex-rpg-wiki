@@ -413,6 +413,17 @@ class PersonElevatedOne(PlainModel):
     elevated: PersonElevated
 
 
+class MatchingAsk(PlainModel):
+    text: str = Field(..., description="The story text to match (recent turns)")
+    limit: int = Field(50, description="At most this many records (1 to 100)")
+    include_setting: bool = Field(True, description="Its setting's canon too")
+    tags: Optional[list[str]] = Field(None, description="Only records tagged with any of these")
+
+
+class MatchingEnvelope(PlainModel):
+    matching: MatchingAsk
+
+
 class PersonEnsured(PlainModel):
     id: str
     name: str
@@ -1716,6 +1727,201 @@ def world_entities_by_id(model_registry: Any, requester_id: str, ids: list[str])
     order = {entity_id: index for index, entity_id in enumerate(wanted)}
     found.sort(key=lambda entity: order[entity.id])
     return WorldEntitiesPage(world_entities=_shown(model_registry, found, requester_id), next=None)
+
+
+# ---------------------------------------------------------------------------
+# The world's activation index (operator, 2026-11-22: "Why is it reading the whole world instead of
+# tag/relevance based injection?"): each record's keys (wiki_shared/WorldKeys), kept current by
+# hooks, so a narrator's turn reads only the records its text names, never a whole setting.
+# ---------------------------------------------------------------------------
+
+
+class WorldKeyModel(ApplicationModel.Optional, UpdateMixinModel.Optional, metaclass=ModelMeta):
+    """One activation key of one record: its name, an alias, a keyword, or "*" when always active."""
+
+    Manager: ClassVar[Type["WorldKeyManager"]] = None
+    table_comment: ClassVar[str] = "A record's activation key, for the narrator's relevance read (world_entities_matching)."
+
+    key: Optional[str] = Field(None, description="Normalised: accents dropped, case folded, words single-spaced")
+    target_entity_type: Optional[str] = Field(None, description="The record's type: location, person, faction, item or journal")
+    target_entity_id: Optional[str] = Field(None, description="The record")
+    campaign_id: Optional[str] = Field(None, description="The record's campaign; none for a setting's canon")
+    setting_id: Optional[str] = Field(None, description="The record's setting, for its canon")
+
+    class Create(BaseModel):
+        key: str = Field(...)
+        target_entity_type: str = Field(...)
+        target_entity_id: str = Field(...)
+        campaign_id: Optional[str] = None
+        setting_id: Optional[str] = None
+
+    class Update(BaseModel):
+        pass
+
+    class Search(ApplicationModel.Search):
+        pass
+
+
+class WorldKeyManager(AbstractBLLManager, RouterMixin):
+    """Internal: written by rpg_core's hooks as SYSTEM, read by world_entities_matching."""
+
+    _model = WorldKeyModel
+    routes_to_register: ClassVar[list[RouteType] | None] = []
+
+
+WorldKeyModel.Manager = WorldKeyManager
+
+KEY_BATCH = 500
+
+
+def _keys_of(record: Any) -> list[str]:
+    from zephyrex.extensions.wiki_shared.WorldKeys import record_keys  # type: ignore[import-not-found]
+
+    lore = stored_lore(getattr(record, "lore", None)) or {}
+    return record_keys(str(getattr(record, "name", "") or ""), stored_names(getattr(record, "aliases", None)), stored_names(getattr(record, "keywords", None)), bool(lore.get("always_active")))
+
+
+def _index_records(model_registry: Any, kind: str, records: list[Any], replace: bool = True) -> int:
+    """These records' keys written (their old ones dropped first when ``replace``); templates and
+    deleted records have none. Returns how many keys were written."""
+    from zephyrex.logic.AbstractLogicManager.models import FieldComparison
+    from zephyrex.extensions.rpg_core.Scenarios import create_all  # type: ignore[import-not-found]
+
+    keys = WorldKeyManager(requester_id=env("SYSTEM_ID"), model_registry=model_registry)
+    ids = [str(record.id) for record in records]
+    if replace and ids:
+        for start in range(0, len(ids), KEY_BATCH):
+            for row in keys.list(filters=[FieldComparison(keys.Model, "target_entity_id", "in", ids[start : start + KEY_BATCH])]) or []:
+                keys.delete(id=str(row.id))
+    rows = [
+        {"key": key, "target_entity_type": kind, "target_entity_id": str(record.id), "campaign_id": getattr(record, "campaign_id", None), "setting_id": getattr(record, "setting_id", None)}
+        for record in records
+        if not getattr(record, "is_template", None) and not getattr(record, "deleted_at", None)
+        for key in _keys_of(record)
+    ]
+    create_all(keys, rows)
+    return len(rows)
+
+
+def _keys_follow(kind: str) -> Any:
+    """After a record of ``kind`` is made, changed or deleted, its keys follow."""
+
+    def keys_follow(context: HookContext) -> None:
+        registry = context.manager.model_registry
+        if context.method_name == "delete":
+            record_id = context.kwarg("id", default=None) or context.arg(0, default=None)
+            if record_id:
+                _index_records(registry, kind, [type("Gone", (), {"id": str(record_id), "deleted_at": True})()])
+            return
+        if context.method_name == "update":
+            # The record as it now stands (an update may answer without every field).
+            record_id = context.kwarg("id", default=None) or context.arg(0, default=None)
+            if record_id:
+                try:
+                    _index_records(registry, kind, [context.manager.get(id=str(record_id))])
+                except HTTPException:
+                    pass
+            return
+        if context.method_name != "create":
+            return
+        result = context.result
+        records = [one for one in (result if isinstance(result, list) else [result]) if one is not None and getattr(one, "id", None)]
+        if records:
+            _index_records(registry, kind, records, replace=False)
+
+    keys_follow.__name__ = keys_follow.__qualname__ = f"world_keys_{kind}"
+    return keys_follow
+
+
+for _kind, _keyed in WORLD_ENTITY_MANAGERS.items():
+    hook_bll(_keyed, timing=HookTiming.AFTER, priority=40)(_keys_follow(_kind))
+
+
+class WorldEntitiesMatched(PlainModel):
+    world_entities: list[WorldEntity]
+    matched: dict[str, list[str]] = Field(..., description="Each record's keys the text named (\"*\" for always active)")
+
+
+def world_entities_matching(
+    model_registry: Any,
+    requester_id: str,
+    campaign_id: str,
+    text: str,
+    limit: int = 50,
+    include_setting: bool = True,
+    tags: Optional[list[str]] = None,
+) -> WorldEntitiesMatched:
+    """Only the campaign's records (and, with ``include_setting``, its setting's canon) whose name,
+    alias or keyword the text names, plus the always-active ones: found through the key index (an
+    indexed lookup of the text's word n-grams), never by reading the setting. ``tags`` keeps those
+    tagged with any of the names. Most specific first (the longest key named), at most ``limit``
+    (1 to 100); shaped and secret-kept as world_entities_by_id."""
+    from zephyrex.logic.AbstractLogicManager.models import FieldComparison
+    from zephyrex.extensions.wiki_shared.WorldKeys import ALWAYS, text_grams  # type: ignore[import-not-found]
+
+    limit = max(1, min(int(limit or 50), 100))
+    campaign = _manager(model_registry, requester_id, CampaignManager).get(id=campaign_id)
+    setting_id = str(getattr(campaign, "setting_id", "") or "")
+    grams = sorted(text_grams(text) | {ALWAYS})
+    keys = WorldKeyManager(requester_id=env("SYSTEM_ID"), model_registry=model_registry)
+    matched: dict[str, list[str]] = {}
+    kinds: dict[str, str] = {}
+    for start in range(0, len(grams), KEY_BATCH):
+        for row in keys.list(filters=[FieldComparison(keys.Model, "key", "in", grams[start : start + KEY_BATCH])]) or []:
+            own = str(row.campaign_id or "") == str(campaign_id)
+            canon = include_setting and not row.campaign_id and setting_id and str(row.setting_id or "") == setting_id
+            if own or canon:
+                matched.setdefault(str(row.target_entity_id), []).append(str(row.key))
+                kinds[str(row.target_entity_id)] = str(row.target_entity_type)
+    ranked = sorted(matched, key=lambda one: (-max(len(key.split()) if key != ALWAYS else 0 for key in matched[one]), one))
+    wanted = {name.strip().casefold() for name in tags or [] if name.strip()}
+    found: list[WorldEntity] = []
+    for start in range(0, len(ranked), 100):
+        if len(found) >= limit:
+            break
+        page = world_entities_by_id(model_registry, requester_id, ranked[start : start + 100]).world_entities
+        found.extend(entity for entity in page if not wanted or wanted & {tag.casefold() for tag in entity.tags})
+    found = found[:limit]
+    return WorldEntitiesMatched(world_entities=found, matched={entity.id: sorted(set(matched[entity.id])) for entity in found})
+
+
+# POST /v1/campaign/{id}/matching, attached once its answer's model exists (WorldEntity is defined
+# after CampaignManager); routes are collected when the app starts.
+@custom_route(
+    method="POST",
+    path="/{id}/matching",
+    input_model=MatchingEnvelope,
+    output_model=WorldEntitiesMatched,
+    authentication_type="jwt",
+    expose_in=(ExposeIn.REST,),
+    openapi_tags=("Campaigns",),
+    summary="The campaign's records (and its setting's canon) whose names, aliases or keywords the text names, plus the always-active",
+)
+def matching_route(self, id: str, matching: MatchingAsk) -> Any:
+    asked = MatchingAsk.model_validate(matching)
+    return world_entities_matching(self.model_registry, str(self.requester.id), id, asked.text, asked.limit, asked.include_setting, asked.tags)
+
+
+CampaignManager.matching_route = matching_route  # type: ignore[attr-defined]
+
+
+def rebuild_world_keys(model_registry: Any, requester_id: str) -> dict[str, int]:
+    """The requester's records with no keys yet indexed (records made before the index existed,
+    rpg_core 016); those already indexed stay as their hooks keep them. {kind: records indexed}."""
+    from zephyrex.logic.AbstractLogicManager.models import FieldComparison
+
+    keys = WorldKeyManager(requester_id=env("SYSTEM_ID"), model_registry=model_registry)
+    indexed: dict[str, int] = {}
+    for kind, manager_class in WORLD_ENTITY_MANAGERS.items():
+        records = _every(_manager(model_registry, requester_id, manager_class))
+        held: set[str] = set()
+        ids = [str(record.id) for record in records]
+        for start in range(0, len(ids), KEY_BATCH):
+            held.update(str(row.target_entity_id) for row in keys.list(filters=[FieldComparison(keys.Model, "target_entity_id", "in", ids[start : start + KEY_BATCH])]) or [])
+        missing = [record for record in records if str(record.id) not in held]
+        _index_records(model_registry, kind, missing, replace=False)
+        indexed[kind] = len(missing)
+    return indexed
 
 
 # ---------------------------------------------------------------------------

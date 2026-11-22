@@ -1447,6 +1447,59 @@ class TestAuthoredNpcs:
         assert server.post(f"/v1/campaign/{loose['id']}/elevate", json={"elevate": {"person_id": stray["id"]}}, headers=_headers(person)).status_code == 422
 
 
+class TestRelevanceRead:
+    """Operator, 2026-11-22: "Why is it reading the whole world instead of tag/relevance based
+    injection?" A turn reads only the records its text names, through the key index."""
+
+    def test_only_what_the_text_names_from_campaign_and_canon(self, server: TestClient, person: Any) -> None:
+        from zephyrex.extensions.AbstractExtensionProvider import loaded_ability
+        from zephyrex.extensions.rpg_core import BLL_RPGCore  # type: ignore[import-not-found]
+
+        setting = _create(server, person, "setting", name="Relevance Setting")
+        campaign = _create(server, person, "campaign", name="Relevance", setting_id=setting["id"])
+        other = _create(server, person, "campaign", name="Elsewhere", setting_id=setting["id"])
+        tam = _create(server, person, "person", name="Old Tam", kind="npc", campaign_id=campaign["id"], aliases=["the Barkeep"])
+        inn = _create(server, person, "location", name="The Rusty Anchor", kind="building", campaign_id=campaign["id"])
+        _create(server, person, "person", name="Silent Sal", kind="npc", campaign_id=campaign["id"])
+        lantern = _create(server, person, "item", name="Storm Lantern", kind="misc", setting_id=setting["id"])
+        _create(server, person, "item", name="Unread Tome", kind="misc", setting_id=setting["id"])
+        oath = _create(server, person, "journal", name="The Oath", kind="lore", campaign_id=campaign["id"], lore={"always_active": True})
+        _create(server, person, "person", name="Old Tam", kind="npc", campaign_id=other["id"])
+
+        registry = server.app.state.model_registry  # type: ignore[attr-defined]
+        matching = loaded_ability(registry, "rpg_core", "world_entities_matching")
+        assert matching is not None
+        got = matching(registry, str(person.id), campaign["id"], "The barkeep lights a storm lantern at the Rusty Anchor.")
+        found = {entity["id"]: entity["name"] for entity in got["world_entities"]}
+        # Named (by alias, any case, the canon's lantern), and the always-active oath; not Sal, not the
+        # tome, not the other campaign's Tam.
+        assert set(found) == {tam["id"], inn["id"], lantern["id"], oath["id"]}
+        assert got["matched"][tam["id"]] == ["the barkeep"] and got["matched"][oath["id"]] == ["*"]
+        # Without the setting's canon, the lantern goes.
+        own = matching(registry, str(person.id), campaign["id"], "the storm lantern", include_setting=False)
+        assert [entity["id"] for entity in own["world_entities"]] == [oath["id"]]
+        # A renamed record's keys follow it.
+        current = server.get(f"/v1/person/{tam['id']}", headers=_headers(person))
+        renamed = server.put(f"/v1/person/{tam['id']}", json={"person": {"name": "Tamwell"}}, headers=_headers(person, **{"If-Match": current.headers["ETag"]}))
+        assert renamed.status_code == 200, renamed.text
+        assert tam["id"] not in {entity["id"] for entity in matching(registry, str(person.id), campaign["id"], "Old Tam waves")["world_entities"]}
+        assert tam["id"] in {entity["id"] for entity in matching(registry, str(person.id), campaign["id"], "Tamwell nods")["world_entities"]}
+        # Tags narrow it; the REST twin answers the same.
+        tag = _create(server, person, "taxon", name="Locals", kind="tag", campaign_id=campaign["id"])
+        _create(server, person, "entity_taxon", taxon_id=tag["id"], target_entity_type="location", target_entity_id=inn["id"])
+        posted = server.post(f"/v1/campaign/{campaign['id']}/matching", json={"matching": {"text": "the Rusty Anchor and the storm lantern", "tags": ["locals"]}}, headers=_headers(person))
+        assert posted.status_code == 200, posted.text
+        assert [entity["id"] for entity in posted.json()["world_entities"]] == [inn["id"]]
+        # Records whose keys are lost (made before the index) come back with the rebuild.
+        keys = BLL_RPGCore.WorldKeyManager(requester_id=__import__("zephyrex.lib.Environment", fromlist=["env"]).env("SYSTEM_ID"), model_registry=registry)
+        for row in keys.list(target_entity_id=inn["id"]) or []:
+            keys.delete(id=str(row.id))
+        assert inn["id"] not in {entity["id"] for entity in matching(registry, str(person.id), campaign["id"], "the Rusty Anchor")["world_entities"]}
+        rebuilt = loaded_ability(registry, "rpg_core", "rebuild_world_keys")(registry, str(person.id))
+        assert rebuilt["location"] >= 1
+        assert inn["id"] in {entity["id"] for entity in matching(registry, str(person.id), campaign["id"], "the Rusty Anchor")["world_entities"]}
+
+
 class TestWhereTheyAre:
     """Parity: who's present in a scene is who's at its place or inside it."""
 

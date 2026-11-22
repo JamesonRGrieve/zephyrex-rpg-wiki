@@ -352,6 +352,10 @@ test.describe.serial('visual audit', () => {
     expect(again.person).toEqual({ id: barkeep.person.id, name: 'The Barkeep', created: false });
     const hidden = (await (await request.get(`/api/v1/record_metadata/of?target_entity_type=person&target_entity_id=${barkeep.person.id}`)).json()) as { metadata: { key: string; value: string }[] };
     expect(hidden.metadata.map((row) => [row.key, row.value]).sort()).toEqual([['GM only', 'true'], ['Made in play', 'By the narrator']]);
+    // The narrator's relevance read: only what the text names.
+    const named = (await (await request.post(`/api/v1/campaign/${seeded.world}/matching`, { data: { matching: { text: 'Mira of the Lantern lights the lamps.' } } })).json()) as { world_entities: { id: string }[]; matched: Record<string, string[]> };
+    expect(named.world_entities.map((entity) => entity.id)).toContain(seeded.person);
+    expect(named.matched[seeded.person]).toContain('mira of the lantern');
     // The narrator's frame, read from the campaign itself (Parity's campaign_framing).
     const framed = (await (await request.get(`/api/v1/campaign/${seeded.world}/framing`)).json()) as { campaign_framing: { campaign_id: string; play_styles: string[]; from_scenario: boolean; setting: { id: string } | null } };
     expect(framed.campaign_framing).toMatchObject({ campaign_id: seeded.world, from_scenario: false, setting: { id: seeded.setting } });
