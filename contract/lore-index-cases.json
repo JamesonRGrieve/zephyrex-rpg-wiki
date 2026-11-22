@@ -1,0 +1,51 @@
+{
+  "_comment": "The lore index's shared rules (lore_search, both editions). A record's entry is cut into passages at its blocks: a heading opens a section (its path the record's name, then each heading in turn); passages fill to max_tokens and close past min_tokens at a block's end; a block over max_tokens is cut at sentences. Tokens are counted as ceil(characters / 4). A chunk is in a campaign's scope when it is the campaign's own, its scenario's, or its setting's canon (no campaign) of no game system or the campaign's. Rankings fuse by reciprocal rank (1 / (k + rank), k = 60, rank from 1); exact name hits come first in their own order, the rest by fused score, ties by id. Packing takes chunks in order while they fit the token budget, skipping one that doesn't.",
+  "tokens": [
+    {"name": "four characters a token, rounded up", "text": "abcdefghi", "tokens": 3},
+    {"name": "empty", "text": "", "tokens": 0}
+  ],
+  "chunks": [
+    {
+      "name": "headings open sections, short paragraphs share a passage",
+      "record": "Old Tam",
+      "max_tokens": 12,
+      "min_tokens": 4,
+      "entry": [
+        {"type": "p", "children": [{"text": "Keeps the inn."}]},
+        {"type": "h2", "children": [{"text": "Personality"}]},
+        {"type": "p", "children": [{"text": "Gruff."}]},
+        {"type": "p", "children": [{"text": "Fair to a fault."}]},
+        {"type": "h2", "children": [{"text": "Motive"}]},
+        {"type": "p", "children": [{"text": "Pay the Guild before winter comes. Keep the doors open."}]}
+      ],
+      "passages": [
+        {"path": ["Old Tam"], "text": "Keeps the inn."},
+        {"path": ["Old Tam", "Personality"], "text": "Gruff.\nFair to a fault."},
+        {"path": ["Old Tam", "Motive"], "text": "Pay the Guild before winter comes."},
+        {"path": ["Old Tam", "Motive"], "text": "Keep the doors open."}
+      ]
+    }
+  ],
+  "scopes": [
+    {"name": "own, scenario's, and canon of no system or the campaign's", "campaign": {"id": "c1", "scenario_id": "s1", "setting_id": "st", "game_system_id": "dh2"},
+     "chunks": [
+       {"id": "own", "campaign_id": "c1", "setting_id": "st", "game_system_id": null},
+       {"id": "scenario", "campaign_id": "s1", "setting_id": "st", "game_system_id": null},
+       {"id": "other-campaign", "campaign_id": "c9", "setting_id": "st", "game_system_id": null},
+       {"id": "canon", "campaign_id": null, "setting_id": "st", "game_system_id": null},
+       {"id": "canon-dh2", "campaign_id": null, "setting_id": "st", "game_system_id": "dh2"},
+       {"id": "canon-rt", "campaign_id": null, "setting_id": "st", "game_system_id": "rt"},
+       {"id": "other-setting", "campaign_id": null, "setting_id": "dnd", "game_system_id": null}
+     ],
+     "visible": ["own", "scenario", "canon", "canon-dh2"]}
+  ],
+  "fusions": [
+    {"name": "exact hits first, then by reciprocal rank, ties by id",
+     "exact": ["tam"],
+     "rankings": {"text": ["inn", "tam", "guild"], "trigram": ["guild", "inn"], "vector": ["oath", "inn"]},
+     "order": ["tam", "inn", "guild", "oath"]}
+  ],
+  "packs": [
+    {"name": "in order while they fit, skipping one that doesn't", "budget": 10, "chunks": [{"id": "a", "tokens": 4}, {"id": "b", "tokens": 7}, {"id": "c", "tokens": 5}, {"id": "d", "tokens": 1}], "packed": ["a", "c", "d"]}
+  ]
+}
