@@ -356,6 +356,12 @@ test.describe.serial('visual audit', () => {
     const named = (await (await request.post(`/api/v1/campaign/${seeded.world}/matching`, { data: { matching: { text: 'Mira of the Lantern lights the lamps.' } } })).json()) as { world_entities: { id: string }[]; matched: Record<string, string[]> };
     expect(named.world_entities.map((entity) => entity.id)).toContain(seeded.person);
     expect(named.matched[seeded.person]).toContain('mira of the lantern');
+    // The hybrid lore search (better-sqlite3 + sqlite-vec): her passage first, named; FTS5 ran.
+    const lore = await request.post(`/api/v1/campaign/${seeded.world}/lore_search`, { data: { lore_search: { text: 'Mira of the Lantern lights the lamps.' } } });
+    expect(lore.status(), await lore.text()).toBe(200);
+    const searched = (await lore.json()) as { passages: { record_id: string; ranks: Record<string, number> }[]; methods: Record<string, string> };
+    expect(searched.passages[0]).toMatchObject({ record_id: seeded.person, ranks: { exact: 1 } });
+    expect(searched.methods.text).toBe('used (FTS5)');
     // The narrator's frame, read from the campaign itself (Parity's campaign_framing).
     const framed = (await (await request.get(`/api/v1/campaign/${seeded.world}/framing`)).json()) as { campaign_framing: { campaign_id: string; play_styles: string[]; from_scenario: boolean; setting: { id: string } | null } };
     expect(framed.campaign_framing).toMatchObject({ campaign_id: seeded.world, from_scenario: false, setting: { id: seeded.setting } });

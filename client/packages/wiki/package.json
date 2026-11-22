@@ -16,9 +16,11 @@
   "peerDependencies": {
     "@prisma/client": "*",
     "@zephyrex/lite": "*",
+    "better-sqlite3": "*",
     "lucide-react": "*",
     "next": "*",
     "react": "*",
+    "sqlite-vec": "*",
     "swr": "*",
     "zephyrex": "*",
     "zod": "*"
@@ -37,6 +39,12 @@
       "optional": true
     },
     "@zephyrex/lite": {
+      "optional": true
+    },
+    "better-sqlite3": {
+      "optional": true
+    },
+    "sqlite-vec": {
       "optional": true
     }
   }

@@ -26,6 +26,9 @@ const REPOSITORY_ROOT = path.join(__dirname, '..');
 /** @type {import('next').NextConfig} */
 module.exports = {
   outputFileTracingRoot: REPOSITORY_ROOT,
+  // Native modules (the lite lore index: better-sqlite3 with sqlite-vec's loadable extension) load from
+  // node_modules at run time, never bundled.
+  serverExternalPackages: ['better-sqlite3', 'sqlite-vec'],
   turbopack: { root: REPOSITORY_ROOT },
   // Lets a test build sit beside a running dev server without sharing its output.
   distDir: process.env.NEXT_DIST_DIR || '.next',

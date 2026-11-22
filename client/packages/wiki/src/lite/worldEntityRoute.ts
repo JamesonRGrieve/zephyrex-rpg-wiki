@@ -197,29 +197,44 @@ export async function campaignMatchingPost(request: NextRequest, context: { para
     const owner = await localOwner(request);
     const campaignId = (await context.params).id ?? '';
     const input = parseBody(matchingBody, await readJsonObject(request), 'matching');
-    const campaign = await prisma.campaign.findFirst({ where: { id: campaignId, createdById: owner.id }, select: { settingId: true } });
-    if (campaign === null) throw recordError(404, 'CampaignModel not found');
-    const live = { OR: [{ isTemplate: null }, { isTemplate: false }], deletedAt: null };
-    const scopes: object[] = [
-      { createdById: owner.id, campaignId, ...live },
-      ...(input.include_setting && campaign.settingId ? [{ createdById: owner.id, settingId: campaign.settingId, campaignId: null, ...live }] : []),
-    ];
-    const rows = (await Promise.all(scopes.flatMap((where) => WORLD_ENTITY_KINDS.map(async (kind) => (await rowsOf(kind, where)).map((row) => entityOf(kind, row)))))).flat();
-    const grams = textGrams(input.text);
-    grams.add(ALWAYS);
-    const matched = new Map<string, string[]>();
-    for (const entity of rows) {
-      const keys = recordKeys(entity.name, entity.aliases ?? [], entity.keywords ?? [], entity.lore?.always_active === true).filter((key) => grams.has(key));
-      if (keys.length > 0) matched.set(entity.id, keys);
-    }
-    const weight = (id: string): number => Math.max(...(matched.get(id) ?? []).map((key) => (key === ALWAYS ? 0 : key.split(' ').length)));
-    const ranked = rows.filter((entity) => matched.has(entity.id)).sort((one, two) => weight(two.id) - weight(one.id) || one.id.localeCompare(two.id));
-    const wanted = new Set((input.tags ?? []).map((tag) => tag.trim().toLocaleLowerCase()).filter((tag) => tag !== ''));
-    const shown = (await withTagsAndTies(owner.id, await withSecrecy(ranked)))
-      .filter((entity) => wanted.size === 0 || entity.tags.some((tag: string) => wanted.has(tag.toLocaleLowerCase())))
-      .slice(0, input.limit);
-    return NextResponse.json({ world_entities: shown, matched: Object.fromEntries(shown.map((entity) => [entity.id, [...new Set(matched.get(entity.id))].sort()])) });
+    const { shown, matched } = await matchedEntities(owner.id, campaignId, input.text, input.include_setting, input.tags ?? [], input.limit);
+    return NextResponse.json({ world_entities: shown, matched });
   } catch (error) {
     return apiErrorResponse(error);
   }
+}
+
+/** The campaign's records (and, asked for, its setting's canon) whose name, alias or keyword the text
+ * names, plus the always-active, most specific first: the matching route's answer, and lore_search's
+ * exact layer. */
+export async function matchedEntities(
+  ownerId: string,
+  campaignId: string,
+  text: string,
+  includeSetting: boolean,
+  tags: readonly string[],
+  limit: number,
+): Promise<{ shown: Awaited<ReturnType<typeof withTagsAndTies>>; matched: Record<string, string[]> }> {
+  const campaign = await prisma.campaign.findFirst({ where: { id: campaignId, createdById: ownerId }, select: { settingId: true } });
+  if (campaign === null) throw recordError(404, 'CampaignModel not found');
+  const live = { OR: [{ isTemplate: null }, { isTemplate: false }], deletedAt: null };
+  const scopes: object[] = [
+    { createdById: ownerId, campaignId, ...live },
+    ...(includeSetting && campaign.settingId ? [{ createdById: ownerId, settingId: campaign.settingId, campaignId: null, ...live }] : []),
+  ];
+  const rows = (await Promise.all(scopes.flatMap((where) => WORLD_ENTITY_KINDS.map(async (kind) => (await rowsOf(kind, where)).map((row) => entityOf(kind, row)))))).flat();
+  const grams = textGrams(text);
+  grams.add(ALWAYS);
+  const matched = new Map<string, string[]>();
+  for (const entity of rows) {
+    const keys = recordKeys(entity.name, entity.aliases ?? [], entity.keywords ?? [], entity.lore?.always_active === true).filter((key) => grams.has(key));
+    if (keys.length > 0) matched.set(entity.id, keys);
+  }
+  const weight = (id: string): number => Math.max(...(matched.get(id) ?? []).map((key) => (key === ALWAYS ? 0 : key.split(' ').length)));
+  const ranked = rows.filter((entity) => matched.has(entity.id)).sort((one, two) => weight(two.id) - weight(one.id) || one.id.localeCompare(two.id));
+  const wanted = new Set(tags.map((tag) => tag.trim().toLocaleLowerCase()).filter((tag) => tag !== ''));
+  const shown = (await withTagsAndTies(ownerId, await withSecrecy(ranked)))
+    .filter((entity) => wanted.size === 0 || entity.tags.some((tag: string) => wanted.has(tag.toLocaleLowerCase())))
+    .slice(0, limit);
+  return { shown, matched: Object.fromEntries(shown.map((entity) => [entity.id, [...new Set(matched.get(entity.id))].sort()])) };
 }

@@ -9,6 +9,7 @@
  * session_report or anything else it answers itself wins. Its schema carries the wiki's fragment
  * (prisma/wiki.prisma, scripts/prisma-fragment.mjs).
  */
+import { campaignLoreSearchPost } from './loreSearch';
 import type { PrismaClient } from '@prisma/client';
 import { apiErrorResponse, collectionRoutes, localOwner, notFound, recordRoutes, type RecordRow, type ResourceSpec } from '@zephyrex/lite';
 import type { NextRequest, NextResponse } from 'next/server';
@@ -70,7 +71,7 @@ const ROUTES: Record<string, Routes> = {
   // Copy on start: POST /v1/campaign/{id}/instantiate.
   campaign: {
     ...both(campaigns),
-    recordActions: { instantiate: { POST: campaignInstantiatePost }, clock: { GET: clockGet, POST: clockPost }, person: { POST: campaignPersonPost }, framing: { GET: campaignFramingGet }, fill_person: { POST: campaignFillPersonPost }, elevate: { POST: campaignElevatePost }, matching: { POST: campaignMatchingPost } },
+    recordActions: { instantiate: { POST: campaignInstantiatePost }, clock: { GET: clockGet, POST: clockPost }, person: { POST: campaignPersonPost }, framing: { GET: campaignFramingGet }, fill_person: { POST: campaignFillPersonPost }, elevate: { POST: campaignElevatePost }, matching: { POST: campaignMatchingPost }, lore_search: { POST: campaignLoreSearchPost } },
   },
   // The world tick: people moved by the GM, each move kept.
   person_move: { collection: { GET: personMovesGet, POST: personMovePost }, record: {} },
