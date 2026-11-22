@@ -2313,15 +2313,16 @@ def _instantiate(model_registry: Any, requester_id: str, campaigns: Any, source:
         gathered.append((manager, rows))
         copying.pending.update(str(row.id) for row in rows)
     copying.pending.update(str(row.id) for row in picked or [])
-    made = campaigns.create(
-        name=name or source.name,
-        description=source.description,
-        setting_id=source.setting_id,
-        provenance=getattr(source, "provenance", None),
-        source=getattr(source, "source", None),
-        is_scenario=False,
-        scenario_id=str(source.id),
-    )
+    # Every field the scenario has that a campaign takes on create (another extension's too: VTT's
+    # game_system_id, so a playthrough's tests find their system), then its own name and lineage.
+    writable = set(campaigns._model.Create.model_fields)
+    carried = {key: value for key, value in source.model_dump().items() if key in writable and value is not None and key not in ("id", "user_id")}
+    made = campaigns.create(**{**carried, "name": name or source.name, "is_scenario": False, "scenario_id": str(source.id)})
+    # A field another extension makes settable only once a campaign exists, set the same way.
+    updatable = set(getattr(campaigns._model, "Update").model_fields) - writable
+    later = {key: value for key, value in source.model_dump().items() if key in updatable and value is not None and key not in ("id", "user_id", "name")}
+    if later:
+        made = campaigns.update(id=str(made.id), **later)
     copying.id_map[str(source.id)] = str(made.id)
     copying.made.append((campaigns, str(made.id)))
     for done, (manager, rows) in enumerate(gathered):
