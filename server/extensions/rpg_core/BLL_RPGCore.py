@@ -2680,7 +2680,7 @@ class RecordsRemoved(PlainModel):
     removed: dict[str, int] = Field(..., description="How many of each were removed, by type")
 
 
-def remove_campaign_records(model_registry: Any, requester_id: str, campaign_ids: list[str]) -> RecordsRemoved:
+def remove_campaign_records(model_registry: Any, requester_id: str, campaign_ids: list[str], dry_run: bool = False) -> RecordsRemoved:
     """Every record of ``campaign_ids`` removed, with the links, properties and pictures on them;
     links first, then the records, newest kind first (as a start's undo)."""
     from zephyrex.extensions.rpg_core.Scenarios import touching  # type: ignore[import-not-found]
@@ -2692,10 +2692,11 @@ def remove_campaign_records(model_registry: Any, requester_id: str, campaign_ids
 
     def drop(label: str, manager: Any, ids: list[str]) -> None:
         for one in dict.fromkeys(ids):
-            try:
-                manager.delete(id=one)
-            except HTTPException:
-                continue
+            if not dry_run:
+                try:
+                    manager.delete(id=one)
+                except HTTPException:
+                    continue
             removed[label] = removed.get(label, 0) + 1
 
     records: list[tuple[str, Any, list[str]]] = []
@@ -2741,7 +2742,7 @@ def _every(manager: Any, filters: Optional[list[Any]] = None, page: int = 500) -
             return rows
 
 
-def remove_orphaned_records(model_registry: Any, requester_id: str) -> RecordsRemoved:
+def remove_orphaned_records(model_registry: Any, requester_id: str, dry_run: bool = False) -> RecordsRemoved:
     """The requester's records whose campaign is gone (deleted before deleting took its records
     along), removed as remove_campaign_records does. A campaign counts as gone when it is the
     requester's own and they can't see it, or isn't there at all."""
@@ -2761,7 +2762,8 @@ def remove_orphaned_records(model_registry: Any, requester_id: str) -> RecordsRe
     # don't say whether they're deleted.)
     root = CampaignManager(requester_id=env("ROOT_ID"), model_registry=model_registry)
     others = {str(row.id) for row in root.list(filters=[FieldComparison(root.Model, "id", "in", sorted(named))]) or [] if str(getattr(row, "created_by_user_id", "") or "") != str(requester_id)}
-    return remove_campaign_records(model_registry, requester_id, sorted(named - others))
+    # dry_run: what would go, counted, nothing deleted.
+    return remove_campaign_records(model_registry, requester_id, sorted(named - others), dry_run=dry_run)
 
 
 def _campaign_records_go(context: HookContext) -> None:

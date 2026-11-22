@@ -1374,8 +1374,12 @@ class TestDeletingACampaign:
         registry = server.app.state.model_registry  # type: ignore[attr-defined]
         clear = loaded_ability(registry, "rpg_core", "remove_orphaned_records")
         assert clear is not None
+        # A dry run says what would go and deletes nothing.
+        planned = clear(registry, str(person.id), dry_run=True)
+        assert planned["campaigns"] == [old["id"]] and planned["removed"]["person"] == 1
+        assert server.get(f"/v1/person/{old_keeper['id']}", headers=_headers(person)).status_code == 200
         result = clear(registry, str(person.id))
-        assert result["campaigns"] == [old["id"]]
+        assert result == planned
         assert result["removed"]["person"] == 1 and result["removed"]["location"] == 1 and result["removed"]["property"] == 1
         assert server.get(f"/v1/person/{old_keeper['id']}", headers=_headers(person)).status_code == 404
         assert server.get(f"/v1/location/{kept_inn['id']}", headers=_headers(person)).status_code == 200
