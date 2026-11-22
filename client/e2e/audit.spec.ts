@@ -352,6 +352,10 @@ test.describe.serial('visual audit', () => {
     expect(again.person).toEqual({ id: barkeep.person.id, name: 'The Barkeep', created: false });
     const hidden = (await (await request.get(`/api/v1/record_metadata/of?target_entity_type=person&target_entity_id=${barkeep.person.id}`)).json()) as { metadata: { key: string; value: string }[] };
     expect(hidden.metadata.map((row) => [row.key, row.value]).sort()).toEqual([['GM only', 'true'], ['Made in play', 'By the narrator']]);
+    // The narrator's frame, read from the campaign itself (Parity's campaign_framing).
+    const framed = (await (await request.get(`/api/v1/campaign/${seeded.world}/framing`)).json()) as { campaign_framing: { campaign_id: string; play_styles: string[]; from_scenario: boolean; setting: { id: string } | null } };
+    expect(framed.campaign_framing).toMatchObject({ campaign_id: seeded.world, from_scenario: false, setting: { id: seeded.setting } });
+    expect(framed.campaign_framing.play_styles).toContain('mystery');
     // The setting's pregens: listed for a party picker, and a picked one copied in on a start.
     const made = async (resource: string, body: Record<string, unknown>): Promise<string> =>
       ((await (await request.post(`/api/v1/${resource}`, { data: { [resource]: body } })).json()) as Record<string, { id: string }>)[resource]!.id;

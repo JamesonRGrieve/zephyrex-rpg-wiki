@@ -1280,6 +1280,54 @@ class TestOptionalExtensions:
         assert not _serves(NotNamed(), "metadata")
 
 
+class TestCampaignFraming:
+    """Parity, 2026-11-22: the narrator's frame from the wiki campaign itself (vault_import put each
+    scenario's framing there): description, framing, GM notes for the GM, setting tone, play styles."""
+
+    def test_framing_split_and_the_scenario_fallback(self, server: TestClient, person: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+        from zephyrex.extensions.AbstractExtensionProvider import loaded_ability
+
+        setting = _create(server, person, "setting", name="Framed Setting", entry=[{"type": "p", "children": [{"text": "Grim and gothic."}]}])
+        scenario = _create(server, person, "campaign", name="Behind the Lines", setting_id=setting["id"], is_scenario=True, description="A recon squad behind Ork lines.")
+        _create(
+            server, person, "journal", name="Behind the Lines: Campaign Framing", kind="campaign_framing", campaign_id=scenario["id"],
+            entry=[
+                {"type": "h1", "children": [{"text": "Behind the Lines: Campaign Framing"}]},
+                {"type": "h2", "children": [{"text": "Premise"}]},
+                {"type": "p", "children": [{"text": "Scout the manufactorum."}]},
+                {"type": "h2", "children": [{"text": "GM Notes"}]},
+                {"type": "p", "children": [{"text": "The Orks are building a gargant."}]},
+            ],
+        )
+        style = _create(server, person, "taxon", name="Exploration", kind="play_style")
+        _create(server, person, "entity_taxon", taxon_id=style["id"], target_entity_type="campaign", target_entity_id=scenario["id"])
+
+        got = server.get(f"/v1/campaign/{scenario['id']}/framing", headers=_headers(person))
+        assert got.status_code == 200, got.text
+        assert got.json()["campaign_framing"] == {
+            "campaign_id": scenario["id"],
+            "name": "Behind the Lines",
+            "description": "A recon squad behind Ork lines.",
+            "framing": "Premise\nScout the manufactorum.",
+            "gm_notes": "GM Notes\nThe Orks are building a gargant.",
+            "setting": {"id": setting["id"], "name": "Framed Setting", "tone": "Grim and gothic."},
+            "play_styles": ["Exploration"],
+            "from_scenario": False,
+        }
+        # A playthrough with nothing of its own takes its scenario's.
+        bare = _create(server, person, "campaign", name="Run, bare", setting_id=setting["id"], scenario_id=scenario["id"])
+        registry = server.app.state.model_registry  # type: ignore[attr-defined]
+        framing = loaded_ability(registry, "rpg_core", "campaign_framing")
+        assert framing is not None
+        fallback = framing(registry, str(person.id), bare["id"])["campaign_framing"]
+        assert (fallback["framing"], fallback["play_styles"], fallback["from_scenario"]) == ("Premise\nScout the manufactorum.", ["Exploration"], True)
+        # Anyone but the GM gets no GM notes.
+        import zephyrex.lib.RecordTarget as target
+
+        monkeypatch.setattr(target, "can_edit", lambda *_args: False)
+        assert framing(registry, str(person.id), scenario["id"])["campaign_framing"]["gm_notes"] == ""
+
+
 class TestWhereTheyAre:
     """Parity: who's present in a scene is who's at its place or inside it."""
 

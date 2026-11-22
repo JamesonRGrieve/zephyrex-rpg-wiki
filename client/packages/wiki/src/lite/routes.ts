@@ -15,6 +15,7 @@ import type { NextRequest, NextResponse } from 'next/server';
 import { bindPrisma } from './db';
 import { metadataDelete, metadataOfGet, metadataPatch, metadataPost } from './recordMetadataRoutes';
 import { campaignDocumentsGet } from './campaignDocuments';
+import { campaignFramingGet } from './campaignFraming';
 import { campaignPersonPost } from './ensurePerson';
 import { settingPregensGet } from './pregens';
 import { campaignInstantiatePost, campaignStartGet } from './scenarios';
@@ -68,7 +69,7 @@ const ROUTES: Record<string, Routes> = {
   // Copy on start: POST /v1/campaign/{id}/instantiate.
   campaign: {
     ...both(campaigns),
-    recordActions: { instantiate: { POST: campaignInstantiatePost }, clock: { GET: clockGet, POST: clockPost }, person: { POST: campaignPersonPost } },
+    recordActions: { instantiate: { POST: campaignInstantiatePost }, clock: { GET: clockGet, POST: clockPost }, person: { POST: campaignPersonPost }, framing: { GET: campaignFramingGet } },
   },
   // The world tick: people moved by the GM, each move kept.
   person_move: { collection: { GET: personMovesGet, POST: personMovePost }, record: {} },

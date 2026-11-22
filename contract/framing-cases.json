@@ -1,0 +1,39 @@
+{
+  "_comment": "A campaign's framing entry split into its public text and its GM part (Parity's campaign_framing): the title (h1) left out; each h2-h6 heading opens a section, kept to the GM when its heading names the GM, a game master, secrets or what's behind the scenes; text before any heading is public. Each section is its heading line then its lines; sections are separated by a blank line.",
+  "splits": [
+    {
+      "name": "the vault's framing: all public, the title left out",
+      "entry": [
+        {"type": "h1", "children": [{"text": "Behind the Lines: Campaign Framing"}]},
+        {"type": "h2", "children": [{"text": "Premise"}]},
+        {"type": "p", "children": [{"text": "A recon squad slips behind Ork lines."}]},
+        {"type": "h2", "children": [{"text": "Truths"}]},
+        {"type": "ul", "children": [{"type": "li", "children": [{"text": "Hessen's Fall is contested."}]}, {"type": "li", "children": [{"text": "The Orks hold the manufactorum."}]}]}
+      ],
+      "public": "Premise\nA recon squad slips behind Ork lines.\n\nTruths\nHessen's Fall is contested.\nThe Orks hold the manufactorum.",
+      "gm": ""
+    },
+    {
+      "name": "a GM section and a secrets section kept apart, text before any heading public",
+      "entry": [
+        {"type": "p", "children": [{"text": "Lead-in."}]},
+        {"type": "h3", "children": [{"text": "Tone"}]},
+        {"type": "p", "children": [{"text": "Grim and wet."}]},
+        {"type": "h2", "children": [{"text": "GM Notes"}]},
+        {"type": "p", "children": [{"text": "The priest is the cultist."}]},
+        {"type": "h2", "children": [{"text": "Secrets"}]},
+        {"type": "p", "children": [{"text": "The well is a gate."}]},
+        {"type": "h2", "children": [{"text": "Opening Situation"}]},
+        {"type": "p", "children": [{"text": "Rain at the gate."}]}
+      ],
+      "public": "Lead-in.\n\nTone\nGrim and wet.\n\nOpening Situation\nRain at the gate.",
+      "gm": "GM Notes\nThe priest is the cultist.\n\nSecrets\nThe well is a gate."
+    },
+    {
+      "name": "no entry",
+      "entry": null,
+      "public": "",
+      "gm": ""
+    }
+  ]
+}

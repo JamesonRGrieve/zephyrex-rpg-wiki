@@ -380,6 +380,27 @@ class PersonEnsuredOne(PlainModel):
     person: PersonEnsured
 
 
+class FramingSetting(PlainModel):
+    id: str
+    name: str
+    tone: str = Field(..., description="The setting's entry as plain text: its tone and vocabulary")
+
+
+class CampaignFraming(PlainModel):
+    campaign_id: str
+    name: str
+    description: str = Field(..., description="The campaign's public description")
+    framing: str = Field(..., description="Its framing journal's public text, by section")
+    gm_notes: str = Field(..., description="Its framing's GM part (GM sections, or a GM-only framing); \"\" for anyone but its GM")
+    setting: Optional[FramingSetting] = None
+    play_styles: list[str]
+    from_scenario: bool = Field(..., description="Its own were empty, so these are its scenario's")
+
+
+class CampaignFramingOne(PlainModel):
+    campaign_framing: CampaignFraming
+
+
 class CampaignClock(PlainModel):
     minutes: int = Field(..., description="In-world minutes from day 1, 00:00")
     day: int = Field(..., description="The in-world day, from 1")
@@ -427,6 +448,18 @@ class CampaignManager(AbstractBLLManager, RouterMixin):
     def ensure_person_route(self, id: str, person: PersonEnsure) -> PersonEnsuredOne:
         asked = PersonEnsure.model_validate(person)
         return PersonEnsuredOne(person=ensure_person(self.model_registry, str(self.requester.id), id, asked.name, asked.summary))
+
+    @custom_route(
+        method="GET",
+        path="/{id}/framing",
+        output_model=CampaignFramingOne,
+        authentication_type="jwt",
+        expose_in=(ExposeIn.REST,),
+        openapi_tags=("Campaigns",),
+        summary="A campaign's framing for the narrator: description, framing, GM notes (its GM only), setting, play styles",
+    )
+    def framing_route(self, id: str) -> CampaignFramingOne:
+        return CampaignFramingOne(campaign_framing=campaign_framing(self.model_registry, str(self.requester.id), id))
 
     @custom_route(
         method="GET",
@@ -1754,6 +1787,75 @@ def ensure_person(model_registry: Any, requester_id: str, campaign_id: str, name
             ]
         )
     return PersonEnsured(id=str(made.id), name=str(made.name), created=True)
+
+
+def _framing_of(model_registry: Any, requester_id: str, campaign: Any) -> tuple[str, str, str, list[str]]:
+    """A campaign's own (description, public framing, GM framing, play styles)."""
+    from zephyrex.extensions.wiki_shared.Framing import framing_parts  # type: ignore[import-not-found]
+    from zephyrex.extensions.wiki_shared.Contract import PLAY_STYLE  # type: ignore[import-not-found]
+    from zephyrex.logic.AbstractLogicManager.models import FieldComparison
+
+    campaign_id = str(campaign.id)
+    framings = sorted(
+        (row for row in _manager(model_registry, requester_id, JournalManager).list(campaign_id=campaign_id) or [] if row.kind == "campaign_framing" and not getattr(row, "is_template", None)),
+        key=lambda row: str(row.name),
+    )
+    public, gm = "", ""
+    if framings:
+        public, gm = framing_parts(getattr(framings[0], "entry", None))
+        if ("journal", str(framings[0].id)) in _gm_only(model_registry, [str(framings[0].id)]):
+            public, gm = "", "\n\n".join(part for part in (public, gm) if part)
+    links = _manager(model_registry, requester_id, EntityTaxonManager)
+    taxon_ids = [str(row.taxon_id) for row in links.list(target_entity_type="campaign", target_entity_id=campaign_id) or []]
+    styles: list[str] = []
+    if taxon_ids:
+        taxa = _manager(model_registry, requester_id, TaxonManager)
+        styles = sorted(str(row.name) for row in taxa.list(filters=[FieldComparison(taxa.Model, "id", "in", taxon_ids)]) or [] if row.kind == PLAY_STYLE)
+    return str(getattr(campaign, "description", "") or ""), public, gm, styles
+
+
+def campaign_framing(model_registry: Any, requester_id: str, campaign_id: str) -> CampaignFraming:
+    """A campaign's framing for the narrator (Parity, 2026-11-22: scenarios' framing went into the
+    wiki campaign itself): its description, its framing journal's public text and GM part, its
+    setting's tone, its play styles. A playthrough with none of its own takes its scenario's
+    (from_scenario). The GM notes reach only its GM (EDIT on the campaign)."""
+    from zephyrex.lib.RecordTarget import can_edit
+
+    campaigns = _manager(model_registry, requester_id, CampaignManager)
+    campaign = campaigns.get(id=campaign_id)
+    description, framing, gm, styles = _framing_of(model_registry, requester_id, campaign)
+    from_scenario = False
+    scenario_id = getattr(campaign, "scenario_id", None)
+    if not (description or framing or gm) and scenario_id:
+        try:
+            scenario = campaigns.get(id=str(scenario_id))
+        except HTTPException:
+            scenario = None
+        if scenario is not None:
+            held = _framing_of(model_registry, requester_id, scenario)
+            if any(held[:3]):
+                description, framing, gm = held[:3]
+                styles = styles or held[3]
+                from_scenario = True
+    if not can_edit(model_registry, requester_id, "campaign", campaign_id):
+        gm = ""
+    setting = None
+    if getattr(campaign, "setting_id", None):
+        try:
+            row = _manager(model_registry, requester_id, SettingManager).get(id=str(campaign.setting_id))
+            setting = FramingSetting(id=str(row.id), name=str(row.name), tone=str(getattr(row, "description", "") or ""))
+        except HTTPException:
+            setting = None
+    return CampaignFraming(
+        campaign_id=str(campaign.id),
+        name=str(campaign.name),
+        description=description,
+        framing=framing,
+        gm_notes=gm,
+        setting=setting,
+        play_styles=styles,
+        from_scenario=from_scenario,
+    )
 
 
 def move_person(model_registry: Any, requester_id: str, person_id: str, location_id: str, reason: Optional[str] = None) -> PersonMoved:

@@ -224,6 +224,16 @@ class RPGCoreExtension(AbstractStaticExtension):
         return ensure_person(model_registry, requester_id, campaign_id, name, summary).model_dump(mode="json")
 
     @classmethod
+    @ability("campaign_framing")
+    def campaign_framing(cls, model_registry: Any, requester_id: str, campaign_id: str) -> dict[str, Any]:
+        """A campaign's framing for the narrator: {"campaign_framing": {campaign_id, name,
+        description, framing, gm_notes ("" for anyone but its GM), setting {id, name, tone} | null,
+        play_styles, from_scenario}}; a playthrough with none of its own takes its scenario's."""
+        from zephyrex.extensions.rpg_core.BLL_RPGCore import campaign_framing  # type: ignore[import-not-found]
+
+        return {"campaign_framing": campaign_framing(model_registry, requester_id, campaign_id).model_dump(mode="json")}
+
+    @classmethod
     @ability("campaign_documents")
     def campaign_documents(cls, model_registry: Any, requester_id: str, campaign_id: str) -> dict[str, Any]:
         """Each of the campaign's records' full text, journals first: {"campaign_documents": [{id, kind,
