@@ -215,3 +215,13 @@ def test_a_setting_pregen_note_is_a_listed_pregen_with_its_sheet(server: TestCli
     Importer(api, setting_slug="warhammer-40000").run(read_vault(tmp_path))
     pregens = server.get(f"/v1/setting/{setting['id']}/pregen", headers={"Authorization": f"Bearer {user.jwt}"}).json()["pregens"]
     assert [one["tags"] for one in pregens if one["name"] == "Ione Sabre"] == [["Pregen", "Astropath Transcendent", "Rogue Trader"]]
+    dw = tmp_path / "Setting" / "Pregens" / "Deathwatch" / "Brother Castellan Varro.md"
+    dw.parent.mkdir(parents=True)
+    dw.write_text(
+        "---\nentity_type: character\nkind: pc\nname: Brother Castellan Varro\nsetting_wide: true\nrole: Deathwatch Tactical Marine (Ultramarines)\n"
+        "tags: [character, pc, pregen, tactical-marine, deathwatch]\n---\nHe holds the line.\n",
+        encoding="utf-8",
+    )
+    Importer(api, setting_slug="warhammer-40000").run(read_vault(tmp_path))
+    pregens = server.get(f"/v1/setting/{setting['id']}/pregen", headers={"Authorization": f"Bearer {user.jwt}"}).json()["pregens"]
+    assert [one["tags"] for one in pregens if one["name"] == "Brother Castellan Varro"] == [["Pregen", "Deathwatch", "Tactical Marine"]]
