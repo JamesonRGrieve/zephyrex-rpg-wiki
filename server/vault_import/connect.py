@@ -47,7 +47,11 @@ def in_process(app_path: str, owner: str) -> Iterator[Api]:
         token = UserManager.generate_jwt_token(
             user_id=str(user.id), email=str(user.email), expiration_hours=SESSION_HOURS, model_registry=registry
         )
-        yield Api(http, {"Authorization": f"Bearer {token}"})
+        api = Api(http, {"Authorization": f"Bearer {token}"})
+        # For an importer that calls an ability in process (book_import): the app's registry and owner.
+        api.model_registry = registry  # type: ignore[attr-defined]
+        api.owner_id = str(user.id)  # type: ignore[attr-defined]
+        yield api
 
 
 

@@ -18,7 +18,7 @@ dependencies = [
 # The extensions (loaded from ./extensions) and the two importers, named: with more than one top-level
 # package, setuptools' automatic discovery refuses to build.
 [tool.setuptools.packages.find]
-include = ["extensions*", "vault_import*", "st_import*", "compendium_import*", "scenario_repair*"]
+include = ["extensions*", "vault_import*", "st_import*", "compendium_import*", "scenario_repair*", "book_import*"]
 
 # The framework from the checkout deploy/fetch-frameworks.sh lays out beside this repository
 # (Source/server-framework on the desktop), at the commit deploy/frameworks.env pins, as the

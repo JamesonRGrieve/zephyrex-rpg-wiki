@@ -138,6 +138,64 @@ def rebuild_lore_chunks(model_registry: Any, requester_id: str) -> dict[str, int
     return indexed
 
 
+BOOK = "book"  # a book's passages: target_entity_type, with target_entity_id "book:<slug>"
+BOOK_PAGE = "book_page"
+
+
+def import_book(
+    model_registry: Any,
+    requester_id: str,
+    setting_id: str,
+    game_system_id: Optional[str],
+    slug: str,
+    title: str,
+    pages: list[tuple[int, list[dict[str, Any]]]],
+    dry_run: bool = False,
+) -> int:
+    """A book's pages as passages of its setting's canon (book_import, the operator's instance only):
+    each page's blocks cut as a record's entry is, its path the title then its headings, its source
+    the title and its page. A book imported again replaces its passages. No wiki record holds the
+    text, so the world sync never carries it; lore_search finds it in scope. Returns the passages."""
+    from zephyrex.logic.AbstractLogicManager.models import FieldComparison
+    from zephyrex.extensions.rpg_core.BLL_RPGCore import SettingManager, _manager  # type: ignore[import-not-found]
+    from zephyrex.extensions.rpg_core.Scenarios import create_all  # type: ignore[import-not-found]
+
+    _manager(model_registry, requester_id, SettingManager).get(id=setting_id)  # readable by the importer
+    target = f"{BOOK}:{slug}"
+    rows: list[dict[str, Any]] = []
+    for page, blocks in pages:
+        for passage in chunk_entry(title, blocks):
+            rows.append(
+                {
+                    "target_entity_type": BOOK,
+                    "target_entity_id": target,
+                    "name": title,
+                    "setting_id": setting_id,
+                    "game_system_id": game_system_id,
+                    "kind": BOOK_PAGE,
+                    "source": title,
+                    "page": page,
+                    "position": len(rows),
+                    "path": json.dumps(passage["path"]),
+                    "text": passage["text"],
+                    "tokens": tokens(passage["text"]),
+                }
+            )
+    if dry_run:
+        return len(rows)
+    chunks = _chunks(model_registry)
+    for row in _every_chunk(chunks, [FieldComparison(chunks.Model, "target_entity_id", "eq", target)]):
+        chunks.delete(id=str(row.id))
+    create_all(chunks, rows)
+    return len(rows)
+
+
+def _every_chunk(chunks: Any, filters: list[Any]) -> list[Any]:
+    from zephyrex.extensions.rpg_core.BLL_RPGCore import _every  # type: ignore[import-not-found]
+
+    return _every(chunks, filters)
+
+
 def _vector_literal(vector: list[float]) -> str:
     if len(vector) != DIMENSION:
         raise ValueError(f"The embedder answered {len(vector)} dimensions; lore_chunks.embedding holds {DIMENSION} (nomic-embed-text-v1.5)")
@@ -345,7 +403,7 @@ def lore_search(
     ids = [one for one, _score in fused][: max(k * 3, k)]
     rows = {str(row.id): row for row in chunks.list(filters=[FieldComparison(chunks.Model, "id", "in", ids)]) or []} if ids else {}
     # What the requester may see: the records world_entities_by_id answers for them.
-    records = sorted({str(row.target_entity_id) for row in rows.values()})
+    records = sorted({str(row.target_entity_id) for row in rows.values() if row.target_entity_type != BOOK})
     visible: set[str] = set()
     for start in range(0, len(records), 100):
         visible.update(entity.id for entity in world_entities_by_id(model_registry, requester_id, records[start : start + 100]).world_entities)
@@ -364,7 +422,8 @@ def lore_search(
             ranks={name: found_ranks[one] for name, found_ranks in ranks.items() if one in found_ranks},
         )
         for one, score in fused
-        if one in rows and str(rows[one].target_entity_id) in visible
+        # A book's pages are canon of the setting, in scope already; a record, as its requester sees it.
+        if one in rows and (rows[one].target_entity_type == BOOK or str(rows[one].target_entity_id) in visible)
     ]
     packed = [LorePassage.model_validate(one) for one in pack([passage.model_dump() for passage in ordered], token_budget)][:k]
     return LoreSearched(passages=packed, methods=methods)

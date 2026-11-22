@@ -297,6 +297,26 @@ class RPGCoreExtension(AbstractStaticExtension):
         return lore_search(model_registry, requester_id, campaign_id, text, k, token_budget, kinds, tags, include_setting).model_dump(mode="json")
 
     @classmethod
+    @ability("import_book")
+    def import_book(
+        cls,
+        model_registry: Any,
+        requester_id: str,
+        setting_id: str,
+        game_system_id: Optional[str],
+        slug: str,
+        title: str,
+        pages: list[Any],
+        dry_run: bool = False,
+    ) -> dict[str, Any]:
+        """A transcribed book's pages ([(page, blocks)]) as passages of its setting's canon for
+        lore_search, replacing an earlier import of it: {passages}. In process only (book_import);
+        the operator's instance alone holds book text."""
+        from zephyrex.extensions.rpg_core.LoreSearch import import_book  # type: ignore[import-not-found]
+
+        return {"passages": import_book(model_registry, requester_id, setting_id, game_system_id, slug, title, [(int(page), blocks) for page, blocks in pages], dry_run)}
+
+    @classmethod
     @ability("rebuild_lore_chunks")
     def rebuild_lore_chunks(cls, model_registry: Any, requester_id: str) -> dict[str, Any]:
         """Cut the requester's records made before the lore index (rpg_core 017) into passages:
