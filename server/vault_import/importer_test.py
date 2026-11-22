@@ -204,3 +204,14 @@ def test_a_setting_pregen_note_is_a_listed_pregen_with_its_sheet(server: TestCli
     sheets = {row["key"]: row for row in api.properties("person", gerta["id"])}
     assert json.loads(sheets["Character sheet"]["value"]) == build and sheets["Character sheet"]["is_private"] is True
     assert json.loads(sheets["Canonical sheet"]["value"])["source"] == "initial_build"
+    # A career whose name the slug can't give back: the note's role names it.
+    rt = tmp_path / "Setting" / "Pregens" / "Rogue Trader" / "Ione Sabre.md"
+    rt.parent.mkdir(parents=True)
+    rt.write_text(
+        "---\nentity_type: character\nkind: pc\nname: Ione Sabre\nsetting_wide: true\nrole: Astropath Transcendent (Hive World)\n"
+        f"tags: [character, pc, pregen, astropath-transcendent, rogue-trader]\ninitial_build: {base64.b64encode(json.dumps({'career': 'astropath'}).encode()).decode()}\n---\nShe listens.\n",
+        encoding="utf-8",
+    )
+    Importer(api, setting_slug="warhammer-40000").run(read_vault(tmp_path))
+    pregens = server.get(f"/v1/setting/{setting['id']}/pregen", headers={"Authorization": f"Bearer {user.jwt}"}).json()["pregens"]
+    assert [one["tags"] for one in pregens if one["name"] == "Ione Sabre"] == [["Pregen", "Astropath Transcendent", "Rogue Trader"]]

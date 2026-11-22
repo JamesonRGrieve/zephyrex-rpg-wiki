@@ -15,6 +15,7 @@ changes nothing.
 """
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from datetime import date, datetime, timezone
@@ -101,11 +102,15 @@ def _tags(meta: dict[str, Any], kind: str) -> list[str]:
     raw = [str(tag).strip() for tag in _list(meta.get("tags")) if _text(tag) and str(tag) != kind]
     if not any(tag.casefold() == PREGEN_TAG for tag in raw):
         return raw
+    # The role's own name where its slug is the tag: "Astropath Transcendent (Hive World)" names
+    # astropath-transcendent, "Void-Master (Void Born)" void-master.
+    role = (_text(meta.get("role")) or "").split(" (")[0].strip()
+    role_slug = re.sub(r"[^a-z0-9]+", "-", role.casefold()).strip("-")
     named: list[str] = []
     for tag in raw:
         if tag.casefold() in TYPE_TAGS:
             continue
-        name = TAG_NAMES.get(tag.casefold()) or (tag[:1].upper() + tag[1:] if tag == tag.lower() else tag)
+        name = TAG_NAMES.get(tag.casefold()) or (role if role and tag.casefold() == role_slug else None) or (tag[:1].upper() + tag[1:] if tag == tag.lower() else tag)
         if name not in named:
             named.append(name)
     return named
