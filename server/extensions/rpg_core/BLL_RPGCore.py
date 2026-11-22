@@ -21,7 +21,7 @@ Each ``*_id`` names its model, so the framework gives it a real foreign key.
 
 import json
 from datetime import datetime
-from typing import Any, ClassVar, Optional, Type
+from typing import Any, Callable, ClassVar, Optional, Type
 
 from fastapi import HTTPException
 from pydantic import BaseModel as PlainModel
@@ -2079,7 +2079,25 @@ def instantiate_campaign(
         # All or nothing: a start that fails partway leaves no half-copied campaign.
         undo(copying)
         raise
+    _after_instantiate(model_registry, requester_id, str(source.id), str(made.id), dict(copying.id_map))
     return CampaignStarted(campaign=_manager(model_registry, requester_id, CampaignManager).get(id=str(made.id)).model_dump(mode="json"), id_map=copying.id_map)
+
+
+# What other extensions do once a playthrough is made (VTT copies the scenario's scenes and tokens):
+# each is called with (model_registry, requester_id, source_campaign_id, new_campaign_id, id_map),
+# id_map every copied record's source id → copy id. A callback that fails is logged and the rest
+# go on: the playthrough stands either way.
+AFTER_INSTANTIATE: list[Callable[[Any, str, str, str, dict[str, str]], None]] = []
+
+
+def _after_instantiate(model_registry: Any, requester_id: str, source_campaign_id: str, new_campaign_id: str, id_map: dict[str, str]) -> None:
+    from zephyrex.lib.Logging import logger
+
+    for callback in list(AFTER_INSTANTIATE):
+        try:
+            callback(model_registry, requester_id, source_campaign_id, new_campaign_id, id_map)
+        except Exception as error:  # noqa: BLE001 - another extension's failure never undoes the start
+            logger.warning(f"rpg_core: an after-instantiate callback ({getattr(callback, '__qualname__', callback)}) failed for {new_campaign_id}: {error}")
 
 
 PREGEN_TAG = "pregen"

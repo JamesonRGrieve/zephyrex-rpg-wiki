@@ -1230,6 +1230,31 @@ class TestPregens:
         assert [one["id"] for one in server.get(f"/v1/setting/{setting['id']}/pregen", headers=_headers(person)).json()["pregens"]] == [akra["id"]]
 
 
+class TestAfterInstantiate:
+    """VTT, 2026-11-21: once a playthrough is made, other extensions copy what's theirs (scenes and
+    tokens) through AFTER_INSTANTIATE; one that fails doesn't undo the start."""
+
+    def test_callbacks_get_the_id_map_and_a_failing_one_is_passed_over(self, server: TestClient, person: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+        from zephyrex.extensions.rpg_core import BLL_RPGCore  # type: ignore[import-not-found]
+
+        heard: list[tuple[str, str, str, dict[str, str]]] = []
+
+        def broken(*_args: Any) -> None:
+            raise RuntimeError("the VTT's copy failed")
+
+        def listening(_registry: Any, requester_id: str, source_id: str, new_id: str, id_map: dict[str, str]) -> None:
+            heard.append((requester_id, source_id, new_id, id_map))
+
+        monkeypatch.setattr(BLL_RPGCore, "AFTER_INSTANTIATE", [broken, listening])
+        scenario = _create(server, person, "campaign", name="Mapped", is_scenario=True)
+        inn = _create(server, person, "location", name="The Inn", kind="building", campaign_id=scenario["id"])
+        run, ids = _started(server, person, _start(server, person, scenario["id"]))
+        assert len(heard) == 1
+        requester_id, source_id, new_id, id_map = heard[0]
+        assert (requester_id, source_id, new_id) == (str(person.id), scenario["id"], run["id"])
+        assert id_map[inn["id"]] == ids[inn["id"]]
+
+
 class TestWhereTheyAre:
     """Parity: who's present in a scene is who's at its place or inside it."""
 
