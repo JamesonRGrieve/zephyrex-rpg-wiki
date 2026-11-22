@@ -22,6 +22,7 @@ import { OriginOf } from '../components/world/OriginOf';
 import { PictureOf } from '../components/world/PictureOf';
 import { PropertyList } from '../components/world/PropertyList';
 import { VoicePanel } from '../components/world/VoicePanel';
+import { ElevatePanel } from '../components/world/ElevatePanel';
 import { type RelationLine, RelationList } from '../components/world/RelationList';
 import { type Chip, TaxonChips } from '../components/world/TaxonChips';
 import { ENTITY_KINDS, type EntityKind, isEntityKind } from '../components/world/kinds';
@@ -49,12 +50,17 @@ import {
   relationships,
   statuses,
   taxa,
+  worlds,
 } from '../features/data/records';
 import { currentAttitude } from '../lib/dispositions';
 import { storedNames, storedVoice } from '../lib/names';
 import { describeRequirement } from '../lib/requirements';
-import { scopeQuery } from '../lib/scope';
+import { scopeQuery, settingOf } from '../lib/scope';
 import { useWikiBase } from '../base';
+import { useClient } from 'zephyrex';
+
+/** A campaign's person marked with their copy in its scenario (the server's ELEVATED_PROPERTY). */
+const ELEVATED_PROPERTY = 'Elevated to';
 import { kindPath, recordPath, taxonomyPath } from '../lib/paths';
 
 interface Shown {
@@ -409,6 +415,34 @@ function Voice({ id }: { id: string }): ReactElement | null {
   );
 }
 
+/** A playthrough's person and its scenario: elevate them, or see their copy there. */
+function Elevate({ world, id }: { world: string; id: string }): ReactElement | null {
+  const base = useWikiBase();
+  const client = useClient();
+  const campaign = worlds.useOne(settingOf(world) === null ? world : null);
+  const scenario = worlds.useOne(campaign.data?.scenario_id ?? null);
+  const properties = useProperties('person', id);
+  const mark = properties.data?.find((row) => row.key === ELEVATED_PROPERTY)?.value ?? null;
+  const twin = people.useOne(mark);
+  if (scenario.data === undefined || properties.data === undefined) return null;
+  const elevated = twin.data === undefined ? null : { name: twin.data.name, href: recordPath(base, scenario.data.id, 'person', twin.data.id) };
+  return (
+    <ElevatePanel
+      scenario={{ name: scenario.data.name }}
+      elevated={elevated}
+      onElevate={async () => {
+        try {
+          await client.post(`/v1/campaign/${encodeURIComponent(world)}/elevate`, { elevate: { person_id: id } });
+          await properties.mutate();
+          return null;
+        } catch (error) {
+          return error instanceof Error ? error.message : 'They could not be elevated';
+        }
+      }}
+    />
+  );
+}
+
 function PersonPage({ world, id, can }: { world: string; id: string; can: Capabilities }): ReactElement {
   const base = useWikiBase();
   const one = people.useOne(id);
@@ -428,6 +462,7 @@ function PersonPage({ world, id, can }: { world: string; id: string; can: Capabi
       extra={
         <>
           <Voice id={id} />
+          {can.properties && <Elevate world={world} id={id} />}
           {can.hooks && <Dispositions world={world} id={id} />}
         </>
       }

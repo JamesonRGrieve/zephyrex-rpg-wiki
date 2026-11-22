@@ -243,6 +243,24 @@ class RPGCoreExtension(AbstractStaticExtension):
         return remove_orphaned_records(model_registry, requester_id).model_dump(mode="json")
 
     @classmethod
+    @ability("update_person")
+    def update_person(cls, model_registry: Any, requester_id: str, person_id: str, fields: dict[str, Any]) -> dict[str, Any]:
+        """Fill in a person (an agent's NPC): fields from summary, entry (Markdown), personality,
+        motive, voice, picture (an https link or an uploaded asset's id): {id, name, updated}."""
+        from zephyrex.extensions.rpg_core.BLL_RPGCore import update_person  # type: ignore[import-not-found]
+
+        return update_person(model_registry, requester_id, person_id, fields).model_dump(mode="json")
+
+    @classmethod
+    @ability("elevate_person")
+    def elevate_person(cls, model_registry: Any, requester_id: str, person_id: str) -> dict[str, Any]:
+        """A playthrough's person copied into its scenario (or linked to the one it has by name):
+        {person_id, scenario_person_id, scenario_id, created}."""
+        from zephyrex.extensions.rpg_core.BLL_RPGCore import elevate_person  # type: ignore[import-not-found]
+
+        return elevate_person(model_registry, requester_id, person_id).model_dump(mode="json")
+
+    @classmethod
     @ability("campaign_documents")
     def campaign_documents(cls, model_registry: Any, requester_id: str, campaign_id: str) -> dict[str, Any]:
         """Each of the campaign's records' full text, journals first: {"campaign_documents": [{id, kind,

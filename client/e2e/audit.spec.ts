@@ -370,6 +370,16 @@ test.describe.serial('visual audit', () => {
     const partyMap = JSON.parse(withParty.start.id_map) as Record<string, string>;
     const copiedAkra = (await (await request.get(`/api/v1/person/${partyMap[akra]}`)).json()) as { person: { campaign_id: string } };
     expect(copiedAkra.person.campaign_id).toBe(withParty.start.campaign_id);
+    // An NPC authored in the playthrough: filled in by an agent, then elevated to the scenario.
+    const npc = ((await (await request.post(`/api/v1/campaign/${run.campaign.id}/person`, { data: { person: { name: 'Old Tam' } } })).json()) as { person: { id: string } }).person;
+    const filled = await request.post(`/api/v1/campaign/${run.campaign.id}/fill_person`, { data: { person: { person_id: npc.id, summary: 'Keeps the inn.', personality: 'Gruff', motive: 'Pay the Guild' } } });
+    expect(filled.status(), await filled.text()).toBe(200);
+    const lifted = (await (await request.post(`/api/v1/campaign/${run.campaign.id}/elevate`, { data: { elevate: { person_id: npc.id } } })).json()) as { elevated: { scenario_person_id: string; scenario_id: string; created: boolean } };
+    expect([lifted.elevated.scenario_id, lifted.elevated.created]).toEqual([seeded.world, true]);
+    const twin = (await (await request.get(`/api/v1/person/${lifted.elevated.scenario_person_id}`)).json()) as { person: { name: string; campaign_id: string } };
+    expect(twin.person).toMatchObject({ name: 'Old Tam', campaign_id: seeded.world });
+    const liftedAgain = (await (await request.post(`/api/v1/campaign/${run.campaign.id}/elevate`, { data: { elevate: { person_id: npc.id } } })).json()) as { elevated: { scenario_person_id: string; created: boolean } };
+    expect(liftedAgain.elevated).toMatchObject({ scenario_person_id: lifted.elevated.scenario_person_id, created: false });
     const original = (await (await request.get(`/api/v1/person/${seeded.person}`)).json()) as { person: { campaign_id: string } };
     expect(original.person.campaign_id).toBe(seeded.world);
     const pages = worldPages(seeded);

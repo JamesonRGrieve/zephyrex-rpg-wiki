@@ -1382,6 +1382,71 @@ class TestDeletingACampaign:
         assert clear(registry, str(person.id)) == {"campaigns": [], "removed": {}}
 
 
+class TestAuthoredNpcs:
+    """Operator, 2026-11-22: the GM authors NPCs mid-play (filled in by an agent), campaign-only,
+    with "elevate to scenario" so later playthroughs have them."""
+
+    def test_an_npc_filled_in_by_an_agent(self, server: TestClient, person: Any) -> None:
+        from zephyrex.extensions.AbstractExtensionProvider import loaded_ability
+
+        campaign = _create(server, person, "campaign", name="Filled")
+        barkeep = server.post(f"/v1/campaign/{campaign['id']}/person", json={"person": {"name": "The Barkeep"}}, headers=_headers(person)).json()["person"]
+        filled = server.post(
+            f"/v1/campaign/{campaign['id']}/fill_person",
+            json={"person": {"person_id": barkeep["id"], "summary": "Keeps the Rusty Anchor.", "entry": "## Personality\nGruff.", "personality": "Gruff but fair", "motive": "Pay the Guild", "voice": "Short sentences", "picture": "https://example.org/barkeep.png"}},
+            headers=_headers(person),
+        )
+        assert filled.status_code == 200, filled.text
+        assert filled.json()["person"]["updated"] == ["entry", "motive", "personality", "picture", "summary", "voice"]
+        row = server.get(f"/v1/person/{barkeep['id']}", headers=_headers(person)).json()["person"]
+        assert "Keeps the Rusty Anchor." in row["entry"] and "Personality" in row["entry"]
+        assert json.loads(row["voice"])["personality"] == "Gruff but fair" and json.loads(row["voice"])["speech"] == "Short sentences"
+        assert json.loads(row["motivations"]) == ["Pay the Guild"] and row["picture_url"] == "https://example.org/barkeep.png"
+        registry = server.app.state.model_registry  # type: ignore[attr-defined]
+        update = loaded_ability(registry, "rpg_core", "update_person")
+        assert update is not None
+        with pytest.raises(Exception, match="not mood"):
+            update(registry, str(person.id), barkeep["id"], {"mood": "dour"})
+        with pytest.raises(Exception, match="Upload the picture first"):
+            update(registry, str(person.id), barkeep["id"], {"picture": "data:image/png;base64,AAAA"})
+
+    def test_elevated_to_the_scenario_with_its_place_ties_tags_and_properties(self, server: TestClient, person: Any) -> None:
+        scenario = _create(server, person, "campaign", name="Anchor Scenario", is_scenario=True)
+        inn = _create(server, person, "location", name="The Rusty Anchor", kind="building", campaign_id=scenario["id"])
+        guild = _create(server, person, "faction", name="Dockers' Guild", kind="guild", campaign_id=scenario["id"])
+        run = _create(server, person, "campaign", name="Anchor, run 1", scenario_id=scenario["id"])
+        run_inn = _create(server, person, "location", name="The Rusty Anchor", kind="building", campaign_id=run["id"])
+        run_guild = _create(server, person, "faction", name="Dockers' Guild", kind="guild", campaign_id=run["id"])
+        barkeep = _create(server, person, "person", name="Old Tam", kind="npc", campaign_id=run["id"], location_id=run_inn["id"])
+        _create(server, person, "relationship", person_id=barkeep["id"], target_faction_id=run_guild["id"], kind="member")
+        tag = _create(server, person, "taxon", name="Regulars", kind="tag", campaign_id=run["id"])
+        _create(server, person, "entity_taxon", taxon_id=tag["id"], target_entity_type="person", target_entity_id=barkeep["id"])
+        server.post("/v1/record_metadata", json={"record_metadata": {"target_entity_type": "person", "target_entity_id": barkeep["id"], "key": "Mood", "value": "dour"}}, headers=_headers(person))
+
+        lifted = server.post(f"/v1/campaign/{run['id']}/elevate", json={"elevate": {"person_id": barkeep["id"]}}, headers=_headers(person))
+        assert lifted.status_code == 200, lifted.text
+        elevated = lifted.json()["elevated"]
+        assert (elevated["scenario_id"], elevated["created"]) == (scenario["id"], True)
+        twin = server.get(f"/v1/person/{elevated['scenario_person_id']}", headers=_headers(person)).json()["person"]
+        assert (twin["name"], twin["campaign_id"], twin["location_id"]) == ("Old Tam", scenario["id"], inn["id"])
+        ties = server.get(f"/v1/relationship?person_id={twin['id']}", headers=_headers(person)).json()["relationships"]
+        assert [tie["target_faction_id"] for tie in ties] == [guild["id"]]
+        tagged = server.get(f"/v1/entity_taxon?target_entity_type=person&target_entity_id={twin['id']}", headers=_headers(person)).json()["entity_taxons"]
+        scenario_tag = server.get(f"/v1/taxon/{tagged[0]['taxon_id']}", headers=_headers(person)).json()["taxon"]
+        assert (scenario_tag["name"], scenario_tag["campaign_id"]) == ("Regulars", scenario["id"])
+        props = {row["key"]: row["value"] for row in server.get("/v1/record_metadata/of", params={"target_entity_type": "person", "target_entity_id": twin["id"]}, headers=_headers(person)).json()["metadata"]}
+        assert props == {"Mood": "dour"}
+        marks = {row["key"]: row["value"] for row in server.get("/v1/record_metadata/of", params={"target_entity_type": "person", "target_entity_id": barkeep["id"]}, headers=_headers(person)).json()["metadata"]}
+        assert marks["Elevated to"] == twin["id"]
+        # Again: nothing new, the same counterpart.
+        again = server.post(f"/v1/campaign/{run['id']}/elevate", json={"elevate": {"person_id": barkeep["id"]}}, headers=_headers(person)).json()["elevated"]
+        assert (again["scenario_person_id"], again["created"]) == (twin["id"], False)
+        # Not a playthrough: nothing to elevate to.
+        loose = _create(server, person, "campaign", name="Loose")
+        stray = _create(server, person, "person", name="Stray", kind="npc", campaign_id=loose["id"])
+        assert server.post(f"/v1/campaign/{loose['id']}/elevate", json={"elevate": {"person_id": stray["id"]}}, headers=_headers(person)).status_code == 422
+
+
 class TestWhereTheyAre:
     """Parity: who's present in a scene is who's at its place or inside it."""
 

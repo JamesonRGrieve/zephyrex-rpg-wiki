@@ -370,6 +370,49 @@ class PersonEnsureEnvelope(PlainModel):
     person: PersonEnsure
 
 
+class PersonFill(PlainModel):
+    person_id: str
+    summary: Optional[str] = Field(None, description="One line on them: the entry's first paragraph")
+    entry: Optional[str] = Field(None, description="Their description, as Markdown (headings, lists, paragraphs)")
+    personality: Optional[str] = Field(None, description="Their voice's personality")
+    motive: Optional[str] = Field(None, description="What drives them: added to their motivations")
+    voice: Optional[str] = Field(None, description="How they speak: their voice's speech")
+    picture: Optional[str] = Field(None, description="An https link (picture_url), or an uploaded asset's id (attached as their picture)")
+
+
+class PersonFillEnvelope(PlainModel):
+    person: PersonFill
+
+
+class PersonFilled(PlainModel):
+    id: str
+    name: str
+    updated: list[str] = Field(..., description="The fields that changed")
+
+
+class PersonFilledOne(PlainModel):
+    person: PersonFilled
+
+
+class ElevateAsk(PlainModel):
+    person_id: str
+
+
+class ElevateEnvelope(PlainModel):
+    elevate: ElevateAsk
+
+
+class PersonElevated(PlainModel):
+    person_id: str = Field(..., description="The campaign's person")
+    scenario_person_id: str = Field(..., description="Their scenario counterpart")
+    scenario_id: str
+    created: bool = Field(..., description="Made now (false: the scenario already had them)")
+
+
+class PersonElevatedOne(PlainModel):
+    elevated: PersonElevated
+
+
 class PersonEnsured(PlainModel):
     id: str
     name: str
@@ -448,6 +491,35 @@ class CampaignManager(AbstractBLLManager, RouterMixin):
     def ensure_person_route(self, id: str, person: PersonEnsure) -> PersonEnsuredOne:
         asked = PersonEnsure.model_validate(person)
         return PersonEnsuredOne(person=ensure_person(self.model_registry, str(self.requester.id), id, asked.name, asked.summary))
+
+    @custom_route(
+        method="POST",
+        path="/{id}/fill_person",
+        input_model=PersonFillEnvelope,
+        output_model=PersonFilledOne,
+        authentication_type="jwt",
+        expose_in=(ExposeIn.REST,),
+        openapi_tags=("Campaigns",),
+        summary="Fill in a campaign's person (an agent's NPC): one line, a Markdown description, personality, motive, voice, picture",
+    )
+    def fill_person_route(self, id: str, person: PersonFill) -> PersonFilledOne:
+        asked = PersonFill.model_validate(person)
+        filled = update_person(self.model_registry, str(self.requester.id), asked.person_id, asked.model_dump(exclude={"person_id"}, exclude_none=True), campaign_id=id)
+        return PersonFilledOne(person=filled)
+
+    @custom_route(
+        method="POST",
+        path="/{id}/elevate",
+        input_model=ElevateEnvelope,
+        output_model=PersonElevatedOne,
+        authentication_type="jwt",
+        expose_in=(ExposeIn.REST,),
+        openapi_tags=("Campaigns",),
+        summary="Elevate a playthrough's person to its scenario, so later playthroughs have them (its GM's)",
+    )
+    def elevate_route(self, id: str, elevate: ElevateAsk) -> PersonElevatedOne:
+        asked = ElevateAsk.model_validate(elevate)
+        return PersonElevatedOne(elevated=elevate_person(self.model_registry, str(self.requester.id), asked.person_id, campaign_id=id))
 
     @custom_route(
         method="GET",
@@ -1856,6 +1928,185 @@ def campaign_framing(model_registry: Any, requester_id: str, campaign_id: str) -
         play_styles=styles,
         from_scenario=from_scenario,
     )
+
+
+FILL_FIELDS = ("summary", "entry", "personality", "motive", "voice", "picture")
+ELEVATED_PROPERTY = "Elevated to"
+
+
+def update_person(model_registry: Any, requester_id: str, person_id: str, fields: dict[str, Any], campaign_id: Optional[str] = None) -> PersonFilled:
+    """A person filled in by an agent (Parity, 2026-11-22: the GM authors NPCs mid-play): summary
+    and a Markdown entry become the entry (the summary its first paragraph); personality and voice
+    their voice's personality and speech; motive one of their motivations; picture an https link
+    (picture_url) or an uploaded asset's id (attached). Only what's given changes; it takes EDIT on
+    the person, as any update."""
+    from zephyrex.extensions.wiki_shared.Markdown import markdown_entry  # type: ignore[import-not-found]
+
+    unknown = sorted(set(fields) - set(FILL_FIELDS))
+    if unknown:
+        raise HTTPException(status_code=422, detail=f"A person is filled with {', '.join(FILL_FIELDS)}; not {', '.join(unknown)}")
+    people = _manager(model_registry, requester_id, PersonManager)
+    person = people.get(id=person_id)
+    if campaign_id is not None and str(getattr(person, "campaign_id", "") or "") != str(campaign_id):
+        raise HTTPException(status_code=404, detail="PersonModel not found in this campaign")
+    changes: dict[str, Any] = {}
+    summary_line = str(fields.get("summary") or "").strip()
+    if summary_line or fields.get("entry"):
+        blocks = ([{"type": "p", "children": [{"text": summary_line}]}] if summary_line else []) + markdown_entry(str(fields.get("entry") or ""))
+        changes["entry"] = blocks
+    if fields.get("personality") or fields.get("voice"):
+        held = stored_voice(getattr(person, "voice", None)) or {}
+        if fields.get("personality"):
+            held["personality"] = str(fields["personality"]).strip()
+        if fields.get("voice"):
+            held["speech"] = str(fields["voice"]).strip()
+        changes["voice"] = held
+    if fields.get("motive"):
+        motives = stored_motivations(getattr(person, "motivations", None))
+        motive = str(fields["motive"]).strip()
+        if motive not in motives:
+            changes["motivations"] = [*motives, motive]
+    picture = str(fields.get("picture") or "").strip()
+    if picture.startswith("data:"):
+        raise HTTPException(status_code=422, detail="Upload the picture first (POST /v1/asset/upload) and give its asset id")
+    if picture.startswith("https://"):
+        changes["picture_url"] = picture
+    if changes:
+        person = people.update(id=person_id, **changes)
+    updated = sorted(key for key in fields if fields.get(key))
+    if picture and not picture.startswith("https://"):
+        if not _serves(model_registry, "attachments"):
+            raise HTTPException(status_code=422, detail="This back end keeps no uploaded pictures: give an https link")
+        from zephyrex.extensions.attachments.BLL_Attachments import AttachmentManager  # type: ignore[import-not-found]
+
+        _manager(model_registry, requester_id, AttachmentManager).create(asset_id=picture, target_entity_type="person", target_entity_id=person_id, role="primary_image")
+    return PersonFilled(id=str(person.id), name=str(person.name), updated=updated)
+
+
+def _by_name(rows: list[Any]) -> dict[str, Any]:
+    return {str(row.name).strip().casefold(): row for row in rows}
+
+
+def elevate_person(model_registry: Any, requester_id: str, person_id: str, campaign_id: Optional[str] = None) -> PersonElevated:
+    """A playthrough's person copied into its scenario so later playthroughs have them (operator,
+    2026-11-22: NPCs authored mid-play, "elevate to scenario" on their profile). Their fields,
+    properties, tags and pictures come along; their place and their ties to organisations and people
+    are turned to the scenario's own of the same name (left out where it has none). The campaign's
+    person is marked "Elevated to" its counterpart; a second call, or one for a person the scenario
+    already has by name, makes nothing and says which. The GM's of both (EDIT on each)."""
+    from zephyrex.lib.RecordTarget import can_edit
+    from zephyrex.extensions.genealogy.BLL_Genealogy import RelationshipManager
+
+    people = _manager(model_registry, requester_id, PersonManager)
+    person = people.get(id=person_id)
+    own = str(getattr(person, "campaign_id", "") or "")
+    if not own or (campaign_id is not None and own != str(campaign_id)):
+        raise HTTPException(status_code=422, detail="Only a campaign's person is elevated to its scenario")
+    campaigns = _manager(model_registry, requester_id, CampaignManager)
+    campaign = campaigns.get(id=own)
+    scenario_id = str(getattr(campaign, "scenario_id", "") or "")
+    if not scenario_id:
+        raise HTTPException(status_code=422, detail="This campaign isn't a playthrough of a scenario")
+    if not (can_edit(model_registry, requester_id, "campaign", own) and can_edit(model_registry, requester_id, "campaign", scenario_id)):
+        raise HTTPException(status_code=403, detail="Only the scenario's GM elevates its people")
+    rows = MetadataManagerOf(model_registry)
+    held = {str(row.key): row for row in (rows.list(target_entity_type="person", target_entity_id=person_id) or [])} if rows is not None else {}
+    if ELEVATED_PROPERTY in held:
+        try:
+            twin = people.get(id=str(held[ELEVATED_PROPERTY].value))
+            if str(twin.campaign_id) == scenario_id:
+                return PersonElevated(person_id=person_id, scenario_person_id=str(twin.id), scenario_id=scenario_id, created=False)
+        except HTTPException:
+            pass
+    theirs = _by_name(people.list(campaign_id=scenario_id) or [])
+    existing = theirs.get(str(person.name).strip().casefold())
+    if existing is not None:
+        _mark_elevated(rows, person_id, str(existing.id))
+        return PersonElevated(person_id=person_id, scenario_person_id=str(existing.id), scenario_id=scenario_id, created=False)
+
+    writable = set(people._model.Create.model_fields)
+    fields = {key: value for key, value in person.model_dump().items() if key in writable and value is not None and key not in ("id", "user_id", "campaign_id", "location_id", "is_template")}
+    if getattr(person, "location_id", None):
+        try:
+            place = _manager(model_registry, requester_id, LocationManager).get(id=str(person.location_id))
+            match = _by_name(_manager(model_registry, requester_id, LocationManager).list(campaign_id=scenario_id) or []).get(str(place.name).strip().casefold())
+            if match is not None:
+                fields["location_id"] = str(match.id)
+            elif not getattr(place, "campaign_id", None):
+                fields["location_id"] = str(place.id)  # the setting's canon: shared
+        except HTTPException:
+            pass
+    made = people.create(**fields, campaign_id=scenario_id)
+    new_id = str(made.id)
+    # Tags: a campaign's own tag becomes the scenario's of the same name and kind (made if missing).
+    taxa = _manager(model_registry, requester_id, TaxonManager)
+    links = _manager(model_registry, requester_id, EntityTaxonManager)
+    for link in links.list(target_entity_type="person", target_entity_id=person_id) or []:
+        try:
+            taxon = taxa.get(id=str(link.taxon_id))
+        except HTTPException:
+            continue
+        target = str(taxon.id)
+        if str(getattr(taxon, "campaign_id", "") or "") == own:
+            same = [row for row in taxa.list(campaign_id=scenario_id) or [] if str(row.name) == str(taxon.name) and row.kind == taxon.kind]
+            target = str(same[0].id) if same else str(taxa.create(name=taxon.name, kind=taxon.kind, campaign_id=scenario_id).id)
+        links.create(taxon_id=target, target_entity_type="person", target_entity_id=new_id)
+    # Ties to organisations and people: to the scenario's of the same name, or the setting's canon.
+    ties = _manager(model_registry, requester_id, RelationshipManager)
+    factions = _by_name(_manager(model_registry, requester_id, FactionManager).list(campaign_id=scenario_id) or [])
+    for tie in ties.list(person_id=person_id) or []:
+        tie_fields = {key: value for key, value in tie.model_dump().items() if key in set(ties._model.Create.model_fields) and value is not None and key not in ("id", "user_id", "person_id")}
+        for key, manager_class, pool in (("target_faction_id", FactionManager, factions), ("target_person_id", PersonManager, theirs)):
+            other = tie_fields.get(key)
+            if not other:
+                continue
+            try:
+                row = _manager(model_registry, requester_id, manager_class).get(id=str(other))
+            except HTTPException:
+                tie_fields.pop(key)
+                continue
+            if getattr(row, "campaign_id", None):
+                match = pool.get(str(row.name).strip().casefold())
+                if match is None:
+                    tie_fields.pop(key)
+                else:
+                    tie_fields[key] = str(match.id)
+        if tie_fields.get("target_faction_id") or tie_fields.get("target_person_id"):
+            ties.create(person_id=new_id, **tie_fields)
+    # Properties (not the marks of play) and pictures.
+    if rows is not None:
+        kept = [row for key, row in held.items() if key not in (ELEVATED_PROPERTY, MADE_IN_PLAY_PROPERTY)]
+        if kept:
+            from zephyrex.extensions.rpg_core.Scenarios import create_all  # type: ignore[import-not-found]
+
+            create_all(rows, [{"target_entity_type": "person", "target_entity_id": new_id, "key": row.key, "value": row.value, "value_type": row.value_type, "ordinal": row.ordinal, "is_private": row.is_private} for row in kept])
+    if _serves(model_registry, "attachments"):
+        from zephyrex.extensions.attachments.BLL_Attachments import AttachmentManager  # type: ignore[import-not-found]
+        from zephyrex.extensions.rpg_core.Scenarios import touching  # type: ignore[import-not-found]
+
+        pictures = _manager(model_registry, requester_id, AttachmentManager)
+        for row in touching(pictures, ("target_entity_id",), [person_id]):
+            pictures.create(asset_id=str(row.asset_id), target_entity_type="person", target_entity_id=new_id, role=str(row.role))
+    _mark_elevated(rows, person_id, new_id)
+    return PersonElevated(person_id=person_id, scenario_person_id=new_id, scenario_id=scenario_id, created=True)
+
+
+def MetadataManagerOf(model_registry: Any) -> Any:
+    """The metadata extension's row manager as SYSTEM, or none where it isn't served."""
+    if not _serves(model_registry, "metadata"):
+        return None
+    from zephyrex.extensions.metadata.BLL_Metadata import MetadataManager  # type: ignore[import-not-found]
+
+    return MetadataManager(requester_id=env("SYSTEM_ID"), model_registry=model_registry)
+
+
+def _mark_elevated(rows: Any, person_id: str, scenario_person_id: str) -> None:
+    """The campaign's person marked with its scenario counterpart (private), replacing a stale mark."""
+    if rows is None:
+        return
+    for row in rows.list(target_entity_type="person", target_entity_id=person_id, key=ELEVATED_PROPERTY) or []:
+        rows.delete(id=str(row.id))
+    rows.create(target_entity_type="person", target_entity_id=person_id, key=ELEVATED_PROPERTY, value=scenario_person_id, value_type="text", ordinal=0, is_private=True)
 
 
 def move_person(model_registry: Any, requester_id: str, person_id: str, location_id: str, reason: Optional[str] = None) -> PersonMoved:

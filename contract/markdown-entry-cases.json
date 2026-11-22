@@ -1,0 +1,17 @@
+{
+  "_comment": "A short Markdown body as an entry (an agent's description of a person, update_person): '#' to '######' headings (h1 to h6), '- ' or '* ' lines a bulleted list, other lines paragraphs (lines run together until a blank line). No inline marks: the text stays as written.",
+  "entries": [
+    {
+      "name": "sections, a list and a paragraph run together",
+      "markdown": "Pours, listens.\n\n## Personality\nGruff but fair,\nslow to trust.\n\n## Motive\n- Keep the inn standing\n* Pay the Guild",
+      "entry": [
+        {"type": "p", "children": [{"text": "Pours, listens."}]},
+        {"type": "h2", "children": [{"text": "Personality"}]},
+        {"type": "p", "children": [{"text": "Gruff but fair, slow to trust."}]},
+        {"type": "h2", "children": [{"text": "Motive"}]},
+        {"type": "ul", "children": [{"type": "li", "children": [{"text": "Keep the inn standing"}]}, {"type": "li", "children": [{"text": "Pay the Guild"}]}]}
+      ]
+    },
+    {"name": "empty", "markdown": "  \n\n ", "entry": []}
+  ]
+}
