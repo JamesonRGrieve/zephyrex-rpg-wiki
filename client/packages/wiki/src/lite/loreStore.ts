@@ -12,15 +12,36 @@
  *
  * It can always be rebuilt from the records, so it never holds anything of its own.
  */
-import type BetterSqlite3 from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { chunkEntry, tokens } from '../lib/loreIndex';
+
+/**
+ * The few calls the store makes, described here so the package compiles where better-sqlite3 isn't
+ * installed (a composed or hosted build): it and sqlite-vec are optional peers, loaded at run time
+ * only when lite's lore_search is first asked for.
+ */
+export interface LoreStatement {
+  run(...params: unknown[]): unknown;
+  all(...params: unknown[]): unknown[];
+}
+export interface LoreDatabase {
+  prepare(sql: string): LoreStatement;
+  exec(sql: string): unknown;
+  pragma(source: string): unknown;
+  transaction<F extends (...args: never[]) => unknown>(fn: F): F;
+}
+export type LoreDatabaseClass = new (path: string) => LoreDatabase;
+type LoadVec = (db: LoreDatabase) => void;
+
+// Named through variables, so neither TypeScript nor a bundler resolves them at build time.
+const BETTER_SQLITE3 = 'better-sqlite3';
+const SQLITE_VEC = 'sqlite-vec';
 
 export const DIMENSION = 768;
 export const RANK_DEPTH = 60;
 
 export interface LoreStore {
-  db: BetterSqlite3.Database;
+  db: LoreDatabase;
   /** Why vectors are off (sqlite-vec didn't load), or null when they're on. */
   vectorProblem: string | null;
 }
@@ -43,6 +64,9 @@ export interface Scope {
   gameSystemId: string | null;
   kinds?: readonly string[];
 }
+
+/** better-sqlite3 isn't installed: lore_search answers 503 with this. */
+export class LoreUnavailable extends Error {}
 
 let file: string | undefined;
 let opened: Promise<LoreStore> | undefined;
@@ -70,7 +94,7 @@ const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS lore_records (record_id TEXT PRIMARY KEY, kind TEXT NOT NULL, version TEXT NOT NULL)',
 ];
 
-export function openLoreStore(path: string, Database: typeof BetterSqlite3, loadVec?: (db: BetterSqlite3.Database) => void): LoreStore {
+export function openLoreStore(path: string, Database: LoreDatabaseClass, loadVec?: LoadVec): LoreStore {
   const db = new Database(path);
   db.pragma('journal_mode = WAL');
   let vectorProblem: string | null = null;
@@ -89,10 +113,16 @@ export function openLoreStore(path: string, Database: typeof BetterSqlite3, load
 /** The app's lore store, opened once (better-sqlite3 and sqlite-vec loaded only when it's asked for). */
 export function loreStore(): Promise<LoreStore> {
   opened ??= (async () => {
-    const { default: Database } = await import('better-sqlite3');
-    let loadVec: ((db: BetterSqlite3.Database) => void) | undefined;
+    let Database: LoreDatabaseClass;
     try {
-      loadVec = (await import('sqlite-vec')).load;
+      Database = ((await import(/* webpackIgnore: true */ BETTER_SQLITE3)) as { default: LoreDatabaseClass }).default;
+    } catch (error) {
+      opened = undefined;
+      throw new LoreUnavailable(`lite's lore search needs better-sqlite3 installed beside the app (${error instanceof Error ? error.message : String(error)})`);
+    }
+    let loadVec: LoadVec | undefined;
+    try {
+      loadVec = ((await import(/* webpackIgnore: true */ SQLITE_VEC)) as { load: LoadVec }).load;
     } catch {
       loadVec = undefined;
     }

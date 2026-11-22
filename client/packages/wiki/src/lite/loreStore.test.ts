@@ -13,6 +13,8 @@ import {
   forgetRecords,
   indexedVersions,
   indexRecords,
+  type LoreDatabase,
+  type LoreDatabaseClass,
   type LoreStore,
   namesInScope,
   openLoreStore,
@@ -33,7 +35,8 @@ const ENTRY = JSON.stringify([
 ]);
 
 function store(): LoreStore {
-  const opened = openLoreStore(join(dir, `${Math.random()}.lore`), Database, sqliteVec.load);
+  // The real modules, behind the store's own narrow description of them (loreStore.ts).
+  const opened = openLoreStore(join(dir, `${Math.random()}.lore`), Database as unknown as LoreDatabaseClass, sqliteVec.load as unknown as (db: LoreDatabase) => void);
   indexRecords(opened, 'person', [{ id: 'tam', name: 'Old Tam', entry: ENTRY, campaignId: 'c1', version: 'v1' }]);
   indexRecords(opened, 'faction', [{ id: 'guild', name: 'The Coin Guild', description: 'Lends at winter rates.', campaignId: 'c1', version: 'v1' }]);
   indexRecords(opened, 'item', [

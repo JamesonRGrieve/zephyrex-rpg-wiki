@@ -24,6 +24,7 @@ import {
   type LoreRecord,
   type LoreStore,
   loreStore,
+  LoreUnavailable,
   namesInScope,
   RANK_DEPTH,
   type Scope,
@@ -135,7 +136,9 @@ export async function campaignLoreSearchPost(request: NextRequest, context: { pa
     const input = parseBody(loreSearchBody, await readJsonObject(request), 'lore_search');
     const campaign = await prisma.campaign.findFirst({ where: { id: campaignId, createdById: owner.id }, select: { id: true, settingId: true, scenarioId: true } });
     if (campaign === null) throw recordError(404, 'CampaignModel not found');
-    const store = await loreStore();
+    const store = await loreStore().catch((error: unknown) => {
+      throw error instanceof LoreUnavailable ? recordError(503, error.message) : error;
+    });
     await syncLore(store, owner.id);
     const scope: Scope = {
       owners: [campaign.id, ...(campaign.scenarioId ? [campaign.scenarioId] : [])],
