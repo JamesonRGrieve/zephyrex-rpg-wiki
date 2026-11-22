@@ -234,6 +234,15 @@ class RPGCoreExtension(AbstractStaticExtension):
         return {"campaign_framing": campaign_framing(model_registry, requester_id, campaign_id).model_dump(mode="json")}
 
     @classmethod
+    @ability("remove_orphaned_records")
+    def remove_orphaned_records(cls, model_registry: Any, requester_id: str) -> dict[str, Any]:
+        """The requester's records whose campaign was deleted before deleting took them along,
+        removed with their links, properties and pictures: {campaigns, removed: {type: count}}."""
+        from zephyrex.extensions.rpg_core.BLL_RPGCore import remove_orphaned_records  # type: ignore[import-not-found]
+
+        return remove_orphaned_records(model_registry, requester_id).model_dump(mode="json")
+
+    @classmethod
     @ability("campaign_documents")
     def campaign_documents(cls, model_registry: Any, requester_id: str, campaign_id: str) -> dict[str, Any]:
         """Each of the campaign's records' full text, journals first: {"campaign_documents": [{id, kind,

@@ -2208,6 +2208,123 @@ def instantiate_campaign(
     return CampaignStarted(campaign=_manager(model_registry, requester_id, CampaignManager).get(id=str(made.id)).model_dump(mode="json"), id_map=copying.id_map)
 
 
+# ---------------------------------------------------------------------------
+# A campaign deleted takes its own records with it (Zephyrex RPG, 2026-11-22: deleted playthroughs
+# left every record copied into them): its places, people, items, journals, hooks, tags and
+# statuses, every link touching them, their properties and pictures, and its people's moves.
+# ---------------------------------------------------------------------------
+
+# Whether deleting a campaign removes its records (tests turn it off to leave orphans behind).
+CASCADE_ON_DELETE = True
+
+
+class RecordsRemoved(PlainModel):
+    campaigns: list[str] = Field(..., description="The campaigns whose records were removed")
+    removed: dict[str, int] = Field(..., description="How many of each were removed, by type")
+
+
+def remove_campaign_records(model_registry: Any, requester_id: str, campaign_ids: list[str]) -> RecordsRemoved:
+    """Every record of ``campaign_ids`` removed, with the links, properties and pictures on them;
+    links first, then the records, newest kind first (as a start's undo)."""
+    from zephyrex.extensions.rpg_core.Scenarios import touching  # type: ignore[import-not-found]
+    from zephyrex.logic.AbstractLogicManager.models import FieldComparison
+
+    removed: dict[str, int] = {}
+    if not campaign_ids:
+        return RecordsRemoved(campaigns=[], removed=removed)
+
+    def drop(label: str, manager: Any, ids: list[str]) -> None:
+        for one in dict.fromkeys(ids):
+            try:
+                manager.delete(id=one)
+            except HTTPException:
+                continue
+            removed[label] = removed.get(label, 0) + 1
+
+    records: list[tuple[str, Any, list[str]]] = []
+    for manager_class in _SCENARIO_RECORDS:
+        manager = _manager(model_registry, requester_id, manager_class)
+        rows = manager.list(filters=[FieldComparison(manager.Model, "campaign_id", "in", campaign_ids)]) or []
+        records.append((manager_class.__name__.removesuffix("Manager").lower(), manager, [str(row.id) for row in rows]))
+    record_ids = [one for _label, _manager_, ids in records for one in ids]
+    if record_ids:
+        for manager_class, anchors in _scenario_links():
+            manager = _manager(model_registry, requester_id, manager_class)
+            drop(manager_class.__name__.removesuffix("Manager").lower(), manager, [str(row.id) for row in touching(manager, anchors, record_ids)])
+        holdings = _manager(model_registry, requester_id, EntityInventoryManager)
+        drop("entityinventory", holdings, [str(row.id) for row in touching(holdings, ("target_entity_id",), record_ids)])
+        instances = _manager(model_registry, requester_id, ItemInstanceManager)
+        drop("iteminstance", instances, [str(row.id) for row in touching(instances, ("owner_person_id",), record_ids)])
+        if _serves(model_registry, "metadata"):
+            from zephyrex.extensions.metadata.BLL_Metadata import MetadataManager  # type: ignore[import-not-found]
+
+            rows = MetadataManager(requester_id=env("SYSTEM_ID"), model_registry=model_registry)
+            drop("property", rows, [str(row.id) for row in rows.list(filters=[FieldComparison(rows.Model, "target_entity_id", "in", record_ids)]) or []])
+        if _serves(model_registry, "attachments"):
+            from zephyrex.extensions.attachments.BLL_Attachments import AttachmentManager  # type: ignore[import-not-found]
+
+            links = _manager(model_registry, requester_id, AttachmentManager)
+            drop("attachment", links, [str(row.id) for row in touching(links, ("target_entity_id",), record_ids)])
+    moves = _manager(model_registry, requester_id, PersonMoveManager)
+    drop("personmove", moves, [str(row.id) for row in moves.list(filters=[FieldComparison(moves.Model, "campaign_id", "in", campaign_ids)]) or []])
+    # A campaign's starts stay: a start is its starter's history (a failed start's undo deletes the
+    # half-made playthrough, and the start must still say why).
+    for label, manager, ids in reversed(records):
+        drop(label, manager, ids)
+    return RecordsRemoved(campaigns=sorted(campaign_ids), removed=removed)
+
+
+def _every(manager: Any, filters: Optional[list[Any]] = None, page: int = 500) -> list[Any]:
+    """Every row a list answers, page by page (a list answers one page)."""
+    rows: list[Any] = []
+    while True:
+        found = manager.list(filters=filters, limit=page, offset=len(rows)) or []
+        rows.extend(found)
+        if len(found) < page:
+            return rows
+
+
+def remove_orphaned_records(model_registry: Any, requester_id: str) -> RecordsRemoved:
+    """The requester's records whose campaign is gone (deleted before deleting took its records
+    along), removed as remove_campaign_records does. A campaign counts as gone when it is the
+    requester's own and they can't see it, or isn't there at all."""
+    from zephyrex.logic.AbstractLogicManager.models import FieldComparison
+
+    live = {str(row.id) for row in _every(_manager(model_registry, requester_id, CampaignManager))}
+    named: set[str] = set()
+    for manager_class in _SCENARIO_RECORDS:
+        manager = _manager(model_registry, requester_id, manager_class)
+        # A record in a campaign that isn't live (NOT IN leaves out the campaign-free).
+        wanted = [FieldComparison(manager.Model, "campaign_id", "not_in", sorted(live))] if live else [FieldComparison(manager.Model, "campaign_id", "ne", None)]
+        named.update(str(row.campaign_id) for row in _every(manager, wanted) if getattr(row, "campaign_id", None))
+    if not named:
+        return RecordsRemoved(campaigns=[], removed={})
+    # Gone: one of the requester's own campaigns they can no longer see (an owner always sees their
+    # own live campaign), or one not there at all. Another's campaign is left alone. (ROOT's rows
+    # don't say whether they're deleted.)
+    root = CampaignManager(requester_id=env("ROOT_ID"), model_registry=model_registry)
+    others = {str(row.id) for row in root.list(filters=[FieldComparison(root.Model, "id", "in", sorted(named))]) or [] if str(getattr(row, "created_by_user_id", "") or "") != str(requester_id)}
+    return remove_campaign_records(model_registry, requester_id, sorted(named - others))
+
+
+def _campaign_records_go(context: HookContext) -> None:
+    """After a campaign is deleted, its records go too (as its deleter)."""
+    if context.method_name != "delete" or not CASCADE_ON_DELETE:
+        return
+    campaign_id = context.kwarg("id", default=None) or context.arg(0, default=None)
+    if not campaign_id:
+        return
+    from zephyrex.lib.Logging import logger
+
+    try:
+        remove_campaign_records(context.manager.model_registry, str(context.manager.requester.id), [str(campaign_id)])
+    except Exception as error:  # noqa: BLE001 - the campaign is deleted either way; remove_orphaned_records finishes the job
+        logger.warning(f"rpg_core: removing deleted campaign {campaign_id}'s records failed: {error}")
+
+
+hook_bll(CampaignManager, timing=HookTiming.AFTER, priority=30)(_campaign_records_go)
+
+
 # What other extensions do once a playthrough is made (VTT copies the scenario's scenes and tokens):
 # each is called with (model_registry, requester_id, source_campaign_id, new_campaign_id, id_map),
 # id_map every copied record's source id → copy id. A callback that fails is logged and the rest

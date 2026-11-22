@@ -990,6 +990,12 @@ def _start(server: TestClient, user: Any, scenario_id: str, name: Optional[str] 
     return start
 
 
+def _delete(server: TestClient, user: Any, resource: str, record_id: str) -> Any:
+    """DELETE a record as a client does: with its version (ETag) as If-Match."""
+    etag = server.get(f"/v1/{resource}/{record_id}", headers=_headers(user)).headers.get("etag", "")
+    return server.delete(f"/v1/{resource}/{record_id}", headers={**_headers(user), "If-Match": etag})
+
+
 def _start_with(server: TestClient, user: Any, scenario_id: str, pregens: list[str]) -> dict[str, Any]:
     """A start with the party's pregens, followed to its end."""
     import time
@@ -1326,6 +1332,54 @@ class TestCampaignFraming:
 
         monkeypatch.setattr(target, "can_edit", lambda *_args: False)
         assert framing(registry, str(person.id), scenario["id"])["campaign_framing"]["gm_notes"] == ""
+
+
+class TestDeletingACampaign:
+    """Zephyrex RPG, 2026-11-22: deleted playthroughs left their records behind. A campaign deleted
+    takes its records along; remove_orphaned_records clears those left by earlier deletes."""
+
+    @staticmethod
+    def _furnished(server: TestClient, person: Any, name: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+        campaign = _create(server, person, "campaign", name=name)
+        inn = _create(server, person, "location", name=f"{name} Inn", kind="building", campaign_id=campaign["id"])
+        keeper = _create(server, person, "person", name=f"{name} Keeper", kind="npc", campaign_id=campaign["id"], location_id=inn["id"])
+        tag = _create(server, person, "taxon", name=f"{name} Tag", kind="tag", campaign_id=campaign["id"])
+        _create(server, person, "entity_taxon", taxon_id=tag["id"], target_entity_type="person", target_entity_id=keeper["id"])
+        added = server.post(
+            "/v1/record_metadata",
+            json={"record_metadata": {"target_entity_type": "person", "target_entity_id": keeper["id"], "key": "Mood", "value": "dour"}},
+            headers=_headers(person),
+        )
+        assert added.status_code == 201, added.text
+        return campaign, inn, keeper
+
+    def test_a_deleted_campaign_takes_its_records_and_orphans_are_cleared(self, server: TestClient, person: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+        from zephyrex.extensions.AbstractExtensionProvider import loaded_ability
+        from zephyrex.extensions.rpg_core import BLL_RPGCore  # type: ignore[import-not-found]
+
+        kept, kept_inn, _kept_keeper = self._furnished(server, person, "Kept")
+        gone, inn, keeper = self._furnished(server, person, "Gone")
+        assert _delete(server, person, "campaign", gone["id"]).status_code in (200, 204)
+        assert server.get(f"/v1/person/{keeper['id']}", headers=_headers(person)).status_code == 404
+        assert server.get(f"/v1/location/{inn['id']}", headers=_headers(person)).status_code == 404
+        assert server.get(f"/v1/entity_taxon?target_entity_type=person&target_entity_id={keeper['id']}", headers=_headers(person)).json()["entity_taxons"] == []
+        # Another campaign's records stay.
+        assert server.get(f"/v1/location/{kept_inn['id']}", headers=_headers(person)).status_code == 200
+
+        # A campaign deleted before deleting took records along: its orphans, cleared by the ability.
+        monkeypatch.setattr(BLL_RPGCore, "CASCADE_ON_DELETE", False)
+        old, old_inn, old_keeper = self._furnished(server, person, "Old")
+        assert _delete(server, person, "campaign", old["id"]).status_code in (200, 204)
+        assert server.get(f"/v1/person/{old_keeper['id']}", headers=_headers(person)).status_code == 200
+        registry = server.app.state.model_registry  # type: ignore[attr-defined]
+        clear = loaded_ability(registry, "rpg_core", "remove_orphaned_records")
+        assert clear is not None
+        result = clear(registry, str(person.id))
+        assert result["campaigns"] == [old["id"]]
+        assert result["removed"]["person"] == 1 and result["removed"]["location"] == 1 and result["removed"]["property"] == 1
+        assert server.get(f"/v1/person/{old_keeper['id']}", headers=_headers(person)).status_code == 404
+        assert server.get(f"/v1/location/{kept_inn['id']}", headers=_headers(person)).status_code == 200
+        assert clear(registry, str(person.id)) == {"campaigns": [], "removed": {}}
 
 
 class TestWhereTheyAre:
