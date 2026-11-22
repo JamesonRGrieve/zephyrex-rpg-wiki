@@ -9,7 +9,7 @@ from zephyrex.testing.factories import create_user
 
 from rpg_wiki_app import create
 from scenario_repair.repair import repair, validate
-from scenario_repair.rules import briefing_text, is_pointer, opening_of, scenario_problems, start_place
+from scenario_repair.rules import briefing_text, is_framing_name, is_pointer, opening_of, scenario_problems, start_place
 from vault_import.api import Api
 
 POINTER = "See Sullenmire — Player Briefing; the event graph is The Sullenmire Infiltration, and play-by-play is in Sullenmire — Run 1 Record."
@@ -50,6 +50,7 @@ BRIEFING = [
 
 def test_the_rules_see_sullenmires_shape() -> None:
     assert is_pointer(POINTER) and is_pointer("") and not is_pointer(DESCRIPTION)
+    assert is_framing_name("Sullenmire: Campaign Framing") and is_framing_name("The Split Antler — Framing") and not is_framing_name("Framing the Duke")
     assert is_pointer("Begin at the gate. Read the run sheet first.")  # names a run sheet
     assert briefing_text(BRIEFING) == "An Inquisitor Lord, the highest tier. Nobody at The Bastion knows you are here."
     found = opening_of(_framing("b"))
@@ -148,3 +149,15 @@ def test_the_commands_import_before_any_app_exists() -> None:
     done = subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, check=False)
     assert done.returncode == 0, done.stderr
     assert "imported" in done.stdout
+
+
+def test_a_framing_imported_as_lore_is_found_by_name_and_made_campaign_framing(api: Api) -> None:
+    """Prod: framings imported before campaign_framing was a kind are lore ("Varek: Campaign Framing")."""
+    scenario = api.create("campaign", name="Varek", description=DESCRIPTION, is_scenario=True)
+    api.create("location", name="Varek Hive", kind="city", campaign_id=scenario["id"])
+    framing = api.create("journal", name="Varek: Campaign Framing", kind="lore", campaign_id=scenario["id"],
+                         entry=[_h(2, "Opening Situation"), _p({"text": "The lift doors open on the Varek Hive underdeck as the lumen-strips fail."})])
+    assert any("is kind 'lore', not campaign_framing" in problem for problem in validate(api, scenario["id"]))
+    [mended] = [one for one in repair(api, dry_run=False) if one.campaign_id == scenario["id"]]
+    assert mended.framing_kind == "Varek: Campaign Framing" and mended.problems_after == []
+    assert api.get("journal", framing["id"])[0]["kind"] == "campaign_framing"

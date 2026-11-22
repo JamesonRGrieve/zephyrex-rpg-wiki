@@ -33,6 +33,10 @@ OVERVIEW = re.compile(r"^(overview|about|how to use)\b", re.IGNORECASE)
 POINTER_WORDS = re.compile(r"\b(event graph|play-by-play|run \d+ record|run record|run sheet)\b", re.IGNORECASE)
 HEADING = re.compile(r"^h([1-6])$")
 BRIEFING = re.compile(r"player briefing", re.IGNORECASE)
+# A framing note by its name, as rpg-ai's isFraming reads it ("Sullenmire: Campaign Framing"), or the
+# fixture vault's "The Split Antler — Framing": framings imported before campaign_framing was a
+# journal kind (2026-11-21) came in as lore.
+FRAMING_NAME = re.compile(r"(:\s*campaign framing|\s[—–-]\s*(campaign\s+)?framing)\s*$", re.IGNORECASE)
 MIN_TELLING = 40
 SOURCES = "Sources:"
 
@@ -213,6 +217,10 @@ def scenario_problems(
     if not locations:
         problems.append("no places")
     return problems
+
+
+def is_framing_name(name: str) -> bool:
+    return bool(FRAMING_NAME.search(name or ""))
 
 
 def is_briefing(name: str) -> bool:

@@ -17,7 +17,7 @@ it touched."""
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from scenario_repair.rules import START, blocks_of, sections, briefing_text, is_briefing, is_pointer, mended_framing, opening_of, scenario_problems, start_place, written_opening
+from scenario_repair.rules import START, blocks_of, sections, briefing_text, is_briefing, is_framing_name, is_pointer, mended_framing, opening_of, scenario_problems, start_place, written_opening
 from vault_import.api import Api
 
 ORIGINS = {"imported": ("Imported", "transcript import"), "stereotypical": ("Stereotypical", "generated")}
@@ -32,6 +32,7 @@ class Mended:
     campaign_id: str
     scenario: bool
     kinds: dict[str, int] = field(default_factory=dict)
+    framing_kind: Optional[str] = None
     opening: Optional[str] = None
     start: Optional[str] = None
     origin: Optional[str] = None
@@ -40,6 +41,8 @@ class Mended:
 
     def line(self) -> str:
         parts = [f"{'scenario' if self.scenario else 'playthrough'} {self.campaign} ({self.campaign_id})"]
+        if self.framing_kind:
+            parts.append(f"framing {self.framing_kind!r} made kind campaign_framing")
         if self.kinds:
             parts.append("kinds " + ", ".join(f"{count} → {kind}" for kind, count in sorted(self.kinds.items())))
         if self.opening:
@@ -57,6 +60,8 @@ class Mended:
 def _framing(api: Api, campaign_id: str) -> tuple[Optional[dict[str, Any]], Optional[dict[str, Any]]]:
     journals = [row for row in api.list("journal", campaign_id=campaign_id) if not row.get("is_template") and not row.get("deleted_at")]
     framings = sorted((row for row in journals if row.get("kind") == "campaign_framing"), key=lambda row: str(row.get("name") or ""))
+    # None of that kind: a framing by its name (imported as lore before campaign_framing was a kind).
+    framings = framings or sorted((row for row in journals if is_framing_name(str(row.get("name") or ""))), key=lambda row: str(row.get("name") or ""))
     briefings = sorted((row for row in journals if is_briefing(str(row.get("name") or ""))), key=lambda row: str(row.get("name") or ""))
     return (framings[0] if framings else None), (briefings[0] if briefings else None)
 
@@ -77,7 +82,11 @@ def validate(api: Api, campaign_id: str) -> list[str]:
     persons = api.list("person", campaign_id=campaign_id)
     locations = api.list("location", campaign_id=campaign_id)
     framing, _briefing = _framing(api, campaign_id)
-    return scenario_problems(persons, blocks_of(framing.get("entry")) if framing else None, locations, _sheetless(api, persons))
+    problems = scenario_problems(persons, blocks_of(framing.get("entry")) if framing else None, locations, _sheetless(api, persons))
+    if framing is not None and framing.get("kind") != "campaign_framing":
+        # The narrator's framing (campaign_framing) reads that kind alone.
+        problems.append(f"the framing {framing.get('name')!r} is kind {framing.get('kind')!r}, not campaign_framing")
+    return problems
 
 
 def _origin_of(api: Api, campaign: dict[str, Any], framing: Optional[dict[str, Any]], origins: dict[str, str]) -> Optional[str]:
@@ -125,6 +134,10 @@ def mend(
             if not dry_run:
                 api.update("person", str(person["id"]), kind=kind)
     framing, briefing = _framing(api, campaign_id)
+    if framing is not None and framing.get("kind") != "campaign_framing":
+        mended.framing_kind = str(framing.get("name") or "")
+        if not dry_run:
+            api.update("journal", str(framing["id"]), kind="campaign_framing")
     if framing is not None:
         blocks = blocks_of(framing.get("entry"))
         found = opening_of(blocks)
@@ -175,5 +188,7 @@ def _predicted(mended: Mended) -> list[str]:
     return [
         problem
         for problem in mended.problems_before
-        if not (mended.kinds and "have no kind" in problem) and not (mended.opening and "Opening Situation" in problem)
+        if not (mended.kinds and "have no kind" in problem)
+        and not (mended.opening and "Opening Situation" in problem)
+        and not (mended.framing_kind and "not campaign_framing" in problem)
     ]
