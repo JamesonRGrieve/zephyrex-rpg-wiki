@@ -1142,6 +1142,29 @@ class SessionReportOutEnvelope(PlainModel):
     session_report: SessionReportOut
 
 
+# The framework's optional extensions rpg_core reads when they're there, each by a model of theirs:
+# a composing app may name an extension whose models it never registered (VTT, 2026-11-21: every
+# start failed "No matching type found in registry for MetadataModel!"), so a name alone isn't proof.
+_EXTENSION_MODELS = {
+    "metadata": ("zephyrex.extensions.metadata.BLL_Metadata", "MetadataModel"),
+    "attachments": ("zephyrex.extensions.attachments.BLL_Attachments", "AttachmentModel"),
+}
+
+
+def _serves(model_registry: Any, extension: str) -> bool:
+    """The app loads ``extension`` and its model is registered, so its managers will work."""
+    import importlib
+
+    if extension not in model_registry.loaded_extension_names():
+        return False
+    module, name = _EXTENSION_MODELS[extension]
+    try:
+        model_registry.apply(getattr(importlib.import_module(module), name))
+    except (ImportError, AttributeError, TypeError):
+        return False
+    return True
+
+
 def _manager(model_registry: Any, requester_id: str, manager: Any) -> Any:
     return manager(requester_id=requester_id, model_registry=model_registry)
 
@@ -1411,7 +1434,7 @@ def _with_pictures(model_registry: Any, shown: list[WorldEntity]) -> list[WorldE
     in one query for the page (as SYSTEM: the caller already sees each record, and so its picture).
     None for a record without one, for a deleted asset, and where the attachments extension isn't
     loaded."""
-    if "attachments" not in model_registry.loaded_extension_names() or not shown:
+    if not _serves(model_registry, "attachments") or not shown:
         return shown
     from zephyrex.extensions.attachments.BLL_Attachments import (  # type: ignore[import-not-found]
         AssetManager,
@@ -1449,7 +1472,7 @@ def _gm_only(model_registry: Any, ids: list[str]) -> set[tuple[str, str]]:
     """Which of the records are kept to the GM: their private "GM only" property (contract
     gm_only_property) is "true", in one query (as SYSTEM: the caller already sees each record).
     Where the metadata extension isn't loaded, none are."""
-    if "metadata" not in model_registry.loaded_extension_names() or not ids:
+    if not _serves(model_registry, "metadata") or not ids:
         return set()
     # The metadata extension's own row manager (its record_metadata routes have no model of their own).
     from zephyrex.extensions.metadata.BLL_Metadata import MetadataManager  # type: ignore[import-not-found]
@@ -1720,7 +1743,7 @@ def ensure_person(model_registry: Any, requester_id: str, campaign_id: str, name
     line = (summary or "").strip()
     entry = json.dumps([{"type": "p", "children": [{"text": line}]}]) if line else None
     made = people.create(name=wanted, kind="npc", campaign_id=campaign_id, provenance=HOMEBREW, entry=entry)
-    if "metadata" in model_registry.loaded_extension_names():
+    if _serves(model_registry, "metadata"):
         from zephyrex.extensions.metadata.BLL_Metadata import MetadataManager  # type: ignore[import-not-found]
 
         rows = MetadataManager(requester_id=env("SYSTEM_ID"), model_registry=model_registry)
@@ -1951,7 +1974,7 @@ def instantiate(model_registry: Any, requester_id: str, use: TemplateUse) -> Tem
         is_template=use.as_template or None,
     )
     copied_properties = 0
-    if "metadata" in model_registry.loaded_extension_names():
+    if _serves(model_registry, "metadata"):
         from zephyrex.extensions.metadata.BLL_Metadata import RecordMetadataManager, RecordMetadataWrite
 
         properties = RecordMetadataManager(requester_id=requester_id, model_registry=model_registry)
@@ -2300,9 +2323,8 @@ def _copy_record_extras(model_registry: Any, requester_id: str, record_ids: list
     from zephyrex.extensions.rpg_core.Scenarios import copy_rows, create_all, touching  # type: ignore[import-not-found]
     from zephyrex.logic.AbstractLogicManager.models import FieldComparison
 
-    loaded = model_registry.loaded_extension_names()
     at(0)
-    if "metadata" in loaded and record_ids:
+    if _serves(model_registry, "metadata") and record_ids:
         from zephyrex.extensions.metadata.BLL_Metadata import MetadataManager  # type: ignore[import-not-found]
 
         rows = MetadataManager(requester_id=env("SYSTEM_ID"), model_registry=model_registry)
@@ -2325,7 +2347,7 @@ def _copy_record_extras(model_registry: Any, requester_id: str, record_ids: list
             )
             copying.made.extend((rows, str(one.id)) for one in made)
     at(1)
-    if "attachments" in loaded and record_ids:
+    if _serves(model_registry, "attachments") and record_ids:
         from zephyrex.extensions.attachments.BLL_Attachments import AttachmentManager  # type: ignore[import-not-found]
 
         links = _manager(model_registry, requester_id, AttachmentManager)

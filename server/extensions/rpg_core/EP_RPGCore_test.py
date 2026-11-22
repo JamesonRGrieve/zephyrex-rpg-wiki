@@ -1255,6 +1255,31 @@ class TestAfterInstantiate:
         assert id_map[inn["id"]] == ids[inn["id"]]
 
 
+class TestOptionalExtensions:
+    """VTT, 2026-11-21: an app can name an extension whose models it never registered; rpg_core reads
+    one only when its model is there, so a start doesn't fail on it."""
+
+    def test_an_extension_named_but_not_registered_is_not_served(self, server: TestClient) -> None:
+        from zephyrex.extensions.rpg_core.BLL_RPGCore import _serves  # type: ignore[import-not-found]
+
+        registry = server.app.state.model_registry  # type: ignore[attr-defined]
+        assert _serves(registry, "metadata") and _serves(registry, "attachments")
+
+        class NamedOnly:
+            def loaded_extension_names(self) -> frozenset[str]:
+                return frozenset({"metadata", "attachments"})
+
+            def apply(self, model: Any) -> Any:
+                raise TypeError(f"No matching type found in registry for {model.__name__}!")
+
+        class NotNamed:
+            def loaded_extension_names(self) -> frozenset[str]:
+                return frozenset()
+
+        assert not _serves(NamedOnly(), "metadata") and not _serves(NamedOnly(), "attachments")
+        assert not _serves(NotNamed(), "metadata")
+
+
 class TestWhereTheyAre:
     """Parity: who's present in a scene is who's at its place or inside it."""
 
