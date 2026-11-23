@@ -17,7 +17,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { plainText } from '../lib/entry';
 import { markdownEntry } from '../lib/markdownEntry';
-import { voice } from '../lib/names';
+import { ttsVoice, voice } from '../lib/names';
 import { storedMotivations } from '../lib/routine';
 import { prisma } from './db';
 import { MADE_IN_PLAY_PROPERTY } from './ensurePerson';
@@ -34,6 +34,7 @@ const FILL = z
     personality: z.string().nullish(),
     motive: z.string().nullish(),
     voice: z.string().nullish(),
+    tts_voice: z.string().nullish(),
     picture: z.string().nullish(),
   })
   .strict();
@@ -63,6 +64,13 @@ export async function campaignFillPersonPost(request: NextRequest, context: Cont
       if (input.voice) held.speech = input.voice.trim();
       data.voice = JSON.stringify(voice(held));
     }
+    if (input.tts_voice !== undefined && input.tts_voice !== null) {
+      try {
+        data.ttsVoice = ttsVoice(input.tts_voice);
+      } catch (error) {
+        throw validationError(error instanceof Error ? error.message : String(error), 'tts_voice');
+      }
+    }
     if (input.motive) {
       const held = storedMotivations(typeof person.motivations === 'string' ? person.motivations : null);
       if (!held.includes(input.motive.trim())) data.motivations = JSON.stringify([...held, input.motive.trim()]);
@@ -72,7 +80,7 @@ export async function campaignFillPersonPost(request: NextRequest, context: Cont
     if (picture && !picture.startsWith('https://')) throw validationError('This back end keeps no uploaded pictures: give an https link', 'picture');
     if (picture) data.pictureUrl = picture;
     if (Object.keys(data).length > 0) await prisma.person.update({ where: { id: person.id }, data: { ...data, updatedAt: new Date() } });
-    const updated = (['summary', 'entry', 'personality', 'motive', 'voice', 'picture'] as const).filter((key) => input[key]);
+    const updated = (['summary', 'entry', 'personality', 'motive', 'voice', 'tts_voice', 'picture'] as const).filter((key) => input[key] || (key === 'tts_voice' && input[key] === ''));
     return NextResponse.json({ person: { id: person.id, name: person.name, updated: [...updated].sort() } });
   } catch (error) {
     return apiErrorResponse(error);

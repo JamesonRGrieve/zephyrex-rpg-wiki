@@ -39,6 +39,8 @@ export interface EntityRow {
   pictureUrl: string | null;
   /** A person's AI voice (S4c); other kinds have none. */
   voice?: string | null;
+  /** A person's TTS voice id; other kinds have none. */
+  ttsVoice?: string | null;
 }
 
 export interface WorldEntity {
@@ -62,6 +64,8 @@ export interface WorldEntity {
   keywords: string[];
   /** S4c: how the AI plays a person; null for other kinds. */
   voice: Voice | null;
+  /** A person's TTS voice id ("A voice per character"); null is the default, and for other kinds. */
+  tts_voice: string | null;
   /** S4d: its lorebook activation (SillyTavern World Info's fields), or none. */
   lore: Lore | null;
   /** Where it came from: homebrew, official or adapted, and its source. */
@@ -114,6 +118,7 @@ export function entityOf(kind: WorldEntityKind, row: EntityRow): WorldEntity {
     canon_level: row.canonLevel,
     keywords: storedNames(row.keywords),
     voice: kind === 'person' ? storedVoice(row.voice ?? null) : null,
+    tts_voice: kind === 'person' ? (row.ttsVoice ?? null) || null : null,
     lore: storedLore(row.lore),
     provenance: row.provenance,
     source: row.source,

@@ -116,3 +116,14 @@ export function storedVoice(text: string | null): Voice | null {
     return null;
   }
 }
+
+/** A person's TTS voice (contract/tts-voice-cases.json): the TTS model's voice id, trimmed; empty or
+ * none is the default (null). */
+export function ttsVoice(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'string') throw new Error('A TTS voice is text');
+  const text = value.trim();
+  if (text.length > LIMITS.tts_voice_characters) throw new Error(`A TTS voice has at most ${LIMITS.tts_voice_characters} characters`);
+  if ([...text].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)) throw new Error('A TTS voice has no control characters');
+  return text === '' ? null : text;
+}

@@ -262,7 +262,9 @@ test.describe.serial('visual audit', () => {
   test('a seeded world', async ({ browser, request }, testInfo) => {
     const seeded = await seedWorld(request);
     // S6: a setting's canon read alone, and with its campaign's records (rpg-ai's canon notices).
-    const canon = (await (await request.get(`/api/v1/world_entity?setting_id=${seeded.setting}`)).json()) as { world_entities: { name: string; canon: boolean }[] };
+    const canonAnswer = await request.get(`/api/v1/world_entity?setting_id=${seeded.setting}`);
+    expect(canonAnswer.status(), await canonAnswer.text()).toBe(200);
+    const canon = (await canonAnswer.json()) as { world_entities: { name: string; canon: boolean }[] };
     expect(canon.world_entities.map((entity) => [entity.name, entity.canon])).toEqual([['Adeptus Mechanicus', true]]);
     const both = (await (await request.get(`/api/v1/world_entity?campaign_id=${seeded.world}&include_setting=true`)).json()) as { world_entities: { name: string }[] };
     expect(both.world_entities.map((entity) => entity.name)).toContain('Adeptus Mechanicus');
@@ -327,6 +329,12 @@ test.describe.serial('visual audit', () => {
     expect(((await walk.json()) as { person_move: { from_location_id: string; at_minutes: number } }).person_move).toMatchObject({ from_location_id: seeded.location, at_minutes: 570 });
     // And back, so the pages below show her where the seed put her.
     await request.post('/api/v1/person_move', { data: { person_move: { person_id: seeded.person, to_location_id: seeded.location } } });
+    // "A voice per character": the picker sets it on the person's own route; the rows serve it.
+    const voiced = await request.get(`/api/v1/person/${seeded.person}`);
+    const picked = await request.put(`/api/v1/person/${seeded.person}`, { data: { person: { tts_voice: 'onyx' } }, headers: { 'If-Match': voiced.headers().etag ?? '' } });
+    expect(picked.status(), await picked.text()).toBe(200);
+    const heard = (await (await request.get(`/api/v1/world_entity?ids=${seeded.person}`)).json()) as { world_entities: { tts_voice: string | null }[] };
+    expect(heard.world_entities[0]!.tts_voice).toBe('onyx');
     // Parity's party fix: tag names, and a person's ties to other people.
     const party = (await (await request.get(`/api/v1/world_entity?ids=${seeded.person}`)).json()) as { world_entities: { tags: string[]; relationships: { kind: string }[] }[] };
     expect(party.world_entities[0]).toMatchObject({ tags: ['Elf', 'Lamplighters'], relationships: [{ kind: 'rival' }] });

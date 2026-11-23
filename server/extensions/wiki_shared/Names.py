@@ -19,6 +19,7 @@ MAX_NAME = LIMITS["name_characters"]
 MAX_NAMES = LIMITS["names_per_list"]
 MAX_VOICE = LIMITS["voice_characters"]
 MAX_EXAMPLES = LIMITS["voice_examples"]
+MAX_TTS_VOICE = LIMITS["tts_voice_characters"]
 VOICE_PARTS: tuple[str, ...] = tuple(CONTRACT["voice_parts"])
 VOICE_DEFAULTS: dict[str, Any] = CONTRACT["voice_defaults"]
 DEPTH_ROLES: tuple[str, ...] = tuple(CONTRACT["depth_prompt_roles"])
@@ -131,3 +132,18 @@ def stored_voice(text: Any) -> Any:
         return voice(text) if text else None
     except (json.JSONDecodeError, ValueError):
         return None
+
+
+def tts_voice_text(value: Any) -> Any:
+    """A person's TTS voice (contract/tts-voice-cases.json): the TTS model's voice id, trimmed; empty
+    or none is the default (none)."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("A TTS voice is text")
+    text = value.strip()
+    if len(text) > MAX_TTS_VOICE:
+        raise ValueError(f"A TTS voice has at most {MAX_TTS_VOICE} characters")
+    if any(ord(character) < 32 or ord(character) == 127 for character in text):
+        raise ValueError("A TTS voice has no control characters")
+    return text or None

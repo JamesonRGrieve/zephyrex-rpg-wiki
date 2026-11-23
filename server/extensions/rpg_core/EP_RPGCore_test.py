@@ -327,7 +327,7 @@ class TestWorldEntities:
         assert by_name["Harbour"] | {"updated_at": None} == {
             "id": harbour["id"], "kind": "location", "name": "Harbour", "aliases": [], "summary": "A port city.",
             "picture": None, "updated_at": None, "deleted": False, "setting_id": None, "canon": False, "canon_level": None,
-            "keywords": [], "voice": None, "routine": None, "motivations": None, "tags": [], "relationships": None, "lore": None, "provenance": "homebrew", "source": None, "gm_only": False, "location_id": None, "parent_id": None,
+            "keywords": [], "voice": None, "tts_voice": None, "routine": None, "motivations": None, "tags": [], "relationships": None, "lore": None, "provenance": "homebrew", "source": None, "gm_only": False, "location_id": None, "parent_id": None,
         }
         assert page["next"] is None
 
@@ -1795,3 +1795,28 @@ class TestEmbeddingPace:
         monkeypatch.delenv("WIKI_EMBED_KEY", raising=False)
         assert LoreSearch._http_embedder("http://embed.invalid/v1", "3-5gb/nomic-embed-text-v1.5")(["search_query: hi"]) == [[0.5]]
         assert seen == {"auth": "Bearer wiki", "body": {"model": "3-5gb/nomic-embed-text-v1.5", "input": ["search_query: hi"]}}
+
+
+
+class TestTtsVoice:
+    """Operator, 2026-11-23: "A voice per character (picked on the character, the narrator its own)"."""
+
+    def test_set_served_cleared_filled_and_copied(self, server: TestClient, person: Any) -> None:
+        scenario = _create(server, person, "campaign", name="Voiced Scenario", is_scenario=True)
+        tam = _create(server, person, "person", name="Voiced Tam", kind="npc", campaign_id=scenario["id"], tts_voice="  onyx ")
+        assert tam["tts_voice"] == "onyx"
+        row = lambda one: server.get(f"/v1/world_entity?ids={one}", headers=_headers(person)).json()["world_entities"][0]  # noqa: E731
+        assert row(tam["id"])["tts_voice"] == "onyx"
+        # The picker: the person's own route; "" is back to the default; too long is refused.
+        assert _put(server, person, "person", tam, tts_voice="alloy").status_code == 200
+        assert row(tam["id"])["tts_voice"] == "alloy"
+        assert _put(server, person, "person", tam, tts_voice="v" * 65).status_code == 422
+        assert _put(server, person, "person", tam, tts_voice="").status_code == 200
+        assert row(tam["id"])["tts_voice"] is None
+        # An agent's fill_person sets it too.
+        filled = server.post(f"/v1/campaign/{scenario['id']}/fill_person", json={"person": {"person_id": tam["id"], "tts_voice": "echo"}}, headers=_headers(person))
+        assert filled.status_code == 200, filled.text
+        assert filled.json()["person"]["updated"] == ["tts_voice"] and row(tam["id"])["tts_voice"] == "echo"
+        # Copied at start.
+        _run, ids = _started(server, person, _start_with(server, person, scenario["id"], []))
+        assert row(ids[tam["id"]])["tts_voice"] == "echo"

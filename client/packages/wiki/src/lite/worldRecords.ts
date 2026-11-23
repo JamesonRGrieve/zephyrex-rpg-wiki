@@ -39,7 +39,7 @@ import { checkedKit, KitError } from '../lib/properties';
 import { lore } from '../lib/lore';
 import { pictureUrl } from '../lib/pictureUrl';
 import { HOMEBREW, type Provenance, ProvenanceError, provenance } from '../lib/provenance';
-import { names, voice } from '../lib/names';
+import { names, ttsVoice, voice } from '../lib/names';
 import { motivations, routine } from '../lib/routine';
 import { freeSlug, isSlug, SLUG_RULE, slugify } from '../lib/slug';
 
@@ -121,6 +121,16 @@ const nameList = z.unknown().transform((value, context) => {
 const loreText = z.unknown().transform((value, context) => {
   try {
     return JSON.stringify(lore(value));
+  } catch (error) {
+    context.addIssue({ code: 'custom', message: error instanceof Error ? error.message : String(error) });
+    return z.NEVER;
+  }
+});
+
+/** A person's TTS voice id (contract/tts-voice-cases.json); empty is the default (null). */
+const ttsVoiceText = z.unknown().transform((value, context) => {
+  try {
+    return ttsVoice(value);
   } catch (error) {
     context.addIssue({ code: 'custom', message: error instanceof Error ? error.message : String(error) });
     return z.NEVER;
@@ -644,6 +654,7 @@ const PERSON_COLUMNS: Columns = {
   source: plain('source'),
   picture_url: plain('pictureUrl'),
   voice: plain('voice'),
+  tts_voice: plain('ttsVoice'),
   routine: plain('routine'),
   motivations: plain('motivations'),
   location_id: plain('locationId'),
@@ -665,6 +676,7 @@ const personFields = {
     source: z.string().nullable(),
     picture_url: pictureLink,
   voice: voiceText,
+  tts_voice: ttsVoiceText,
   routine: routineText,
   motivations: motivationsText,
   location_id: reference,
@@ -686,6 +698,7 @@ const personCreate = z.object({
   source: z.string().nullish(),
   picture_url: pictureLink.optional(),
   voice: voiceText.optional(),
+  tts_voice: ttsVoiceText.optional(),
   routine: routineText.optional(),
   motivations: motivationsText.optional(),
   location_id: reference.default(null),

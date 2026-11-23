@@ -38,6 +38,7 @@ describe('entityOf', () => {
       canon_level: null,
       keywords: [],
       voice: null,
+      tts_voice: null,
       lore: null,
       provenance: 'homebrew',
       source: null,

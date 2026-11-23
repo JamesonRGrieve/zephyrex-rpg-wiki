@@ -1,0 +1,35 @@
+{
+  "_comment": "A person's TTS voice (operator, 2026-11-23: \"A voice per character\"): the TTS model's voice id, trimmed, at most tts_voice_characters, no control characters; empty is the default (none). wiki_shared/Names.tts_voice_text and lib/names.ttsVoice compute the same.",
+  "cases": [
+    {
+      "name": "a voice id, trimmed",
+      "value": "  onyx ",
+      "stored": "onyx"
+    },
+    {
+      "name": "empty is the default",
+      "value": "   ",
+      "stored": null
+    },
+    {
+      "name": "none is the default",
+      "value": null,
+      "stored": null
+    },
+    {
+      "name": "too long",
+      "value": "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv",
+      "error": "at most 64"
+    },
+    {
+      "name": "a control character",
+      "value": "al\nloy",
+      "error": "control"
+    },
+    {
+      "name": "not text",
+      "value": 7,
+      "error": "text"
+    }
+  ]
+}

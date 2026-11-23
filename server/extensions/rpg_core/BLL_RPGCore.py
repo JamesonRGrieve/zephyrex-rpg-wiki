@@ -41,7 +41,7 @@ from zephyrex.extensions.wiki_shared.EntityIds import EntityIdsError, entity_ids
 from zephyrex.extensions.wiki_shared.Lore import lore_text, stored_lore  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Pictures import picture_url as checked_picture_url  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Provenance import HOMEBREW, checked_provenance, checked_source, provenance  # type: ignore[import-not-found]
-from zephyrex.extensions.wiki_shared.Names import names_text, stored_names, stored_voice, voice_text  # type: ignore[import-not-found]
+from zephyrex.extensions.wiki_shared.Names import names_text, stored_names, stored_voice, tts_voice_text, voice_text  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Routine import (  # type: ignore[import-not-found]
     clock,
     motivations_text,
@@ -377,6 +377,7 @@ class PersonFill(PlainModel):
     personality: Optional[str] = Field(None, description="Their voice's personality")
     motive: Optional[str] = Field(None, description="What drives them: added to their motivations")
     voice: Optional[str] = Field(None, description="How they speak: their voice's speech")
+    tts_voice: Optional[str] = Field(None, description="The TTS model's voice id for their lines; \"\" back to the default")
     picture: Optional[str] = Field(None, description="An https link (picture_url), or an uploaded asset's id (attached as their picture)")
 
 
@@ -625,6 +626,8 @@ class RPG_PersonModel(BaseModel):
     source: Optional[str] = Field(None, description="The official title, publisher and product or page; none for homebrew")
     picture_url: Optional[str] = Field(None, description="Its picture by https link (fandom, wikis…), shown before an uploaded one")
     voice: Optional[str] = Field(None, description="How the AI plays them: personality, speech, first_message, examples, as JSON text (S4c; GM-facing)")
+    # Operator, 2026-11-23: "A voice per character": the TTS model's voice their lines are read in.
+    tts_voice: Optional[str] = Field(None, description="The TTS model's voice id for their lines (alloy, onyx…); none is the default")
     # The world tick (operator, 2026-11-21): the GM side pilots each person by these as time advances.
     routine: Optional[str] = Field(None, description="Their schedule: slots {from, to, days, location_id, activity}, as JSON text (GM-facing)")
     motivations: Optional[str] = Field(None, description="Their goals, fears and current intent, a list as JSON text (GM-facing)")
@@ -653,6 +656,8 @@ class RPG_PersonModel(BaseModel):
         _picture_url = field_validator("picture_url")(checked_picture_url)
         voice: Optional[Any] = None
         _voice = field_validator("voice")(voice_text)
+        tts_voice: Optional[str] = None
+        _tts_voice = field_validator("tts_voice")(tts_voice_text)
         routine: Optional[Any] = None
         _routine = field_validator("routine")(routine_text)
         motivations: Optional[Any] = None
@@ -688,6 +693,9 @@ class RPG_PersonModel(BaseModel):
         _picture_url = field_validator("picture_url")(lambda value: value if value is None else (checked_picture_url(value) or ""))
         voice: Optional[Any] = None
         _voice = field_validator("voice")(voice_text)
+        # "" clears it back to the default (none leaves it as it is).
+        tts_voice: Optional[str] = None
+        _tts_voice = field_validator("tts_voice")(lambda value: value if value is None else (tts_voice_text(value) or ""))
         routine: Optional[Any] = None
         _routine = field_validator("routine")(routine_text)
         motivations: Optional[Any] = None
@@ -1420,6 +1428,8 @@ class WorldEntity(PlainModel):
     # S4c: what else wakes it in the AI's lorebook (beyond name and aliases), and a person's voice.
     keywords: list[str] = []
     voice: Optional[dict[str, Any]] = None
+    # A person's TTS voice id (operator, 2026-11-23: "A voice per character"); none is the default.
+    tts_voice: Optional[str] = None
     # A person's schedule and motivations (the GM side's world tick; gm_only as the record is).
     routine: Optional[list[dict[str, Any]]] = None
     motivations: Optional[list[str]] = None
@@ -1490,6 +1500,7 @@ def _entity(kind: str, record: Any, changed_at: datetime, deleted: bool) -> Worl
         aliases=stored_names(getattr(record, "aliases", None)),
         keywords=stored_names(getattr(record, "keywords", None)),
         voice=stored_voice(getattr(record, "voice", None)) if kind == "person" else None,
+        tts_voice=(getattr(record, "tts_voice", None) or None) if kind == "person" else None,
         routine=stored_routine(getattr(record, "routine", None)) if kind == "person" else None,
         motivations=stored_motivations(getattr(record, "motivations", None)) if kind == "person" else None,
         lore=stored_lore(getattr(record, "lore", None)),
@@ -2201,7 +2212,7 @@ def campaign_framing(model_registry: Any, requester_id: str, campaign_id: str) -
     )
 
 
-FILL_FIELDS = ("summary", "entry", "personality", "motive", "voice", "picture")
+FILL_FIELDS = ("summary", "entry", "personality", "motive", "voice", "tts_voice", "picture")
 ELEVATED_PROPERTY = "Elevated to"
 
 
@@ -2232,6 +2243,11 @@ def update_person(model_registry: Any, requester_id: str, person_id: str, fields
         if fields.get("voice"):
             held["speech"] = str(fields["voice"]).strip()
         changes["voice"] = held
+    if fields.get("tts_voice") is not None:
+        try:
+            changes["tts_voice"] = tts_voice_text(fields["tts_voice"]) or ""
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
     if fields.get("motive"):
         motives = stored_motivations(getattr(person, "motivations", None))
         motive = str(fields["motive"]).strip()
@@ -2244,7 +2260,7 @@ def update_person(model_registry: Any, requester_id: str, person_id: str, fields
         changes["picture_url"] = picture
     if changes:
         person = people.update(id=person_id, **changes)
-    updated = sorted(key for key in fields if fields.get(key))
+    updated = sorted(key for key in fields if fields.get(key) or (key == "tts_voice" and fields.get(key) == ""))
     if picture and not picture.startswith("https://"):
         if not _serves(model_registry, "attachments"):
             raise HTTPException(status_code=422, detail="This back end keeps no uploaded pictures: give an https link")

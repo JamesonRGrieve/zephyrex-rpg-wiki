@@ -48,7 +48,7 @@ function rowsOf(kind: WorldEntityKind, where: object): Promise<EntityRow[]> {
     case 'location':
       return prisma.location.findMany({ where, select: { ...SELECT, parentId: true } });
     case 'person':
-      return prisma.person.findMany({ where, select: { ...SELECT, voice: true, locationId: true, routine: true, motivations: true } });
+      return prisma.person.findMany({ where, select: { ...SELECT, voice: true, ttsVoice: true, locationId: true, routine: true, motivations: true } });
     case 'faction':
       return prisma.faction.findMany({ where, select: { ...SELECT, parentId: true } });
     case 'item':
