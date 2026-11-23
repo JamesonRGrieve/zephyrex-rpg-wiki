@@ -278,11 +278,6 @@
     "document"
   ],
   "seed_settings": [
-    { "slug": "warhammer-40000", "name": "Warhammer 40,000" },
-    { "slug": "age-of-sigmar", "name": "Age of Sigmar" },
-    { "slug": "warhammer-fantasy", "name": "Warhammer Fantasy" },
-    { "slug": "dnd", "name": "D&D" },
-    { "slug": "fallout", "name": "Fallout" },
     { "slug": "reality", "name": "Reality" }
   ],
   "entity_types": [

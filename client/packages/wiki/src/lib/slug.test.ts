@@ -31,6 +31,6 @@ describe('isSlug', () => {
   it('accepts every seeded slug, each once', () => {
     const slugs = SEED_SETTINGS.map((one) => one.slug);
     expect(slugs.every(isSlug)).toBe(true);
-    expect(new Set(slugs).size).toBe(6);
+    expect(new Set(slugs).size).toBe(1); // Reality alone (operator, 2026-11-23)
   });
 });

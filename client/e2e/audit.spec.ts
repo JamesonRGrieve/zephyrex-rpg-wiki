@@ -226,7 +226,7 @@ async function audit(browser: Browser, testInfo: TestInfo, stage: string, target
 async function expectSeedShows(page: Page, seeded: Seeded): Promise<void> {
   const w = `/w/${seeded.world}`;
   const shows: [string, string[]][] = [
-    ['/w', ['The Grim Future', 'The Salt Coast', 'Warhammer 40,000', 'Reality']],
+    ['/w', ['The Grim Future', 'The Salt Coast', 'Reality']],
     // A setting's canon has the campaign's pages; a campaign shows its setting's canon, marked.
     [`/w/setting-${seeded.setting}/faction`, ['Adeptus Mechanicus']],
     [`${w}/faction`, ['Lantern Guild', 'Adeptus Mechanicus', 'Canon']],
@@ -272,8 +272,8 @@ test.describe.serial('visual audit', () => {
     // S6b: the contract's seeded settings are everyone's to read and read as missing to anyone changing them; slugs are unique.
     const listed = (await (await request.get('/api/v1/setting')).json()) as { settings: { id: string; slug: string; name: string; updated_at: string }[] };
     const bySlug = new Map(listed.settings.map((one) => [one.slug, one]));
-    // Reality replaces Modern (operator, 2026-11-23).
-    for (const slug of ['warhammer-40000', 'age-of-sigmar', 'warhammer-fantasy', 'dnd', 'fallout', 'reality']) expect(bySlug.has(slug), slug).toBe(true);
+    // Reality alone is seeded (operator, 2026-11-23: it replaces Modern, and no IP is in public code).
+    expect(bySlug.has('reality')).toBe(true);
     expect(bySlug.has('modern')).toBe(false);
     expect(bySlug.get('the-grim-future')?.id).toBe(seeded.setting);
     const fortyK = bySlug.get('reality')!;

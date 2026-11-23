@@ -34,4 +34,4 @@ def test_a_slug_the_contract_refuses(slug: str) -> None:
 
 def test_the_seeded_slugs_are_valid_and_distinct() -> None:
     slugs = [checked_slug(one["slug"]) for one in SEED_SETTINGS]
-    assert len(set(slugs)) == len(slugs) == 6
+    assert len(set(slugs)) == len(slugs) == 1  # Reality alone (operator, 2026-11-23: no IP in public code)

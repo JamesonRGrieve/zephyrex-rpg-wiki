@@ -612,9 +612,9 @@ class TestSettings:
         assert listed.status_code == 200, listed.text
         seeded = {one["slug"]: one for one in listed.json()["settings"] if one["slug"] in {s["slug"] for s in SEED_SETTINGS}}
         assert {slug: one["name"] for slug, one in seeded.items()} == {s["slug"]: s["name"] for s in SEED_SETTINGS}
-        # Operator, 2026-11-23: Reality replaces Modern.
-        assert "reality" in seeded and "modern" not in seeded
-        forty_k = seeded["warhammer-40000"]
+        # Operator, 2026-11-23: Reality alone is seeded (it replaces Modern; no IP in public code).
+        assert set(seeded) == {"reality"}
+        forty_k = seeded["reality"]
         campaign = _create(server, other, "campaign", name="Dunmarch", setting_id=forty_k["id"])
         assert campaign["setting_id"] == forty_k["id"]
         assert server.get(f"/v1/setting/{forty_k['id']}", headers=_headers(person)).status_code == 200
