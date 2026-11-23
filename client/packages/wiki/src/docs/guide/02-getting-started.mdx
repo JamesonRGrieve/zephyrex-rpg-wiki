@@ -1,0 +1,47 @@
+{/* SPDX-License-Identifier: AGPL-3.0-or-later */}
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title='Wiki/Guide/2. Getting started' />
+
+# Getting started
+
+## What you need
+
+- Node 24 and pnpm, for the client.
+- Python 3.11 and [uv](https://docs.astral.sh/uv/), for the server (SaaS edition only).
+- The framework checkouts beside this repository, at the commits `deploy/frameworks.env` pins.
+  `deploy/fetch-frameworks.sh <workspace>` lays out a separate workspace (a copy of this repository
+  with each framework beside it) and `deploy/compile-frameworks.sh <workspace>` builds them. Give
+  it a new directory: it replaces `<workspace>/zephyrex-rpg-wiki`.
+
+## Lite: the app on its own
+
+```bash
+cd client
+pnpm install
+pnpm dev            # http://localhost:1109
+```
+
+Lite keeps everything in the SQLite file `DATABASE_URL` names. There is no sign-in: it is your
+wiki, on your machine.
+
+## SaaS: the app and its server
+
+```bash
+cd server && uv sync && .venv/bin/python rpg_wiki_app.py      # API on :2000
+cd client && NEXT_PUBLIC_RPG_WIKI_VARIANT=saas pnpm dev         # UI on :1109
+```
+
+The client proxies `/api` to the server (`RPG_WIKI_SERVER_URI`, `http://127.0.0.1:2000` by
+default). The server applies its migrations when it starts, then seeds the system's rows (the
+Reality setting and the shared play-style tags).
+
+## Your first campaign
+
+1. Open **/w**. It lists the settings, each with its campaigns.
+2. Under **Reality**, type a name into *New campaign in Reality* and add it.
+3. Open the campaign, then **Places**, and add a place. Do the same under **People**.
+4. Open a record to write its entry, give it a picture by link, tag it, or relate it to others.
+
+To make a setting of your own, `POST /v1/setting` with a name, or import one (see
+[Importing](?path=/docs/wiki-guide-8-importing--docs)).

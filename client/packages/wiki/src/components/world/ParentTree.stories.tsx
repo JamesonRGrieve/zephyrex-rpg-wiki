@@ -5,7 +5,7 @@ import { FACTIONS, PLACES } from './fixtures';
 import { ParentTree } from './ParentTree';
 
 const meta: Meta<typeof ParentTree<(typeof PLACES)[number] | (typeof FACTIONS)[number]>> = {
-  title: 'World/Parent tree',
+  title: 'Wiki/World/Parent tree',
   component: ParentTree,
   args: { rows: PLACES, label: 'Places by where they sit', hrefOf: (row) => `/w/w1/location/${row.id}` },
 };

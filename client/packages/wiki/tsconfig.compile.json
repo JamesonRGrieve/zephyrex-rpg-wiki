@@ -20,5 +20,5 @@
     "lib": ["dom", "dom.iterable", "esnext"]
   },
   "include": ["build/**/*"],
-  "exclude": ["build/**/*.test.ts", "build/**/*.test.tsx", "build/**/*.stories.tsx"]
+  "exclude": ["build/**/*.test.ts", "build/**/*.test.tsx", "build/**/*.stories.tsx", "build/testing/**"]
 }

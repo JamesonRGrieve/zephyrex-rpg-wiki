@@ -5,7 +5,7 @@ import { voice as filledVoice } from '../../lib/names';
 import { VoicePanel } from './VoicePanel';
 
 const meta: Meta<typeof VoicePanel> = {
-  title: 'World/Voice panel',
+  title: 'Wiki/World/Voice panel',
   component: VoicePanel,
   args: {
     voice: filledVoice({

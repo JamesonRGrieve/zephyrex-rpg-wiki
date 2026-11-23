@@ -5,7 +5,7 @@ import { EntityPage } from './EntityPage';
 import { ENTRY } from './fixtures';
 
 const meta: Meta<typeof EntityPage> = {
-  title: 'World/Entity page',
+  title: 'Wiki/World/Entity page',
   component: EntityPage,
   args: { kind: 'city', entry: ENTRY, description: null, where: { label: 'In', name: 'The Coast', href: '/w/w1/location/l1' } },
 };

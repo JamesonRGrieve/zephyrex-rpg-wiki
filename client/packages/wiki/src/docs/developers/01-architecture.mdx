@@ -1,0 +1,66 @@
+{/* SPDX-License-Identifier: AGPL-3.0-or-later */}
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title='Wiki/Developers/1. Architecture' />
+
+# Architecture
+
+The wiki is a consumer of the Zephyrex frameworks: [server-framework](https://github.com/JamesonRGrieve/ServerFramework) (FastAPI, SQLAlchemy,
+Alembic) on the server and [client-framework](https://github.com/JamesonRGrieve/ClientFramework) (Next.js, React, shadcn, the design tokens) on
+the client. It adds only its own extensions. Anything generic goes into the frameworks; anything
+another suite product owns is reached through that product's API.
+
+## The repository
+
+```
+server/
+  extensions/          the wiki's server extensions, one folder each, with their migrations
+    wiki_shared/       rules shared by the extensions (a plain package, no manifest)
+  rpg_wiki_app.py      the app: which extensions load, in which order
+  vault_import/ st_import/ compendium_import/ book_import/ scenario_repair/   command-line tools
+client/
+  packages/wiki/       @zephyrex-rpg/wiki: the pages, components, data hooks and the lite API
+  src/                 the wiki's own app, which mounts the package
+  e2e/                 Playwright: the lite edition end to end, and the visual audit
+contract/              wiki.json (kinds, limits, seeds) and the *-cases.json both editions are held to
+deploy/                frameworks.env (the framework pins), fetch-frameworks.sh, compile-frameworks.sh
+docs/DESIGN.md         the design, the operator's rulings and progress
+```
+
+## Server extensions
+
+They load in this order; the first five are the framework's.
+
+```
+auth_session, genealogy, cloud, attachments, metadata,
+world_spatial, world_social, world_inventory, world_narrative, world_taxonomy,
+world_properties, entity_posts, rpg_core
+```
+
+| Extension | Holds |
+|---|---|
+| `world_spatial` | Places, as a tree from a star system to a room |
+| `world_social` | Organisations and families as a tree; relations between people and organisations (genealogy's, widened) |
+| `world_inventory` | The item catalogue, items, and what any record carries |
+| `world_narrative` | Journals, the plot-hook graph, dispositions and relation influences |
+| `world_taxonomy` | Tags, categories, races and the rest; statuses |
+| `world_properties` | Property kits, applied to a record's properties (the framework's metadata) |
+| `entity_posts` | Rich-text posts pinned to any record |
+| `rpg_core` | Settings and campaigns; scopes every world record to a campaign and a setting |
+
+Dependencies point one way: `rpg_core` depends on the `world_*` extensions, never the reverse. It
+scopes their records by injecting `campaign_id` and `setting_id` onto their models, with real
+foreign keys, and widens genealogy's Person into the character table. `rpg_log` is in the repo but
+not loaded.
+
+## Data rules
+
+- The API is the framework's REST shape: `{ <resource> }` envelopes, an ETag on every row and
+  `If-Match` on every write, 412 with `current` when stale, 428 without it.
+- An entry is a Plate value stored as JSON text; its plain text is kept as `description`.
+- Kinds are enums in `contract/wiki.json`, read by both back ends and the client.
+- A record's campaign and setting are fixed once set (422 otherwise).
+- Every extension ships its own Alembic migrations, and a test holds what they build equal to what
+  the models declare.
+
+The full design, with the reasons, is [docs/DESIGN.md](https://github.com/JamesonRGrieve/zephyrex-rpg-wiki/blob/main/docs/DESIGN.md).

@@ -1,0 +1,54 @@
+{/* SPDX-License-Identifier: AGPL-3.0-or-later */}
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title='Wiki/Guide/4. Campaigns and scenarios' />
+
+# Campaigns and scenarios
+
+## Campaigns
+
+A campaign is one group's game in a setting. Its places, people and the rest are its own; the
+setting's canon is shared. Each campaign's **About** page has its name, description and origin.
+
+## Scenarios and playthroughs
+
+A **scenario** is a campaign that is never played directly: an adventure, a one-shot, a module. To
+play it you **start** it, and the wiki copies it into a new campaign, a **playthrough**:
+
+- every record is copied, with the links between them remapped to the copies;
+- inventories are copied, and so are the player characters you pick;
+- the playthrough remembers which scenario it came from, and keeps its era.
+
+Starting answers at once and copies in the background, because a big scenario has hundreds of
+records. The page follows the copy and opens the playthrough when it's done. A start that fails is
+undone, so a half-copied campaign never stays behind.
+
+The scenario panel on a scenario's page starts it. A start can also bring along the setting's
+**pregens**, ready-made characters tagged *Pregen* (`GET /v1/setting/<id>/pregen` lists them, and
+the start request names the ones to copy).
+
+## Framing
+
+A scenario's framing is a journal of kind `campaign_framing`: its premise, opening situation,
+player briefing and starting location. The AI game master reads it to open the game.
+
+## Origin
+
+Every campaign and record says where it came from:
+
+- **Homebrew**: yours;
+- **Official**: from a published book or system, with its source;
+- **Adapted**: changed from one, with its source.
+
+Homebrew has no source. The origin panel on each page shows and edits it.
+
+## Play styles
+
+Scenarios can be tagged with how they play: freeform, combat heavy, narrative, mystery and so on.
+These are shared tags every instance starts with; you can add your own beside them.
+
+## Elevating a person
+
+A person made in a playthrough (an NPC the game master improvised, say) can be copied back into its
+scenario with **Elevate to scenario**, so the next playthrough has them too. Their place, ties and
+tags are matched by name.

@@ -4,7 +4,7 @@ import { expect, fn, userEvent, within } from 'storybook/test';
 import { ProvenancePanel } from './ProvenancePanel';
 
 const meta: Meta<typeof ProvenancePanel> = {
-  title: 'World/Provenance panel',
+  title: 'Wiki/World/Provenance panel',
   component: ProvenancePanel,
   args: { provenance: 'official', source: 'Dark Heresy: Purge the Unclean, Fantasy Flight Games, p. 12', onSave: fn(async () => null) },
 };

@@ -4,7 +4,7 @@ import { expect, fn, userEvent, within } from 'storybook/test';
 import { PropertyList } from './PropertyList';
 
 const meta: Meta<typeof PropertyList> = {
-  title: 'World/Property list',
+  title: 'Wiki/World/Property list',
   component: PropertyList,
   args: {
     rows: [

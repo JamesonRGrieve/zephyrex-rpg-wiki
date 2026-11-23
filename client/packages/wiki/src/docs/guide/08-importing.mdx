@@ -1,0 +1,79 @@
+{/* SPDX-License-Identifier: AGPL-3.0-or-later */}
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title='Wiki/Guide/8. Importing' />
+
+# Importing
+
+Every importer is a Python command in `server/`. Each one:
+
+- has `--dry-run`, which reads and reports and writes nothing (run it first);
+- connects either **over HTTP** (`--base-url URL`, with `--lite` for a lite edition and
+  `WIKI_TOKEN` for a SaaS server) or **in process** (`--app module:factory --owner USER_ID`, run
+  from the server app's directory);
+- goes through the wiki's own routes, so every rule holds as if you'd typed it in;
+- can be run again: a second run changes only what differs.
+
+The setting must exist first (`POST /v1/setting`); importers find it by `--setting <slug>`.
+
+## Obsidian vaults: `vault_import`
+
+```bash
+python -m vault_import <vault> [<vault> ...] --setting <slug> --dry-run --base-url http://localhost:2000
+```
+
+Each Markdown note with an `entity_type` in its frontmatter becomes a record: `person`,
+`location`, `faction`, `item`, `journal` or `hook` (a vault's own words `character`, `quest`,
+`note`, `organisation` and `vehicle` are read as those). Frontmatter names the rest:
+
+```yaml
+---
+entity_type: person
+kind: npc
+name: Holst
+campaign: The Split Antler
+tags: [trader]
+faction: "[[Circle Compact]]"
+location: "[[Brindlemarsh Stable]]"
+voice:
+  personality: Gruff but fair.
+  first_message: "Stalls are full."
+relations:
+  - { target: "[[Dingus]]", attitude: wary }
+---
+```
+
+- `[[links]]` in frontmatter become references; in the body they stay text.
+- A picture beside the note, with the same name (`Holst.png`), becomes its picture.
+- `provenance` and `source`, `era`, and a framing's `system` are read too.
+- Several vaults import in the order given: a setting's canon before the campaigns that use it.
+- People default to NPCs. At the end, every scenario the run touched is checked; one that can't be
+  played is reported as UNPLAYABLE and the command exits 1.
+
+## SillyTavern: `st_import`
+
+```bash
+python -m st_import --card Mara.png --world-info harbour.json --campaign "Harbour Lights" --setting reality --dry-run --base-url ...
+```
+
+Character cards (V2 or V3, PNG or JSON) become people with their voice and picture. World Info,
+and a card's own lorebook, becomes lore journals with their activation keys. `--setting-wide`
+puts them in the setting's canon instead of a campaign.
+
+A card can also become someone to chat with, through the API rather than this command:
+`POST /v1/campaign/card_person` makes it an NPC of your own *Characters* campaign.
+
+## Compendiums: `compendium_import`
+
+Imports a Foundry VTT system's compendium packs into a setting's canon as official records, with
+their sources. The 5e SRD is supported (`--system dnd5e`, the system's folder).
+
+## Books: `book_import`
+
+Transcribed books into the lore index, page by page, as passages of the setting's canon. It runs
+in process only, on a private instance, because book text is never published.
+
+## Repairs: `scenario_repair`
+
+Finds and mends scenarios that can't be played: people with no kind, a framing whose opening is
+only a pointer, no starting location. Dry run unless `--apply`.

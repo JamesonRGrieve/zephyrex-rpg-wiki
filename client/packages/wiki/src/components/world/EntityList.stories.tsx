@@ -9,7 +9,7 @@ import { ParentTree } from './ParentTree';
 const hrefOf = (row: { id: string }) => `/w/w1/location/${row.id}`;
 
 const meta: Meta<typeof EntityList<(typeof PLACES)[number]>> = {
-  title: 'World/Entity list',
+  title: 'Wiki/World/Entity list',
   component: EntityList,
   args: {
     what: 'place',

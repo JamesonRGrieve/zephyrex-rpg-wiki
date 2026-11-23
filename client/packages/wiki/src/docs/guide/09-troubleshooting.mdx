@@ -1,0 +1,28 @@
+{/* SPDX-License-Identifier: AGPL-3.0-or-later */}
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title='Wiki/Guide/9. Troubleshooting' />
+
+# Troubleshooting
+
+**A section I expected isn't there.** The page shows a feature only when the back end lists the
+extension that serves it. Check `GET /v1/extension` (or `/api/v1/extension` on lite).
+
+**"Someone else changed it".** The record changed after you opened it. The page shows the current
+version; make your change again on top of it.
+
+**A list says it could not load.** The back end refused or didn't answer. **Try again** reloads
+it; the server's log has the reason.
+
+**An importer says the setting doesn't exist.** Make it first with `POST /v1/setting`, then pass
+its slug.
+
+**An import says UNPLAYABLE.** A scenario has no framing, people with no kind, or player
+characters with no sheet. Run `python -m scenario_repair` to see what's wrong, then
+`--apply` to mend what it can.
+
+**A campaign doesn't show a setting's records.** Check their eras. A campaign with an era sees only
+canon of its era and canon with none
+([Settings and canon](?path=/docs/wiki-guide-3-settings-and-canon--docs)).
+
+**A picture won't save.** Pictures are `https` links. Data URLs and plain `http` are refused.

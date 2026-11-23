@@ -4,7 +4,7 @@ import { expect, fn, within } from 'storybook/test';
 import { InventoryList } from './InventoryList';
 
 const meta: Meta<typeof InventoryList> = {
-  title: 'World/Inventory list',
+  title: 'Wiki/World/Inventory list',
   component: InventoryList,
   args: {
     lines: [

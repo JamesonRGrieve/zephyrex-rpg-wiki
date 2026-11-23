@@ -1,0 +1,58 @@
+{/* SPDX-License-Identifier: AGPL-3.0-or-later */}
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title='Wiki/Guide/1. Introduction' />
+
+# Introduction
+
+Zephyrex RPG Wiki is where a tabletop world is written down: its places, people, organisations,
+items, lore and plot, and what happened at the table. It is one of three products in the Zephyrex
+RPG suite:
+
+- **the wiki** (this): the world;
+- **[zephyrex-vtt](https://github.com/JamesonRGrieve/zephyrex-vtt)**: the table, with scenes, tokens and character sheets;
+- **[zephyrex-rpg-ai](https://github.com/JamesonRGrieve/zephyrex-rpg-ai)**: AI characters and an AI game master.
+
+The wiki depends on neither of the others. Both build on it, and when they run together they
+share one server, one database and these same pages.
+
+## How a world is organised
+
+Everything sits in one of two places:
+
+- **A setting** is a universe: the world as it is, a fantasy realm, a far future. What anyone
+  living there would know is the setting's **canon**: its records that belong to no campaign.
+- **A campaign** takes place in a setting. Its records are its own: the town the party is in, the
+  people they have met, the hooks they are chasing. A campaign also sees its setting's canon.
+
+A fresh instance has one setting, **Reality**. You make the others yourself.
+
+Inside a setting or a campaign there are six kinds of record:
+
+| Kind | What it holds |
+|---|---|
+| Places | Star systems down to rooms, each inside the one above it |
+| People | Player characters, NPCs, creatures, vehicles and constructs |
+| Organisations | Guilds, families, churches, armies, gangs |
+| Items | Weapons, armour, documents, anything carried |
+| Journals | Session reports, diaries, lore, handouts, manuscripts |
+| Hooks | Quests, mysteries, rumours and the threads between them |
+
+## The two editions
+
+The same pages run on both:
+
+- **Lite** is one person's wiki, with no sign-in, stored in a single SQLite file. It runs from
+  the Next.js app alone.
+- **SaaS** has accounts, a Python server and Postgres, and is what the suite runs on.
+
+A page never asks which edition it is on. It asks the back end which extensions it runs
+(`GET /v1/extension`) and shows a feature when the extension that serves it is there. So a
+lite instance without, say, plot hooks simply has no plot board.
+
+## Where to go next
+
+- [Getting started](?path=/docs/wiki-guide-2-getting-started--docs) runs it on your machine.
+- [Settings and canon](?path=/docs/wiki-guide-3-settings-and-canon--docs) and
+  [Campaigns and scenarios](?path=/docs/wiki-guide-4-campaigns-and-scenarios--docs) explain the two scopes.
+- [Importing](?path=/docs/wiki-guide-8-importing--docs) brings in an Obsidian vault, SillyTavern cards or a compendium.

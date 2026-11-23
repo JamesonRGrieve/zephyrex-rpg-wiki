@@ -11,14 +11,15 @@ const PUBLIC = path.resolve(import.meta.dirname, '../public');
 
 const config: StorybookConfig = {
   stories: ['../src/**/*.stories.@(js|jsx|mjs|ts|tsx|mdx)', '../packages/wiki/src/**/*.stories.@(js|jsx|mjs|ts|tsx|mdx)'],
-  // Storybook 10 folds actions/controls/interactions/viewport into core; only
-  // links and a11y remain as separate addons here.
-  addons: ['@storybook/addon-links', '@storybook/addon-a11y'],
+  // Storybook 10 folds actions/controls/interactions/viewport into core; links, a11y and docs (the
+  // MDX guide under packages/wiki/src/docs) remain as separate addons here.
+  addons: ['@storybook/addon-links', '@storybook/addon-a11y', '@storybook/addon-docs'],
   framework: {
     name: '@storybook/nextjs',
     options: {},
   },
-  staticDirs: existsSync(PUBLIC) ? ['../public'] : [],
+  // .storybook/public holds msw's service worker, which the page stories' mock back end runs in.
+  staticDirs: existsSync(PUBLIC) ? ['../public', './public'] : ['./public'],
   core: {
     disableTelemetry: true,
   },

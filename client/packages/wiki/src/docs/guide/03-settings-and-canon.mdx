@@ -1,0 +1,42 @@
+{/* SPDX-License-Identifier: AGPL-3.0-or-later */}
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title='Wiki/Guide/3. Settings and canon' />
+
+# Settings and canon
+
+A setting is the universe a campaign is played in. It holds the things everyone there would know:
+its canon.
+
+## Canon
+
+A record with a setting and no campaign is canon. On the setting's own pages (the **Its canon**
+link under the setting on /w) you list and write its canon exactly as you would a campaign's
+records. Every campaign in the setting sees that canon, read-only, beside its own records: on a
+campaign's Places page, for example, the setting's places are listed under *Places of the
+setting*.
+
+A record's setting, like its campaign, is fixed once it is set. Moving a record means copying it
+and deleting the old one.
+
+## Slugs
+
+Each setting has a slug, a stable short name such as `reality`. It is made from the name when you
+don't give one, numbered past any already taken, and never changes afterwards. Importers and the
+VTT's game systems find a setting by its slug.
+
+## Eras
+
+A setting can span several eras, the way Reality spans every period of history. Tag canon records
+and campaigns with an **era** (a tag of kind `era`):
+
+- a campaign with an era sees its era's canon and the canon that has no era;
+- it never sees another era's canon;
+- a campaign with no era sees all of it.
+
+The rule is the same on both editions (`contract/era-cases.json`).
+
+## Sections from other products
+
+An app that composes the wiki can add its own sections to each setting. The VTT adds the
+setting's game systems this way. They appear under the setting on /w and on its canon pages.

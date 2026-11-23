@@ -4,7 +4,7 @@ import { expect, within } from 'storybook/test';
 import { DispositionList } from './DispositionList';
 
 const meta: Meta<typeof DispositionList> = {
-  title: 'World/Disposition list',
+  title: 'Wiki/World/Disposition list',
   component: DispositionList,
   args: {
     lines: [

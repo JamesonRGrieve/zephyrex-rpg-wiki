@@ -1,0 +1,45 @@
+{/* SPDX-License-Identifier: AGPL-3.0-or-later */}
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title='Wiki/Developers/6. Testing' />
+
+# Testing
+
+| What | Where | Command |
+|---|---|---|
+| Server | `server/extensions/**/*_test.py`, the importers' `*_test.py` | `cd server && .venv/bin/python -m pytest extensions` |
+| Client rules and hooks | `client/**/*.test.ts(x)` | `cd client && pnpm test` |
+| Types | the whole client | `cd client && pnpm typecheck` |
+| Components and pages | `*.stories.tsx`, each with a `play` test | `pnpm storybook-build`, then `test-storybook` |
+| End to end | `client/e2e` (the lite edition, built for production) | `pnpm exec playwright test` |
+
+Heavy runs (installs, builds, the suites) go on the build runner, not a laptop.
+
+## Stories
+
+Every component has a story with a `play` test, and an accessibility violation fails it
+(`a11y: { test: 'error' }`). Components take their data as props, so most stories need nothing
+else. Pages and the components that read data themselves run against a mock back end:
+
+```tsx
+import { withZephyrexApi } from 'zephyrex/testing';
+import { CAMPAIGN_ID, wikiHandlers } from '../testing/wiki.mocks';
+
+const meta = {
+  component: KindPage,
+  args: { world: CAMPAIGN_ID, kind: 'person' },
+  parameters: { msw: { handlers: wikiHandlers() } },
+  decorators: [withZephyrexApi],
+};
+```
+
+`testing/wiki.mocks.ts` serves every resource in `features/data/records.ts` from one fixture
+world through the framework's `restTable`, with versions and If-Match like the real server.
+`wikiHandlers({ extensions, rows, extra })` changes which extensions are listed, replaces a
+resource's rows, or puts a story's own handlers first. It is left out of the package's `dist`.
+
+## Server tests
+
+The test database is SQLite, which enforces foreign keys only when asked. A migration that writes
+a row pointing at one made later passes here and fails on Postgres; keep seeded rows in the
+framework's seed step or behind the users it makes first.

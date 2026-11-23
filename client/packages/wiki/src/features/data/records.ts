@@ -345,6 +345,10 @@ function one<T>(schema: z.ZodType<T>, key: string, body: unknown): T {
 
 export interface ResourceHooks<T extends Versioned, Create, Extra> {
   path: string;
+  /** The envelopes a row and a list travel in (`{ person: … }`, `{ persons: […] }`), and what a row is. */
+  single: string;
+  plural: string;
+  schema: z.ZodType<T>;
   /** The records, read only while `enabled` (by default, always). */
   useList(query?: Record<string, string>, enabled?: boolean): SWRResponse<T[], Error>;
   useOne(id: string | null): SWRResponse<T, Error>;
@@ -366,6 +370,9 @@ export function resource<T extends Versioned, Create extends object, Extra = obj
     query === undefined || Object.keys(query).length === 0 ? path : `${path}?${new URLSearchParams(query).toString()}`;
   return {
     path,
+    single: singular,
+    plural,
+    schema,
     useList(query, enabled = true) {
       const client = useClient();
       const key = listKey(query);

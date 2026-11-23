@@ -1,0 +1,44 @@
+{/* SPDX-License-Identifier: AGPL-3.0-or-later */}
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title='Wiki/Developers/4. The contract' />
+
+# The contract
+
+`contract/` is the one place a value or rule both back ends share is written down.
+
+## wiki.json
+
+The kinds of every record type (`location_kinds`, `person_kinds`, `faction_kinds`, `item_kinds`,
+`journal_kinds`, `hook_kinds`, `taxon_kinds`, `status_kinds`), the record and taggable types,
+limits (`limits`: lengths and counts), the seeded rows (`seed_settings`, `seed_play_styles`),
+provenances, attitudes and their nuances, voice parts and defaults, lore activation fields, the
+attachment roles and the setting slug rule. The server reads it through
+`wiki_shared/Contract.py` and the client through `src/contract.ts`.
+
+## The cases
+
+Each `*-cases.json` holds inputs and the expected result for one rule:
+
+| File | Rule |
+|---|---|
+| `slug-cases.json` | A setting's slug: derived, numbered past those taken, refused when invalid |
+| `era-cases.json` | Which canon a campaign sees, by era |
+| `entry-text-cases.json` | An entry's plain text |
+| `markdown-entry-cases.json` | A short Markdown body as an entry |
+| `summary-cases.json` | A record's summary line |
+| `picture-url-cases.json` | A picture link |
+| `provenance-cases.json` | An origin and its source |
+| `requirement-cases.json` | A hook's requirement expression |
+| `disposition-cases.json` | A disposition's scale and nuances |
+| `framing-cases.json` | A framing split into its public text and GM part |
+| `lore-cases.json`, `lore-index-cases.json` | Lore activation; passages, scope and fusion for lore search |
+| `world-keys-cases.json` | The activation index's keys |
+| `name-list-cases.json`, `routine-cases.json` | Aliases and keywords; routines and motivations |
+| `property-kit-cases.json` | A property kit |
+| `card-cases.json` | A SillyTavern card as a person |
+| `tts-voice-cases.json` | A person's TTS voice |
+| `entity-ids-cases.json`, `document-cases.json`, `report-body-cases.json` | Query and body parsing |
+
+Fixtures in the contract and the importers hold placeholder text only: never book text, never
+content from a published setting.

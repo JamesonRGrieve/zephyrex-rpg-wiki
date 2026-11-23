@@ -1,0 +1,32 @@
+{/* SPDX-License-Identifier: AGPL-3.0-or-later */}
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title='Wiki/Guide/7. The plot board' />
+
+# The plot board
+
+Hooks are a campaign's quests, mysteries, rumours and threads. The **Plot board** shows them by
+state.
+
+## Requirements
+
+A hook can require others: "find the shard" before "fix the waystone". Requirements are
+expressions with **all** and **any**, and can include a check at the table ("a psyker or a scholar
+hears the ghost"). The wiki refuses a requirement that would make a loop.
+
+## States
+
+| State | Meaning |
+|---|---|
+| Can happen now | Everything it needs has happened |
+| Blocked | Something it needs hasn't happened yet; its excuse says why |
+| Needs a check at the table | What's left is a roll the group has to make |
+| Happened | Resolved, with the session it was resolved in |
+
+**Mark as happened** and **Mark as not happened** move a hook between them.
+
+## Who is on it
+
+A hook names who gave it, and which people and organisations are on it, with their progress. Its
+resolution can change relations and dispositions (see
+[Tags, relations and properties](?path=/docs/wiki-guide-6-tags-relations-and-properties--docs)).

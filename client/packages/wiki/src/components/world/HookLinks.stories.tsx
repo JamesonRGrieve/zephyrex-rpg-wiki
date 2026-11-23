@@ -4,7 +4,7 @@ import { expect, fn, within } from 'storybook/test';
 import { HookLinks } from './HookLinks';
 
 const meta: Meta<typeof HookLinks> = {
-  title: 'World/Hook links',
+  title: 'Wiki/World/Hook links',
   component: HookLinks,
   args: {
     waitsOn: [{ id: 'find', name: 'Find the map', href: '/w/salt/hook/find' }],

@@ -1,0 +1,43 @@
+{/* SPDX-License-Identifier: AGPL-3.0-or-later */}
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title='Wiki/Developers/2. Both editions' />
+
+# Both editions
+
+Every feature ships in both editions in the same change:
+
+| | SaaS | Lite |
+|---|---|---|
+| Back end | `server/`, server-framework, Postgres | the Next.js app's own API routes, Prisma, SQLite |
+| Where the wiki's API is | its extensions' managers and routes | `@zephyrex-rpg/wiki/lite`: one catch-all, `app/api/v1/[...wiki]` |
+| People | accounts and teams | one person, no sign-in |
+
+## One UI
+
+Pages never branch on edition. They read `GET /v1/extension` (`features/capabilities.ts`) and show
+a section when the extension that serves it is listed. A lite app lists what its routes answer.
+
+## One rule, two implementations, one set of cases
+
+A rule both back ends apply (a slug, an era, a picture link, how an entry becomes text) is written
+twice, once in Python (`server/extensions/wiki_shared/`) and once in TypeScript
+(`client/packages/wiki/src/lib/`), and both are tested against the same file in `contract/`:
+
+```
+contract/era-cases.json
+  server/extensions/wiki_shared/Eras.py      Eras_test.py reads the cases
+  client/packages/wiki/src/lib/eras.ts       eras.test.ts reads the same cases
+```
+
+A change to the rule changes the cases first; both tests then fail until both sides agree.
+
+## Adding a feature
+
+1. Contract: new kinds or limits in `contract/wiki.json`, cases for any shared rule.
+2. Server: the model, its migration, the manager's rule, the route or ability, and tests.
+3. Lite: the Prisma model and migration (`packages/wiki/prisma/wiki.prisma`), the route in
+   `lite/`, and tests.
+4. Client: the data hook in `features/data`, the component with a story and a `play` test, and the
+   page.
+5. Docs: this Storybook (the guide for users, these pages for developers) and `docs/DESIGN.md`.

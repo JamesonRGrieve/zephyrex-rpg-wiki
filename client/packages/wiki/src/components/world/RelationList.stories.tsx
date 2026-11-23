@@ -4,7 +4,7 @@ import { expect, fn, within } from 'storybook/test';
 import { RelationList } from './RelationList';
 
 const meta: Meta<typeof RelationList> = {
-  title: 'World/Relation list',
+  title: 'Wiki/World/Relation list',
   component: RelationList,
   args: {
     lines: [

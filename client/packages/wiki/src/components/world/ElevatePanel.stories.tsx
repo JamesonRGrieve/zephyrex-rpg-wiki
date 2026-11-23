@@ -4,7 +4,7 @@ import { expect, fn, userEvent, within } from 'storybook/test';
 import { ElevatePanel } from './ElevatePanel';
 
 const meta: Meta<typeof ElevatePanel> = {
-  title: 'World/Elevate panel',
+  title: 'Wiki/World/Elevate panel',
   component: ElevatePanel,
   args: { scenario: { name: 'The Rusty Anchor' }, elevated: null, onElevate: fn(async () => null) },
 };

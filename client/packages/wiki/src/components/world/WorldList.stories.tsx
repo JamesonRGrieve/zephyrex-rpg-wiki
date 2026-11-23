@@ -5,7 +5,7 @@ import { WORLDS } from './fixtures';
 import { WorldList } from './WorldList';
 
 const meta: Meta<typeof WorldList> = {
-  title: 'World/Campaign list',
+  title: 'Wiki/World/Campaign list',
   component: WorldList,
   args: { worlds: WORLDS, onCreate: fn(() => Promise.resolve(true)), onDelete: fn() },
 };

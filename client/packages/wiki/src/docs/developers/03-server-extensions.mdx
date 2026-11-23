@@ -1,0 +1,50 @@
+{/* SPDX-License-Identifier: AGPL-3.0-or-later */}
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title='Wiki/Developers/3. rpg_core and the abilities' />
+
+# rpg_core and the abilities
+
+`rpg_core` holds settings and campaigns and everything that works across records. Besides its REST
+resources it offers **abilities**: named operations other extensions and the AI game master call
+in process, each also served as a route where a client needs it.
+
+## Reading the world
+
+| Ability | What it gives |
+|---|---|
+| `world_entities`, `world_entities_by_id` | A campaign's records changed since a time, tombstones included |
+| `world_entities_matching` | Only the records a piece of text names (by the world-keys index), plus the always-active |
+| `setting_canon` | A setting's canon |
+| `campaign_documents` | A campaign's journals of the document kinds |
+| `campaign_framing` | A scenario's framing, public part and GM part |
+| `plot_state` | Every hook's state, as the plot board shows it |
+| `lore_search` | Hybrid search over the lore index (full text, trigram and vectors, fused) |
+
+## Changing it
+
+| Ability | What it does |
+|---|---|
+| `instantiate_campaign` | Start a scenario: copy it into a playthrough (in the background) |
+| `setting_pregens` | A setting's pregens, for a start to bring along |
+| `ensure_person`, `update_person`, `move_person` | People made and changed in play |
+| `elevate_person` | Copy a playthrough's person back into its scenario |
+| `import_card_person` | A SillyTavern card as a person to chat with |
+| `session_report`, `session_report_get` | Write and read a session's report |
+| `campaign_clock`, `advance_clock` | The campaign's in-world time |
+| `import_book` | Book passages into the lore index |
+| `rebuild_world_keys`, `rebuild_lore_chunks`, `register_embedder` | The indexes and the embedding service |
+| `remove_orphaned_records` | Clear records left by campaigns deleted earlier (dry run first) |
+
+## Routes beyond REST
+
+Under `/v1/campaign`: `/{id}/instantiate`, `/{id}/framing`, `/{id}/matching`, `/{id}/lore_search`,
+`/{id}/person`, `/{id}/fill_person`, `/{id}/elevate`, `/{id}/clock` and `/card_person`; under
+`/v1/setting`: `/{id}/pregen`; and `/v1/property_kit/{id}/apply` in `world_properties`.
+
+## Hooks for other products
+
+An extension that keeps its own records per campaign registers an AFTER_INSTANTIATE callback
+(lite: `onAfterInstantiate`). When a scenario is started, it is called with the map from the
+scenario's record ids to the playthrough's, and copies its own rows (the VTT copies scenes, tokens
+and sheets this way).

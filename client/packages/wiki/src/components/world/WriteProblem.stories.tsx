@@ -4,7 +4,7 @@ import { expect, within } from 'storybook/test';
 import { WriteProblem } from './WriteProblem';
 
 const meta: Meta<typeof WriteProblem> = {
-  title: 'World/Write problem',
+  title: 'Wiki/World/Write problem',
   component: WriteProblem,
   args: { problem: 'The place could not be saved: A location can’t sit under itself or its own descendants' },
 };

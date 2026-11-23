@@ -1,0 +1,30 @@
+{/* SPDX-License-Identifier: AGPL-3.0-or-later */}
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title='Wiki/Guide/6. Tags, relations and properties' />
+
+# Tags, relations and properties
+
+## Taxonomy
+
+The **Taxonomy** page holds a campaign's tags, categories, races, species, cultures, religions and
+the rest, as a tree. Any record (and a campaign itself) can carry any of them. Open a tag to see
+everything that has it. **Statuses** (alive, missing, destroyed...) work the same way, one per
+record.
+
+## Relations
+
+People and organisations relate to each other: allies, rivals, kin, employers. A relation has an
+attitude from -100 to +100, an optional colour and notes, and can be mirrored so it shows the
+right way round from both ends.
+
+## Dispositions
+
+A disposition is how a person feels about the party, another person or an organisation: a scale
+plus nuances. A hook can change it when it resolves ("after the rescue, the guild is friendly").
+
+## Properties and kits
+
+A record can carry its own key/value **properties**: a ship's tonnage, a sword's weight. A
+**property kit** is a set of keys with types and defaults; applying one adds the keys a record
+doesn't have yet. Properties are the framework's `record_metadata`; kits are `world_properties`.

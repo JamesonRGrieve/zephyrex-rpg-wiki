@@ -4,7 +4,7 @@ import { expect, fn, userEvent, within } from 'storybook/test';
 import { PicturePanel } from './PicturePanel';
 
 const meta: Meta<typeof PicturePanel> = {
-  title: 'World/Picture panel',
+  title: 'Wiki/World/Picture panel',
   component: PicturePanel,
   args: { name: 'Ilsa Marrow', url: null, onSave: fn(async () => null) },
 };

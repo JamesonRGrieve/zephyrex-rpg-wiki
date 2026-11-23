@@ -4,7 +4,7 @@ import { expect, fn, userEvent, within } from 'storybook/test';
 import { HookState } from './HookState';
 
 const meta: Meta<typeof HookState> = {
-  title: 'World/Hook state',
+  title: 'Wiki/World/Hook state',
   component: HookState,
   args: {
     state: 'blocked',

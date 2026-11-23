@@ -4,7 +4,7 @@ import { expect, fn, userEvent, within } from 'storybook/test';
 import { PlayStyles } from './PlayStyles';
 
 const meta: Meta<typeof PlayStyles> = {
-  title: 'World/Play styles',
+  title: 'Wiki/World/Play styles',
   component: PlayStyles,
   args: {
     styles: [

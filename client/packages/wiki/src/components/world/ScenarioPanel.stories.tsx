@@ -4,7 +4,7 @@ import { expect, fn, userEvent, within } from 'storybook/test';
 import { ScenarioPanel } from './ScenarioPanel';
 
 const meta: Meta<typeof ScenarioPanel> = {
-  title: 'World/Scenario panel',
+  title: 'Wiki/World/Scenario panel',
   component: ScenarioPanel,
   args: { isScenario: true, onStart: fn(async () => null) },
 };

@@ -1,0 +1,42 @@
+{/* SPDX-License-Identifier: AGPL-3.0-or-later */}
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title='Wiki/Developers/5. Composing the wiki' />
+
+# Composing the wiki
+
+An app that runs the wiki beside its own features (rpg-ai's Together mode, the VTT) installs
+`@zephyrex-rpg/wiki` from a pinned commit of this repository, and its server loads the wiki's
+extensions. The package's [README](https://github.com/JamesonRGrieve/zephyrex-rpg-wiki/blob/main/client/packages/wiki/README.md) has the steps; in short:
+
+```ts
+// zephyrex.config.ts
+import { wikiExtension } from '@zephyrex-rpg/wiki/extension';
+
+extensions: [wikiExtension({ base: 'w', settingSections: [/* ... */] }), /* ... */];
+```
+
+- **`base`**: where the pages are mounted (`/w` by default). Every link is built by `lib/paths`
+  from it, so an app links into the wiki with `recordPath(base, world, kind, id)` and friends.
+- **Setting sections**: components the app adds under each setting (`base.tsx`,
+  `SettingSection`). The VTT's game systems are one.
+- **Pages** take their route's values as props (`KindPage({ world, kind })`), so an app can also
+  render one inside its own layout.
+- **The lite API**: `wikiLite({ prisma })` answers the wiki's routes in an app's lite edition, with
+  the wiki's Prisma fragment added to the app's schema.
+
+## Composing these docs
+
+This Storybook's stories and pages live under `client/packages/wiki/src` (components, pages, and
+`docs/` for these MDX pages), all titled under *Wiki/*. An app's Storybook composes them by
+adding that directory to its `stories` globs. Page stories need msw's loader
+(`msw-storybook-addon`) and the framework's `withZephyrexApi`, as the wiki's own `.storybook`
+sets up.
+
+## Framework documentation
+
+The frameworks document themselves; these pages don't repeat them:
+
+- [client-framework](https://github.com/JamesonRGrieve/ClientFramework): the design tokens, AppPage and the app shell, auth, and the testing
+  helpers these stories use (`zephyrex/testing`, `zephyrex/testing/msw`).
+- [server-framework](https://github.com/JamesonRGrieve/ServerFramework): extensions, managers, abilities, hooks, migrations and seeding.

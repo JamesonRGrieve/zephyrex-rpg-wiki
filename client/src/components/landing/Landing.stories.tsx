@@ -4,7 +4,7 @@ import { expect, within } from 'storybook/test';
 import { Landing } from './Landing';
 
 const meta: Meta<typeof Landing> = {
-  title: 'Landing/Landing',
+  title: 'Wiki/App/Landing',
   component: Landing,
   parameters: { layout: 'fullscreen' },
 };

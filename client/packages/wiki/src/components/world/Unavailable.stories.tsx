@@ -3,7 +3,7 @@ import type { Meta, StoryObj } from '@storybook/nextjs';
 import { expect, within } from 'storybook/test';
 import { Unavailable } from './Unavailable';
 
-const meta: Meta<typeof Unavailable> = { title: 'World/Unavailable', component: Unavailable, args: { what: 'people' } };
+const meta: Meta<typeof Unavailable> = { title: 'Wiki/World/Unavailable', component: Unavailable, args: { what: 'people' } };
 export default meta;
 type Story = StoryObj<typeof meta>;
 

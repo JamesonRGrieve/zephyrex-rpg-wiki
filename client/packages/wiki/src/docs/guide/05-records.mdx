@@ -1,0 +1,41 @@
+{/* SPDX-License-Identifier: AGPL-3.0-or-later */}
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title='Wiki/Guide/5. Records' />
+
+# Records
+
+Places, people, organisations, items, journals and hooks share one kind of page.
+
+## The list
+
+Each kind's page lists the campaign's records, with a field to add one by name and kind. Places
+and organisations also show as a tree, each under the one it sits in or answers to. Delete has an
+**Undo**: the record is hidden at once and deleted a few seconds later unless you take it back.
+
+## A record's page
+
+- **The entry**: what the record is, as rich text. Its plain-text copy is kept as the record's
+  description, for search and for the AI.
+- **Picture**: an `https` link, shown with no referrer. Data URLs are refused.
+- **Origin**: homebrew, official or adapted, with its source.
+- **Kind**: from the contract's list for that type (a place is a city, a building, a room...).
+- **Where**: a person's location, a place's parent, an organisation's parent.
+- **Aliases and keywords**: other names the record goes by, and words that bring it up in the
+  AI's lore.
+- **Voice** (people): how the AI plays them, in SillyTavern's parts: personality, speech, first
+  message, examples. A person can also have a TTS voice for spoken lines.
+- **Lore activation**: when the AI should bring the record into its context.
+- **Posts**: extra rich-text sections pinned to the record.
+- **Inventory** (people and places): what they carry or hold.
+
+## Saving
+
+Every change is checked against the version you loaded. If someone else changed the record in the
+meantime, your change is refused and the page says so, with their version, instead of quietly
+overwriting it.
+
+## Templates
+
+A record can be a template: a stock NPC or a standard room, copied into campaigns. Templates
+never count as facts of the world they sit in.

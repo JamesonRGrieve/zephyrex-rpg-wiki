@@ -4,7 +4,7 @@ import { expect, within } from 'storybook/test';
 import { PlotBoard } from './PlotBoard';
 
 const meta: Meta<typeof PlotBoard> = {
-  title: 'World/Plot board',
+  title: 'Wiki/World/Plot board',
   component: PlotBoard,
   args: {
     hooks: [

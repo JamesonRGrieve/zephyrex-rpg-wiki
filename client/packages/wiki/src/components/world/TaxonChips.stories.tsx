@@ -4,7 +4,7 @@ import { expect, fn, within } from 'storybook/test';
 import { TaxonChips } from './TaxonChips';
 
 const meta: Meta<typeof TaxonChips> = {
-  title: 'World/Taxon chips',
+  title: 'Wiki/World/Taxon chips',
   component: TaxonChips,
   args: {
     status: { id: 's1', name: 'Alive', kind: 'entity_status', colour: '#32a852', href: null },
