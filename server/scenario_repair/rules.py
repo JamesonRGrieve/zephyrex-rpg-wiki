@@ -38,6 +38,16 @@ BRIEFING = re.compile(r"player briefing", re.IGNORECASE)
 # journal kind (2026-11-21) came in as lore.
 FRAMING_NAME = re.compile(r"(:\s*campaign framing|\s[—–-]\s*(campaign\s+)?framing)\s*$", re.IGNORECASE)
 MIN_TELLING = 40
+# A paragraph addressed to the reader or the GM, not told in the world (Sullenmire's briefing opens
+# "Read or share this before play. A solo one-shot for one player."; Zephyrex RPG, 2026-11-23).
+META = re.compile(
+    r"\b(read (or share|aloud|this)|share this|before (play|the session|you play)|one[- ]shot|for (one|two|three|four|five|six|\d+) players?"
+    r"|this (briefing|handout|document|scenario|adventure)|game ?master|the gm\b|players? (should|will|may))",
+    re.IGNORECASE,
+)
+# A place is fully qualified when its parent chain reaches one of these (operator: the planet in
+# 40k, the region in D&D).
+ANCHOR_KINDS = ("planet", "moon", "system", "continent", "region")
 SOURCES = "Sources:"
 
 
@@ -96,11 +106,21 @@ def opening_of(blocks: list[dict[str, Any]]) -> Optional[tuple[int, int, str, in
     return None
 
 
+def is_meta(paragraph: str) -> bool:
+    return bool(META.search(paragraph or ""))
+
+
+def told(text: str) -> str:
+    """The text's in-world paragraphs (lines), those addressed to the reader or GM left out."""
+    return "\n".join(line for line in (text or "").splitlines() if line.strip() and not is_meta(line))
+
+
 def briefing_text(blocks: list[dict[str, Any]]) -> str:
-    """A player briefing's first telling section (an Overview or how-to-use one passed over)."""
+    """A player briefing's first in-world section (an Overview or how-to-use one passed over, and
+    any paragraph addressed to the reader or GM)."""
     for text, level, index, end in sections(blocks):
         # The title (h1) spans the whole note; its sections are what's told.
-        if level > 1 and text and not OVERVIEW.match(text) and (body := section_text(blocks, index, end)):
+        if level > 1 and text and not OVERVIEW.match(text) and (body := told(section_text(blocks, index, end))):
             return body
     return ""
 
@@ -108,7 +128,7 @@ def briefing_text(blocks: list[dict[str, Any]]) -> str:
 def written_opening(description: str, briefing: str) -> str:
     """An opening from the scenario's description (when it tells something) and the briefing's first
     telling section; empty when neither has anything."""
-    parts = [part for part in ((description or "").strip(), (briefing or "").strip()) if len(part) >= MIN_TELLING and not is_pointer(part)]
+    parts = [part for part in (told(description).strip(), told(briefing).strip()) if len(part) >= MIN_TELLING and not is_pointer(part)]
     return "\n\n".join(parts)
 
 
@@ -217,6 +237,29 @@ def scenario_problems(
     if not locations:
         problems.append("no places")
     return problems
+
+
+def unqualified_places(locations: list[dict[str, Any]]) -> list[str]:
+    """Places whose parent chain reaches no planet, moon, system, continent or region: "name (top:
+    root, kind)", by name."""
+    by_id = {str(row["id"]): row for row in locations}
+    gaps: list[str] = []
+    for row in locations:
+        seen: set[str] = set()
+        current: Optional[dict[str, Any]] = row
+        top = row
+        anchored = False
+        while current is not None and str(current["id"]) not in seen:
+            seen.add(str(current["id"]))
+            top = current
+            if str(current.get("kind") or "") in ANCHOR_KINDS:
+                anchored = True
+                break
+            parent = current.get("parent_id")
+            current = by_id.get(str(parent)) if parent else None
+        if not anchored:
+            gaps.append(f"{row.get('name')} (top: {top.get('name')}, {top.get('kind') or 'no kind'})")
+    return sorted(gaps)
 
 
 def is_framing_name(name: str) -> bool:

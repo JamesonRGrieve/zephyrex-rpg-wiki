@@ -9,7 +9,7 @@ from zephyrex.testing.factories import create_user
 
 from rpg_wiki_app import create
 from scenario_repair.repair import repair, validate
-from scenario_repair.rules import briefing_text, is_framing_name, is_pointer, opening_of, scenario_problems, start_place
+from scenario_repair.rules import briefing_text, is_framing_name, is_meta, is_pointer, mended_framing, unqualified_places, written_opening, opening_of, scenario_problems, start_place
 from vault_import.api import Api
 
 POINTER = "See Sullenmire — Player Briefing; the event graph is The Sullenmire Infiltration, and play-by-play is in Sullenmire — Run 1 Record."
@@ -161,3 +161,49 @@ def test_a_framing_imported_as_lore_is_found_by_name_and_made_campaign_framing(a
     [mended] = [one for one in repair(api, dry_run=False) if one.campaign_id == scenario["id"]]
     assert mended.framing_kind == "Varek: Campaign Framing" and mended.problems_after == []
     assert api.get("journal", framing["id"])[0]["kind"] == "campaign_framing"
+
+
+
+def test_meta_paragraphs_never_open_a_scene() -> None:
+    """Zephyrex RPG on prod: Sullenmire's opening read "Read or share this before play. A solo
+    one-shot for one player." The opening takes only in-world text."""
+    meta = "Read or share this before play. A solo one-shot for one player."
+    assert is_meta(meta) and is_meta("This briefing is for the GM.") and not is_meta(DESCRIPTION)
+    assert written_opening(meta, "") == ""
+    assert written_opening(meta + "\n" + DESCRIPTION, briefing_text(BRIEFING)).startswith(DESCRIPTION)
+    flagged = [{"type": "p", "children": [{"text": meta}]}]
+    assert briefing_text([_h(2, "Who You Are"), *flagged, _p({"text": "An Inquisitor Lord, unknown and unannounced, steps off the transport."})]) == (
+        "An Inquisitor Lord, unknown and unannounced, steps off the transport."
+    )
+
+
+def test_places_must_reach_a_planet_or_region() -> None:
+    places = [
+        {"id": "w", "name": "Sullenmire", "kind": "planet"},
+        {"id": "b", "name": "The Bastion", "kind": "building", "parent_id": "w"},
+        {"id": "y", "name": "Processing Yard", "kind": "facility"},
+        {"id": "r", "name": "Yard Office", "kind": "room", "parent_id": "y"},
+    ]
+    assert unqualified_places(places) == ["Processing Yard (top: Processing Yard, facility)", "Yard Office (top: Processing Yard, facility)"]
+
+
+def test_an_earlier_repairs_bad_opening_is_written_again(api: Api) -> None:
+    scenario = api.create("campaign", name="Hive Desoleum", description="Read or share this before play. A solo one-shot for one player.", is_scenario=True)
+    api.create("location", name="Desoleum", kind="planet", campaign_id=scenario["id"])
+    briefing = api.create("journal", name="Hive Desoleum — Player Briefing", kind="note", campaign_id=scenario["id"], entry=BRIEFING)
+    earlier = mended_framing(_framing(briefing["id"]), "Read or share this before play. A solo one-shot for one player.", None)
+    framing = api.create("journal", name="Hive Desoleum: Campaign Framing", kind="campaign_framing", campaign_id=scenario["id"], entry=earlier)
+    [dry] = [one for one in repair(api, dry_run=True) if one.campaign_id == scenario["id"]]
+    assert dry.opening is not None and dry.opening.startswith("An Inquisitor Lord, the highest tier.") and "Read or share" not in dry.opening
+    assert "opening written" in dry.line() and repr(dry.opening[:200]) in dry.line()
+    [done] = [one for one in repair(api, dry_run=False) if one.campaign_id == scenario["id"]]
+    found = opening_of(blocks_of_entry(api.get("journal", framing["id"])[0]["entry"]))
+    assert found is not None and found[2].startswith("An Inquisitor Lord") and "Read or share" not in found[2] and done.problems_after == []
+    [again] = [one for one in repair(api, dry_run=False) if one.campaign_id == scenario["id"]]
+    assert again.opening is None and again.start is None
+
+
+def blocks_of_entry(entry: Any) -> list[dict[str, Any]]:
+    import json as jsonlib
+
+    return entry if isinstance(entry, list) else jsonlib.loads(entry)

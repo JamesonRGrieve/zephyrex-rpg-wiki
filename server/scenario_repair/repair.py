@@ -17,7 +17,7 @@ it touched."""
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from scenario_repair.rules import START, blocks_of, sections, briefing_text, is_briefing, is_framing_name, is_pointer, mended_framing, opening_of, scenario_problems, start_place, written_opening
+from scenario_repair.rules import START, blocks_of, sections, unmended, unqualified_places, briefing_text, is_briefing, is_framing_name, is_pointer, mended_framing, opening_of, scenario_problems, start_place, written_opening
 from vault_import.api import Api
 
 ORIGINS = {"imported": ("Imported", "transcript import"), "stereotypical": ("Stereotypical", "generated")}
@@ -36,6 +36,7 @@ class Mended:
     opening: Optional[str] = None
     start: Optional[str] = None
     origin: Optional[str] = None
+    unqualified: list[str] = field(default_factory=list)
     problems_before: list[str] = field(default_factory=list)
     problems_after: list[str] = field(default_factory=list)
 
@@ -46,11 +47,13 @@ class Mended:
         if self.kinds:
             parts.append("kinds " + ", ".join(f"{count} → {kind}" for kind, count in sorted(self.kinds.items())))
         if self.opening:
-            parts.append(f"opening written ({len(self.opening)} characters)")
+            parts.append(f"opening written ({len(self.opening)} characters): {self.opening[:200]!r}")
         if self.start:
             parts.append(f"starts at {self.start}")
         if self.origin:
             parts.append(f"origin {self.origin}")
+        if self.unqualified:
+            parts.append(f"{len(self.unqualified)} places reach no planet or region: " + "; ".join(self.unqualified[:5]) + ("…" if len(self.unqualified) > 5 else ""))
         if self.problems_before:
             parts.append("was: " + "; ".join(self.problems_before))
         parts.append("now: " + ("; ".join(self.problems_after) if self.problems_after else "playable"))
@@ -127,6 +130,7 @@ def mend(
     mended.problems_before = validate(api, campaign_id)
     persons = api.list("person", campaign_id=campaign_id)
     locations = api.list("location", campaign_id=campaign_id)
+    mended.unqualified = unqualified_places(locations)
     for person in persons:
         if not person.get("kind"):
             kind = "pc" if str(person["id"]) in (seated or set()) else "npc"
@@ -139,7 +143,10 @@ def mend(
         if not dry_run:
             api.update("journal", str(framing["id"]), kind="campaign_framing")
     if framing is not None:
-        blocks = blocks_of(framing.get("entry"))
+        held = blocks_of(framing.get("entry"))
+        # Mended from the framing as it was (an earlier repair's blocks taken off), so a repair whose
+        # rules have improved writes its opening again; one that would write the same changes nothing.
+        blocks = unmended(held)
         found = opening_of(blocks)
         opening = None
         if found is None or is_pointer(found[2], found[3]):
@@ -150,7 +157,10 @@ def mend(
         mended.opening = opening
         if place is not None and not any(START.match(text) for text, *_rest in sections(blocks)):
             mended.start = str(place.get("name") or "")
-        if mended_blocks != blocks and not dry_run:
+        if mended_blocks == held:
+            mended.opening = None
+            mended.start = None
+        elif not dry_run:
             api.update("journal", str(framing["id"]), entry=mended_blocks)
     if scenario:
         origin = _origin_of(api, campaign, framing, origins or {})
