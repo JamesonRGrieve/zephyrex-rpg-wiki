@@ -239,7 +239,7 @@ class Importer:
                 raise ValueError("Name the setting these campaigns belong to: --setting <slug>")
             found = [one for one in self.api.list("setting") if one.get("slug") == self.setting_slug]
             if not found:
-                raise ValueError(f"No setting has the slug {self.setting_slug!r}")
+                raise ValueError(f"No setting has the slug {self.setting_slug!r}: make it first (POST /v1/setting {{\"setting\": {{\"name\": …, \"slug\": \"{self.setting_slug}\"}}}})")
             self.setting_id = str(found[0]["id"])
         return self.setting_id
 

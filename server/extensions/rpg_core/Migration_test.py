@@ -177,3 +177,38 @@ def test_hooks_002_keeps_a_create_all_table_and_adds_its_missing_columns() -> No
         assert {"entry", "giver_person_id"} <= {column["name"] for column in inspector.get_columns("hooks")}
         assert {"hook_dependencies", "person_hooks", "faction_hooks"} <= set(inspector.get_table_names())
         assert connection.execute(sa.text("SELECT name, kind FROM hooks")).all() == [("Slay the wyrm", "major_quest")]
+
+
+def test_reality_019_renames_the_seeded_modern_in_place_and_keeps_every_other_setting() -> None:
+    """Operator, 2026-11-23: Reality replaces Modern, and no instance loses a row: Modern becomes
+    Reality with its id kept."""
+    import importlib.util
+    from pathlib import Path
+
+    import sqlalchemy as sa
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from zephyrex.lib.Environment import env
+
+    path = Path(__file__).parent / "migrations" / "versions" / "019_reality.py"
+    spec = importlib.util.spec_from_file_location("rpg_core_019_reality", path)
+    assert spec is not None and spec.loader is not None
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+
+    def settings_after(rows: list[tuple[str, str, str, str]]) -> list[tuple[str, str, str]]:
+        engine = sa.create_engine("sqlite://")
+        with engine.begin() as connection:
+            connection.execute(sa.text("CREATE TABLE settings (id VARCHAR PRIMARY KEY, name VARCHAR, slug VARCHAR, created_by_user_id VARCHAR, created_at DATETIME, updated_at DATETIME)"))
+            for row in rows:
+                connection.execute(sa.text("INSERT INTO settings (id, name, slug, created_by_user_id) VALUES (:id, :name, :slug, :owner)"), dict(zip(("id", "name", "slug", "owner"), row)))
+            with Operations.context(MigrationContext.configure(connection)):
+                migration.upgrade()
+                migration.upgrade()  # again: nothing more
+            return sorted((str(one.id) if one.slug != "reality" or one.id in {r[0] for r in rows} else "new", one.slug, one.name) for one in connection.execute(sa.text("SELECT id, slug, name FROM settings")))
+
+    system = env("SYSTEM_ID")
+    assert settings_after([("m1", "Modern", "modern", system), ("w1", "Other", "other-ip", system)]) == [("m1", "reality", "Reality"), ("w1", "other-ip", "Other")]
+    # A user's own "modern" is theirs: Reality is made beside it.
+    assert settings_after([("u1", "Modern", "modern", "someone")]) == [("new", "reality", "Reality"), ("u1", "modern", "Modern")]
+    assert settings_after([]) == [("new", "reality", "Reality")]

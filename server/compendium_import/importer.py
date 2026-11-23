@@ -130,7 +130,7 @@ class CompendiumImporter:
     def _setting(self) -> str:
         found = [one for one in self.api.list("setting") if one.get("slug") == self.setting_slug]
         if not found:
-            raise ValueError(f"No setting has the slug {self.setting_slug!r}")
+            raise ValueError(f"No setting has the slug {self.setting_slug!r}: make it first (POST /v1/setting {{\"setting\": {{\"name\": …, \"slug\": \"{self.setting_slug}\"}}}})")
         return str(found[0]["id"])
 
     def run(self, documents: list[Document]) -> Report:

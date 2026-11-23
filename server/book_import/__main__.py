@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""python -m book_import <books/<line> folders or .md files> --setting warhammer-40000 --app module:create --owner ID [--dry-run] [--unscoped] [--system slug]
+"""python -m book_import <books/<line> folders or .md files> --setting <slug> --app module:create --owner ID [--dry-run] [--unscoped] [--system slug]
 
 Each book's line (its header's line:) names its game system (LINE_SYSTEMS, or --system for every
 book given); a book whose system this server doesn't have is skipped and reported, since its pages
@@ -35,7 +35,7 @@ def books_in(paths: list[Path], exclude: str) -> list[Path]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="book_import", description="Transcribed books into the lore index")
     parser.add_argument("paths", type=Path, nargs="+", help="Book .md files, or folders of them (books/dh2, …)")
-    parser.add_argument("--setting", required=True, help="The setting's slug (warhammer-40000, dnd)")
+    parser.add_argument("--setting", required=True, help="The setting's slug (it must exist: POST /v1/setting)")
     parser.add_argument("--system", help="The game system's slug for every book given (else each book's line)")
     parser.add_argument("--unscoped", action="store_true", help="Import a book whose system this server lacks, with none")
     parser.add_argument("--exclude", default=EXCLUDE, help=f"Books whose file name matches are left out (default {EXCLUDE!r})")

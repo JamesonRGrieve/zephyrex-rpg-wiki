@@ -14,6 +14,7 @@ from rpg_wiki_app import create
 # The fixture vault's Holst.png is uploaded as his picture.
 pytestmark = pytest.mark.usefixtures("memory_store")
 from vault_import.api import Api
+from vault_import.testing import setting_of
 from vault_import.importer import Importer
 from vault_import.notes import read_vault
 
@@ -28,7 +29,10 @@ def server() -> TestClient:
 @pytest.fixture(scope="module")
 def api(server: TestClient) -> Api:
     user = create_user(server)
-    return Api(server, {"Authorization": f"Bearer {user.jwt}"})
+    api = Api(server, {"Authorization": f"Bearer {user.jwt}"})
+    api.fantasy = setting_of(api, "fixture-fantasy")  # type: ignore[attr-defined]
+    api.grimdark = setting_of(api, "fixture-grimdark")  # type: ignore[attr-defined]
+    return api
 
 
 def _one(api: Api, kind: str, campaign: str, name: str) -> dict[str, Any]:
@@ -37,7 +41,7 @@ def _one(api: Api, kind: str, campaign: str, name: str) -> dict[str, Any]:
 
 
 def test_the_vault_imports_with_its_links_and_a_second_run_changes_nothing(server: TestClient, api: Api) -> None:
-    first = Importer(api, setting_slug="dnd").run(read_vault(FIXTURE))
+    first = Importer(api, setting_slug=api.fantasy).run(read_vault(FIXTURE))
     assert first.refused == [], first.refused
     assert len(first.created) == 13, first.created  # the campaign and twelve records
     assert first.skipped == [
@@ -50,7 +54,7 @@ def test_the_vault_imports_with_its_links_and_a_second_run_changes_nothing(serve
     assert first.unread.get("Locations/The Fens.md") == ["location_type: warp-passage (not one of the location kinds)"]
 
     [campaign] = [row for row in api.list("campaign") if row["name"] == "The Split Antler"]
-    dnd = next(row for row in api.list("setting") if row["slug"] == "dnd")
+    dnd = next(row for row in api.list("setting") if row["slug"] == api.fantasy)
     assert campaign["setting_id"] == dnd["id"]
     # The campaign's provenance is its framing note's; a note's own is its record's (homebrew when none).
     assert (campaign["provenance"], campaign["source"]) == ("adapted", "The Lost Mine of Phandelver, Wizards of the Coast")
@@ -103,7 +107,7 @@ def test_the_vault_imports_with_its_links_and_a_second_run_changes_nothing(serve
     assert (journal["provenance"], journal["source"]) == ("adapted", "The Lost Mine of Phandelver, Wizards of the Coast, ch. 1")
     assert (holst["provenance"], holst["source"]) == ("homebrew", None)
 
-    second = Importer(api, setting_slug="dnd").run(read_vault(FIXTURE))
+    second = Importer(api, setting_slug=api.fantasy).run(read_vault(FIXTURE))
     assert (second.created, second.updated, second.refused) == ([], [], [])
     assert len(second.unchanged) == 12
 
@@ -111,7 +115,9 @@ def test_the_vault_imports_with_its_links_and_a_second_run_changes_nothing(serve
 def test_a_dry_run_writes_nothing(server: TestClient) -> None:
     user = create_user(server)
     api = Api(server, {"Authorization": f"Bearer {user.jwt}"})
-    report = Importer(api, setting_slug="dnd", dry_run=True).run(read_vault(FIXTURE))
+    api.fantasy = setting_of(api, "fixture-fantasy")  # type: ignore[attr-defined]
+    api.grimdark = setting_of(api, "fixture-grimdark")  # type: ignore[attr-defined]
+    report = Importer(api, setting_slug=api.fantasy, dry_run=True).run(read_vault(FIXTURE))
     assert len(report.created) == 13
     assert [row for row in api.list("campaign") if row["name"] == "The Split Antler"] == []
 
@@ -135,7 +141,9 @@ def test_new_records_are_made_one_plural_create_a_kind(server: TestClient) -> No
 
     user = create_user(server)
     api = Counting(server, {"Authorization": f"Bearer {user.jwt}"})
-    report = Importer(api, setting_slug="dnd").run(read_vault(FIXTURE))
+    api.fantasy = setting_of(api, "fixture-fantasy")  # type: ignore[attr-defined]
+    api.grimdark = setting_of(api, "fixture-grimdark")  # type: ignore[attr-defined]
+    report = Importer(api, setting_slug=api.fantasy).run(read_vault(FIXTURE))
     assert report.refused == [], report.refused
     kinds = [resource for resource, count in api.batches if count]
     assert sorted(kinds) == sorted(set(kinds)) and sum(count for _resource, count in api.batches) == 12
@@ -159,7 +167,9 @@ def test_dh_campaign_types_read_as_the_contracts(server: TestClient, tmp_path: P
         (tmp_path / path).write_text(text, encoding="utf-8")
     user = create_user(server)
     api = Api(server, {"Authorization": f"Bearer {user.jwt}"})
-    report = Importer(api, setting_slug="dnd").run(read_vault(tmp_path))
+    api.fantasy = setting_of(api, "fixture-fantasy")  # type: ignore[attr-defined]
+    api.grimdark = setting_of(api, "fixture-grimdark")  # type: ignore[attr-defined]
+    report = Importer(api, setting_slug=api.fantasy).run(read_vault(tmp_path))
     assert report.skipped == [] and report.refused == [], (report.skipped, report.refused)
     assert not any("kind" in field or "_type" in field for fields in report.unread.values() for field in fields), report.unread
     [campaign] = [row for row in api.list("campaign") if row["name"] == "Ash Run"]
@@ -198,10 +208,12 @@ def test_a_setting_pregen_note_is_a_listed_pregen_with_its_sheet(server: TestCli
     )
     user = create_user(server)
     api = Api(server, {"Authorization": f"Bearer {user.jwt}"})
-    report = Importer(api, setting_slug="warhammer-40000").run(read_vault(tmp_path))
+    api.fantasy = setting_of(api, "fixture-fantasy")  # type: ignore[attr-defined]
+    api.grimdark = setting_of(api, "fixture-grimdark")  # type: ignore[attr-defined]
+    report = Importer(api, setting_slug=api.grimdark).run(read_vault(tmp_path))
     assert report.refused == [] and report.skipped == [], (report.refused, report.skipped)
     assert not any(key.startswith(("initial_build", "canonical_sheet")) for keys in report.unread.values() for key in keys), report.unread
-    [setting] = [one for one in api.list("setting") if one.get("slug") == "warhammer-40000"]
+    [setting] = [one for one in api.list("setting") if one.get("slug") == api.grimdark]
     pregens = server.get(f"/v1/setting/{setting['id']}/pregen", headers={"Authorization": f"Bearer {user.jwt}"}).json()["pregens"]
     [gerta] = [one for one in pregens if one["name"] == "Gerta Skaal"]
     assert gerta["tags"] == ["Pregen", "Dark Heresy 2nd Edition", "Warrior"]
@@ -216,7 +228,7 @@ def test_a_setting_pregen_note_is_a_listed_pregen_with_its_sheet(server: TestCli
         f"tags: [character, pc, pregen, astropath-transcendent, rogue-trader]\ninitial_build: {base64.b64encode(json.dumps({'career': 'astropath'}).encode()).decode()}\n---\nShe listens.\n",
         encoding="utf-8",
     )
-    Importer(api, setting_slug="warhammer-40000").run(read_vault(tmp_path))
+    Importer(api, setting_slug=api.grimdark).run(read_vault(tmp_path))
     pregens = server.get(f"/v1/setting/{setting['id']}/pregen", headers={"Authorization": f"Bearer {user.jwt}"}).json()["pregens"]
     assert [one["tags"] for one in pregens if one["name"] == "Ione Sabre"] == [["Pregen", "Astropath Transcendent", "Rogue Trader"]]
     dw = tmp_path / "Setting" / "Pregens" / "Deathwatch" / "Brother Castellan Varro.md"
@@ -226,7 +238,7 @@ def test_a_setting_pregen_note_is_a_listed_pregen_with_its_sheet(server: TestCli
         "tags: [character, pc, pregen, tactical-marine, deathwatch]\n---\nHe holds the line.\n",
         encoding="utf-8",
     )
-    Importer(api, setting_slug="warhammer-40000").run(read_vault(tmp_path))
+    Importer(api, setting_slug=api.grimdark).run(read_vault(tmp_path))
     pregens = server.get(f"/v1/setting/{setting['id']}/pregen", headers={"Authorization": f"Bearer {user.jwt}"}).json()["pregens"]
     assert [one["tags"] for one in pregens if one["name"] == "Brother Castellan Varro"] == [["Pregen", "Deathwatch", "Tactical Marine"]]
 

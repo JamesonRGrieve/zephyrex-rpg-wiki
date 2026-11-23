@@ -21,7 +21,7 @@ from vault_import.notes import read_vault
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="vault_import", description="Import Obsidian vaults into the wiki")
     parser.add_argument("vaults", type=Path, nargs="+", help="Vault folders, imported in this order")
-    parser.add_argument("--setting", help="The setting's slug for the vaults' campaigns (dnd, warhammer-40000, …)")
+    parser.add_argument("--setting", help="The setting's slug for the vaults' campaigns (it must exist: POST /v1/setting)")
     parser.add_argument("--dry-run", action="store_true", help="Read and report; write nothing")
     parser.add_argument("--base-url", help="Over HTTP: the wiki's address, e.g. http://localhost:2000")
     parser.add_argument("--lite", action="store_true", help="Over HTTP to a lite edition: the API is under /api")

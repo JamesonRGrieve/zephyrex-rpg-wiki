@@ -22,7 +22,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--world-info", type=Path, action="append", default=[], help="A World Info file (.json); repeat for more")
     parser.add_argument("--campaign", help="The campaign they belong to (made in --setting when missing)")
     parser.add_argument("--setting-wide", action="store_true", help="The setting's canon instead of one campaign's")
-    parser.add_argument("--setting", help="The setting's slug (dnd, warhammer-40000, …)")
+    parser.add_argument("--setting", help="The setting's slug (it must exist: POST /v1/setting)")
     parser.add_argument("--dry-run", action="store_true", help="Read and report; write nothing")
     parser.add_argument("--base-url", help="Over HTTP: the wiki's address")
     parser.add_argument("--lite", action="store_true", help="Over HTTP to a lite edition: the API is under /api")

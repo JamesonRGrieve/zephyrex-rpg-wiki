@@ -22,7 +22,7 @@ from vault_import.connect import connection
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="compendium_import", description="Import a Foundry system's compendium packs into a setting's canon")
     parser.add_argument("dir", type=Path, help="dnd5e: the system's folder; wh40k: its src/packs-private")
-    parser.add_argument("--setting", required=True, help="The setting's slug (dnd, …)")
+    parser.add_argument("--setting", required=True, help="The setting's slug (it must exist: POST /v1/setting)")
     parser.add_argument("--system", choices=("dnd5e", "wh40k"), default="dnd5e", help="Whose packs these are")
     parser.add_argument("--packs", help="Comma-separated packs, or line folders for wh40k (default: all mapped)")
     parser.add_argument("--dry-run", action="store_true", help="Read and report; write nothing")

@@ -170,7 +170,8 @@
     "religion",
     "condition_type",
     "material_type",
-    "play_style"
+    "play_style",
+    "era"
   ],
   "status_kinds": [
     "entity_status",
@@ -282,7 +283,7 @@
     { "slug": "warhammer-fantasy", "name": "Warhammer Fantasy" },
     { "slug": "dnd", "name": "D&D" },
     { "slug": "fallout", "name": "Fallout" },
-    { "slug": "modern", "name": "Modern" }
+    { "slug": "reality", "name": "Reality" }
   ],
   "entity_types": [
     "person",

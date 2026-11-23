@@ -10,6 +10,7 @@ from zephyrex.testing.factories import create_user
 from rpg_wiki_app import create
 from vault_import.__main__ import main
 from vault_import.api import Api
+from vault_import.testing import setting_of
 
 FIXTURE = Path(__file__).parent / "fixtures" / "vault"
 
@@ -21,16 +22,19 @@ pytestmark = pytest.mark.usefixtures("memory_store")
 def test_in_process_it_imports_as_the_owner_and_again_changes_nothing(capsys: pytest.CaptureFixture[str]) -> None:
     server = TestClient(create())
     owner = create_user(server)
-    assert main([str(FIXTURE), "--app", "rpg_wiki_app:create", "--owner", str(owner.id), "--setting", "dnd"]) == 0
+    api = Api(server, {"Authorization": f"Bearer {owner.jwt}"})
+    api.fantasy = setting_of(api, "fixture-fantasy")  # type: ignore[attr-defined]
+    api.grimdark = setting_of(api, "fixture-grimdark")  # type: ignore[attr-defined]
+    assert main([str(FIXTURE), "--app", "rpg_wiki_app:create", "--owner", str(owner.id), "--setting", api.fantasy]) == 0
     assert capsys.readouterr().out.startswith("created: 13, updated: 0")
     mine = Api(server, {"Authorization": f"Bearer {owner.jwt}"})
     assert [row["name"] for row in mine.list("campaign")] == ["The Split Antler"]
-    assert main([str(FIXTURE), "--app", "rpg_wiki_app:create", "--owner", str(owner.id), "--setting", "dnd"]) == 0
+    assert main([str(FIXTURE), "--app", "rpg_wiki_app:create", "--owner", str(owner.id), "--setting", api.fantasy]) == 0
     assert capsys.readouterr().out.startswith("created: 0, updated: 0, unchanged: 12")
 
 
 def test_it_needs_one_way_in() -> None:
     with pytest.raises(SystemExit):
-        main([str(FIXTURE), "--setting", "dnd"])
+        main([str(FIXTURE), "--setting", "fixture-fantasy"])
     with pytest.raises(SystemExit):
         main([str(FIXTURE), "--app", "rpg_wiki_app:create"])

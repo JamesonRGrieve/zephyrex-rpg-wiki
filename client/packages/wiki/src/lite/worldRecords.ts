@@ -235,6 +235,14 @@ async function seedSettings(): Promise<void> {
     // eslint-disable-next-line no-await-in-loop -- one row at a time keeps each slug free
     await prisma.setting.update({ where: { id: row.id }, data: { slug } });
   }
+  // Reality replaces Modern (operator, 2026-11-23): the seeded row renamed in place, its id kept, so
+  // its campaigns and canon stay attached (the server's rpg_core 019).
+  const modern = rows.find((row) => row.slug === 'modern' && row.createdById === SYSTEM_OWNER_ID);
+  if (modern !== undefined && !taken.has('reality')) {
+    await prisma.setting.update({ where: { id: modern.id }, data: { slug: 'reality', name: 'Reality', updatedAt: new Date() } });
+    taken.delete('modern');
+    taken.add('reality');
+  }
   const missing = SEED_SETTINGS.filter((one) => !taken.has(one.slug));
   if (missing.length > 0) {
     await prisma.setting.createMany({

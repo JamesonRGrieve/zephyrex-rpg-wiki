@@ -589,9 +589,9 @@ class TestSettings:
         assert _put(server, person, "campaign", solenne, setting_id=elsewhere["id"]).status_code == 422
 
     def test_a_setting_takes_a_unique_slug_fixed_once_set(self, server: TestClient, person: Any, other: Any) -> None:
-        # The seeded Fallout holds "fallout", so a person's own takes the next number.
-        own = _create(server, person, "setting", name="Fallout")
-        assert own["slug"] == "fallout-2"
+        # The seeded Reality holds "reality", so a person's own takes the next number.
+        own = _create(server, person, "setting", name="Reality")
+        assert own["slug"] == "reality-2"
         realm = _create(server, person, "setting", name="Realm", slug="slug-realm")
         assert realm["slug"] == "slug-realm"
         clash = server.post("/v1/setting", json={"setting": {"name": "Theirs", "slug": "slug-realm"}}, headers=_headers(other))
@@ -612,6 +612,8 @@ class TestSettings:
         assert listed.status_code == 200, listed.text
         seeded = {one["slug"]: one for one in listed.json()["settings"] if one["slug"] in {s["slug"] for s in SEED_SETTINGS}}
         assert {slug: one["name"] for slug, one in seeded.items()} == {s["slug"]: s["name"] for s in SEED_SETTINGS}
+        # Operator, 2026-11-23: Reality replaces Modern.
+        assert "reality" in seeded and "modern" not in seeded
         forty_k = seeded["warhammer-40000"]
         campaign = _create(server, other, "campaign", name="Dunmarch", setting_id=forty_k["id"])
         assert campaign["setting_id"] == forty_k["id"]

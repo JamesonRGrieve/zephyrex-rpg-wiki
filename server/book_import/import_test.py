@@ -11,6 +11,7 @@ from book_import.__main__ import books_in, main, EXCLUDE
 from book_import.reader import read_book
 from rpg_wiki_app import create
 from vault_import.api import Api
+from vault_import.testing import setting_of
 
 BOOKS = Path(__file__).parent / "fixtures" / "books"
 CORE = BOOKS / "dh2" / "placeholder-core-rulebook.md"
@@ -34,7 +35,9 @@ def test_books_land_in_their_settings_canon_and_only_there(capsys: pytest.Captur
     server = TestClient(create())
     owner = create_user(server)
     api = Api(server, {"Authorization": f"Bearer {owner.jwt}"})
-    args = [str(BOOKS), "--setting", "dnd", "--app", "rpg_wiki_app:create", "--owner", str(owner.id)]
+    api.fantasy = setting_of(api, "fixture-fantasy")  # type: ignore[attr-defined]
+    api.grimdark = setting_of(api, "fixture-grimdark")  # type: ignore[attr-defined]
+    args = [str(BOOKS), "--setting", api.fantasy, "--app", "rpg_wiki_app:create", "--owner", str(owner.id)]
     # The wiki alone serves no game systems: without --unscoped a book is skipped, and says why.
     assert main(args) == 0
     assert "skipped placeholder-core-rulebook: no game system 'dark-heresy-2e'" in capsys.readouterr().out
@@ -44,7 +47,7 @@ def test_books_land_in_their_settings_canon_and_only_there(capsys: pytest.Captur
     first = capsys.readouterr().out
     assert "imported placeholder-core-rulebook: 2 pages" in first and "character-sheet" not in first
 
-    dnd = next(row for row in api.list("setting") if row["slug"] == "dnd")
+    dnd = next(row for row in api.list("setting") if row["slug"] == api.fantasy)
     other = api.create("setting", name="Book-less Setting")
     inside = api.create("campaign", name="Spire Run", setting_id=dnd["id"])
     outside = api.create("campaign", name="Elsewhere Run", setting_id=other["id"])

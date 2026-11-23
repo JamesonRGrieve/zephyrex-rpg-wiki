@@ -15,6 +15,7 @@ from compendium_import.foundry import read_packs
 from compendium_import.importer import COMPENDIUM_SOURCE, CompendiumImporter
 from rpg_wiki_app import create
 from vault_import.api import Api
+from vault_import.testing import setting_of
 
 FIXTURE = Path(__file__).parent / "fixtures" / "dnd5e"
 PACKS = ["rules", "races", "spells", "spells24", "items", "monsters", "actors24"]
@@ -32,10 +33,12 @@ def _canon(api: Api, kind: str, setting_id: str) -> dict[str, dict[str, Any]]:
 def test_the_srd_imports_as_canon_and_a_second_run_changes_nothing(server: TestClient) -> None:
     user = create_user(server)
     api = Api(server, {"Authorization": f"Bearer {user.jwt}"})
+    api.fantasy = setting_of(api, "fixture-fantasy")  # type: ignore[attr-defined]
+    api.grimdark = setting_of(api, "fixture-grimdark")  # type: ignore[attr-defined]
     documents = read_packs(FIXTURE, PACKS)
     assert all(one.uuid.startswith("Compendium.dnd5e.") for one in documents)
 
-    first = CompendiumImporter(api, "dnd").run(documents)
+    first = CompendiumImporter(api, api.fantasy).run(documents)
     assert first.refused == [], first.refused
     # Nothing stays out: the level-1 starter hero is the setting's pregen.
     assert first.skipped == []
@@ -51,7 +54,7 @@ def test_the_srd_imports_as_canon_and_a_second_run_changes_nothing(server: TestC
             "person Akra (Dragonborn Cleric, 2024)",
         ]
     )
-    [setting] = [one for one in api.list("setting") if one.get("slug") == "dnd"]
+    [setting] = [one for one in api.list("setting") if one.get("slug") == api.fantasy]
     journals = _canon(api, "journal", setting["id"])
     alarm = journals["Alarm"]
     # One Alarm from both editions: the 2024 text first, the 2014 one beneath, both sources named.
@@ -80,7 +83,7 @@ def test_the_srd_imports_as_canon_and_a_second_run_changes_nothing(server: TestC
     sheet = {row["key"]: row for row in api.properties("person", str(akra["id"]))}
     assert json.loads(sheet["Character sheet (2024)"]["value"])["class"] == "Cleric"
 
-    second = CompendiumImporter(api, "dnd").run(read_packs(FIXTURE, PACKS))
+    second = CompendiumImporter(api, api.fantasy).run(read_packs(FIXTURE, PACKS))
     assert (second.created, second.updated, second.refused) == ([], [], [])
     assert len(second.unchanged) == 8
 
@@ -88,9 +91,11 @@ def test_the_srd_imports_as_canon_and_a_second_run_changes_nothing(server: TestC
 def test_a_dry_run_writes_nothing(server: TestClient) -> None:
     user = create_user(server)
     api = Api(server, {"Authorization": f"Bearer {user.jwt}"})
-    report = CompendiumImporter(api, "dnd", dry_run=True).run(read_packs(FIXTURE, ["spells"]))
+    api.fantasy = setting_of(api, "fixture-fantasy")  # type: ignore[attr-defined]
+    api.grimdark = setting_of(api, "fixture-grimdark")  # type: ignore[attr-defined]
+    report = CompendiumImporter(api, api.fantasy, dry_run=True).run(read_packs(FIXTURE, ["spells"]))
     assert report.created == ["journal Alarm", f"journal {dnd5e.ATTRIBUTION_NAME}"]
-    [setting] = [one for one in api.list("setting") if one.get("slug") == "dnd"]
+    [setting] = [one for one in api.list("setting") if one.get("slug") == api.fantasy]
     assert "Alarm" not in _canon(api, "journal", setting["id"])
 
 
@@ -100,8 +105,10 @@ def test_the_40k_packs_import_raw_only_merged_across_lines(server: TestClient) -
 
     user = create_user(server)
     api = Api(server, {"Authorization": f"Bearer {user.jwt}"})
+    api.fantasy = setting_of(api, "fixture-fantasy")  # type: ignore[attr-defined]
+    api.grimdark = setting_of(api, "fixture-grimdark")  # type: ignore[attr-defined]
     documents = wh40k.read_lines(Path(__file__).parent / "fixtures" / "wh40k")
-    report = CompendiumImporter(api, "warhammer-40000", system=wh40k_system()).run(documents)
+    report = CompendiumImporter(api, api.grimdark, system=wh40k_system()).run(documents)
     assert report.refused == [], report.refused
     # A homebrew-only condition stays out: only the printed books come in.
     assert [why for _path, why in report.skipped] == ["no printed-book (raw) source"]
@@ -115,7 +122,7 @@ def test_the_40k_packs_import_raw_only_merged_across_lines(server: TestClient) -
             "person Chimera Armoured Transport",
         ]
     )
-    [setting] = [one for one in api.list("setting") if one.get("slug") == "warhammer-40000"]
+    [setting] = [one for one in api.list("setting") if one.get("slug") == api.grimdark]
     resistance = _canon(api, "journal", setting["id"])["Resistance"]
     # DH2's text first, Dark Heresy's beneath; every printed book named.
     assert "DH2: Core Rulebook, p. 131" in resistance["source"] and "DH: Core Rulebook, p. 122" in resistance["source"]
@@ -123,5 +130,5 @@ def test_the_40k_packs_import_raw_only_merged_across_lines(server: TestClient) -
     assert _canon(api, "location", setting["id"])["Bansidhe"]["kind"] == "vessel"
     chimera = _canon(api, "person", setting["id"])["Chimera Armoured Transport"]
     assert (chimera["kind"], chimera["picture_url"]) == ("vehicle", "https://static.wikia.nocookie.net/warhammer40k/images/0/06/Chimera01.png")
-    again = CompendiumImporter(api, "warhammer-40000", system=wh40k_system()).run(wh40k.read_lines(Path(__file__).parent / "fixtures" / "wh40k"))
+    again = CompendiumImporter(api, api.grimdark, system=wh40k_system()).run(wh40k.read_lines(Path(__file__).parent / "fixtures" / "wh40k"))
     assert (again.created, again.updated) == ([], [])

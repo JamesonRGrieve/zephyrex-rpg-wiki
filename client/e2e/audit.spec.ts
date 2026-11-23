@@ -226,7 +226,7 @@ async function audit(browser: Browser, testInfo: TestInfo, stage: string, target
 async function expectSeedShows(page: Page, seeded: Seeded): Promise<void> {
   const w = `/w/${seeded.world}`;
   const shows: [string, string[]][] = [
-    ['/w', ['The Grim Future', 'The Salt Coast', 'Warhammer 40,000']],
+    ['/w', ['The Grim Future', 'The Salt Coast', 'Warhammer 40,000', 'Reality']],
     // A setting's canon has the campaign's pages; a campaign shows its setting's canon, marked.
     [`/w/setting-${seeded.setting}/faction`, ['Adeptus Mechanicus']],
     [`${w}/faction`, ['Lantern Guild', 'Adeptus Mechanicus', 'Canon']],
@@ -272,16 +272,18 @@ test.describe.serial('visual audit', () => {
     // S6b: the contract's seeded settings are everyone's to read and read as missing to anyone changing them; slugs are unique.
     const listed = (await (await request.get('/api/v1/setting')).json()) as { settings: { id: string; slug: string; name: string; updated_at: string }[] };
     const bySlug = new Map(listed.settings.map((one) => [one.slug, one]));
-    for (const slug of ['warhammer-40000', 'age-of-sigmar', 'warhammer-fantasy', 'dnd', 'fallout', 'modern']) expect(bySlug.has(slug), slug).toBe(true);
+    // Reality replaces Modern (operator, 2026-11-23).
+    for (const slug of ['warhammer-40000', 'age-of-sigmar', 'warhammer-fantasy', 'dnd', 'fallout', 'reality']) expect(bySlug.has(slug), slug).toBe(true);
+    expect(bySlug.has('modern')).toBe(false);
     expect(bySlug.get('the-grim-future')?.id).toBe(seeded.setting);
-    const fortyK = bySlug.get('warhammer-40000')!;
+    const fortyK = bySlug.get('reality')!;
     const fixed = await request.get(`/api/v1/setting/${fortyK.id}`);
     const refused = await request.put(`/api/v1/setting/${fortyK.id}`, { data: { setting: { name: 'Mine now' } }, headers: { 'If-Match': fixed.headers().etag ?? '' } });
     expect(refused.status(), await refused.text()).toBe(404);
-    const clash = await request.post('/api/v1/setting', { data: { setting: { name: 'Another Fallout', slug: 'fallout' } } });
+    const clash = await request.post('/api/v1/setting', { data: { setting: { name: 'Another Reality', slug: 'reality' } } });
     expect(clash.status(), await clash.text()).toBe(409);
-    const numbered = await request.post('/api/v1/setting', { data: { setting: { name: 'Fallout' } } });
-    expect(((await numbered.json()) as { setting: { slug: string } }).setting.slug).toBe('fallout-2');
+    const numbered = await request.post('/api/v1/setting', { data: { setting: { name: 'Reality' } } });
+    expect(((await numbered.json()) as { setting: { slug: string } }).setting.slug).toBe('reality-2');
     // S4b: a kit's keys are checked and kept as JSON text; a template never syncs.
     const kit = await request.post('/api/v1/property_kit', {
       data: { property_kit: { name: 'City', campaign_id: seeded.world, properties: [{ key: 'Population' }, { key: 'Garrison', value_type: 'number', default: 3 }] } },

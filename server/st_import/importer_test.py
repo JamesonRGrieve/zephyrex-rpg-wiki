@@ -11,6 +11,7 @@ from st_import.importer import StImporter
 from st_import.sillytavern import read_card, read_world_info
 from st_import.sillytavern_test import png_card
 from vault_import.api import Api
+from vault_import.testing import setting_of
 from zephyrex.testing.factories import create_user
 
 from rpg_wiki_app import create
@@ -26,12 +27,14 @@ def test_cards_and_world_info_import_and_a_second_run_changes_nothing(tmp_path: 
     server = TestClient(create())
     user = create_user(server)
     api = Api(server, {"Authorization": f"Bearer {user.jwt}"})
+    api.fantasy = setting_of(api, "fixture-fantasy")  # type: ignore[attr-defined]
+    api.grimdark = setting_of(api, "fixture-grimdark")  # type: ignore[attr-defined]
     vel_png = tmp_path / "vel.png"
     vel_png.write_bytes(png_card(("ccv3", json.loads((FIXTURES / "vel.v3.json").read_text()))))
     cards = [read_card(FIXTURES / "holst.v2.json"), read_card(vel_png)]
     entries = read_world_info(FIXTURES / "waystones.world.json")
 
-    first = StImporter(api, "The Split Antler", "dnd").import_all(cards, entries)
+    first = StImporter(api, "The Split Antler", api.fantasy).import_all(cards, entries)
     assert first.refused == [], first.refused
     assert sorted(first.created) == sorted(
         ["campaign The Split Antler", "person Holst", "person Vel", "journal Holst's Stable", "journal The Waystones", "journal keeper"]
@@ -54,6 +57,6 @@ def test_cards_and_world_info_import_and_a_second_run_changes_nothing(tmp_path: 
     assert (properties["Alternate greetings"]["value"], properties["Creator notes"]["is_private"]) == ("Back again?", True)
     assert "System prompt" not in properties
 
-    second = StImporter(api, "The Split Antler", "dnd").import_all(cards, entries)
+    second = StImporter(api, "The Split Antler", api.fantasy).import_all(cards, entries)
     assert (second.created, second.updated, second.refused) == ([], [], [])
     assert len(second.unchanged) == 5
