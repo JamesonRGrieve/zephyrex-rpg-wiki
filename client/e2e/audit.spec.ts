@@ -269,6 +269,19 @@ test.describe.serial('visual audit', () => {
     const both = (await (await request.get(`/api/v1/world_entity?campaign_id=${seeded.world}&include_setting=true`)).json()) as { world_entities: { name: string }[] };
     expect(both.world_entities.map((entity) => entity.name)).toContain('Adeptus Mechanicus');
     expect(both.world_entities.map((entity) => entity.name)).toContain('Port Gull');
+    // Era scoping: a campaign of an era sees its era's canon and the era-less, never another era's.
+    const created = async (resource: string, body: Record<string, unknown>): Promise<string> =>
+      ((await (await request.post(`/api/v1/${resource}`, { data: { [resource]: body } })).json()) as Record<string, { id: string }>)[resource]!.id;
+    const victorianEra = await created('taxon', { name: 'Victorian', kind: 'era', setting_id: seeded.setting });
+    const coldWarEra = await created('taxon', { name: 'Cold War', kind: 'era', setting_id: seeded.setting });
+    const bunker = await created('location', { name: 'Era Bunker', kind: 'facility', setting_id: seeded.setting });
+    await created('entity_taxon', { taxon_id: coldWarEra, target_entity_type: 'location', target_entity_id: bunker });
+    const eraCampaign = await created('campaign', { name: 'Era Run', setting_id: seeded.setting });
+    await created('entity_taxon', { taxon_id: victorianEra, target_entity_type: 'campaign', target_entity_id: eraCampaign });
+    const eraSeen = (await (await request.get(`/api/v1/world_entity?campaign_id=${eraCampaign}&include_setting=true`)).json()) as { world_entities: { name: string }[] };
+    const eraNames = eraSeen.world_entities.map((entity) => entity.name);
+    expect(eraNames).toContain('Adeptus Mechanicus');
+    expect(eraNames).not.toContain('Era Bunker');
     // S6b: the contract's seeded settings are everyone's to read and read as missing to anyone changing them; slugs are unique.
     const listed = (await (await request.get('/api/v1/setting')).json()) as { settings: { id: string; slug: string; name: string; updated_at: string }[] };
     const bySlug = new Map(listed.settings.map((one) => [one.slug, one]));

@@ -1,0 +1,10 @@
+{
+  "_comment": "Era scoping (operator, 2026-11-23: Reality's eras work \"like the 40k lines\"): a setting's canon record tagged with eras (taxa of kind era) reaches a campaign only when the campaign shares one of them; a record with no era reaches every campaign; a campaign with no era sees all its setting's canon. Names match trimmed and without regard to case. wiki_shared/Eras.py and lib/eras.ts compute the same.",
+  "cases": [
+    {"name": "era-less canon reaches an era campaign", "record": [], "campaign": ["Victorian"], "visible": true},
+    {"name": "its own era", "record": ["Victorian"], "campaign": ["victorian "], "visible": true},
+    {"name": "another era stays out", "record": ["Cold War"], "campaign": ["Victorian"], "visible": false},
+    {"name": "one shared era of several", "record": ["World War II", "Cold War"], "campaign": ["Cold War"], "visible": true},
+    {"name": "a campaign with no era sees all", "record": ["Cold War"], "campaign": [], "visible": true}
+  ]
+}

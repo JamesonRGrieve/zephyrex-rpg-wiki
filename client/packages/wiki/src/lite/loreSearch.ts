@@ -34,6 +34,7 @@ import {
   waiting,
 } from './loreStore';
 import { WORLD_ENTITY_KINDS, type WorldEntityKind } from './worldEntities';
+import { eraExcluded } from './eras';
 import { matchedEntities } from './worldEntityRoute';
 
 export const EMBED_BATCH = 16;
@@ -179,10 +180,12 @@ export async function campaignLoreSearchPost(request: NextRequest, context: { pa
     }
 
     const fused = fuse(rankings, exact);
+    // Never another era's canon (era scoping, as the server's).
+    const otherEra = new Set(input.include_setting ? await eraExcluded(owner.id, campaign.id) : []);
     const ranks = Object.fromEntries(Object.entries({ exact, ...rankings }).map(([name, ids]) => [name, new Map(ids.map((id, index) => [id, index + 1]))]));
     const rows = chunksById(store, fused.slice(0, input.k * 3).map(([id]) => id));
     const ordered = fused
-      .filter(([id]) => rows.has(id))
+      .filter(([id]) => rows.has(id) && !otherEra.has(rows.get(id)!.target_entity_id))
       .map(([id, score]) => {
         const row = rows.get(id)!;
         return {

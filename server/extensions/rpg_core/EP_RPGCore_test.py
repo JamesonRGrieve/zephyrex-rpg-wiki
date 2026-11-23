@@ -1822,3 +1822,37 @@ class TestTtsVoice:
         # Copied at start.
         _run, ids = _started(server, person, _start_with(server, person, scenario["id"], []))
         assert row(ids[tam["id"]])["tts_voice"] == "echo"
+
+
+class TestEras:
+    """Operator, 2026-11-23: Reality's eras work like the 40k lines: a campaign sees its era's canon
+    and every era-less canon record of its setting, never another era's."""
+
+    def test_a_campaign_sees_its_eras_canon_and_the_era_less(self, server: TestClient, person: Any) -> None:
+        from zephyrex.extensions.AbstractExtensionProvider import loaded_ability
+
+        reality = _create(server, person, "setting", name="Era Reality")
+        victorian = _create(server, person, "taxon", name="Victorian", kind="era", setting_id=reality["id"])
+        cold_war = _create(server, person, "taxon", name="Cold War", kind="era", setting_id=reality["id"])
+        london = _create(server, person, "location", name="London", kind="city", setting_id=reality["id"])
+        gaslight = _create(server, person, "item", name="Gaslight Lamp", kind="misc", setting_id=reality["id"])
+        bunker = _create(server, person, "location", name="Fallout Bunker", kind="facility", setting_id=reality["id"])
+        for taxon, record, kind in ((victorian, gaslight, "item"), (cold_war, bunker, "location")):
+            _create(server, person, "entity_taxon", taxon_id=taxon["id"], target_entity_type=kind, target_entity_id=record["id"])
+        scenario = _create(server, person, "campaign", name="Ripper Hunt", setting_id=reality["id"], is_scenario=True)
+        _create(server, person, "entity_taxon", taxon_id=victorian["id"], target_entity_type="campaign", target_entity_id=scenario["id"])
+        eraless = _create(server, person, "campaign", name="Anywhen", setting_id=reality["id"])
+
+        registry = server.app.state.model_registry  # type: ignore[attr-defined]
+        synced = lambda campaign: {e["name"] for e in server.get(f"/v1/world_entity?campaign_id={campaign}&include_setting=true", headers=_headers(person)).json()["world_entities"]}  # noqa: E731
+        assert synced(scenario["id"]) == {"London", "Gaslight Lamp"}
+        assert synced(eraless["id"]) == {"London", "Gaslight Lamp", "Fallout Bunker"}
+        matching = loaded_ability(registry, "rpg_core", "world_entities_matching")
+        named = {e["name"] for e in matching(registry, str(person.id), scenario["id"], "From London the gaslight lamp leads to the fallout bunker")["world_entities"]}
+        assert named == {"London", "Gaslight Lamp"}
+        search = loaded_ability(registry, "rpg_core", "lore_search")
+        found = {p["name"] for p in search(registry, str(person.id), scenario["id"], "London gaslight lamp fallout bunker")["passages"]}
+        assert "Fallout Bunker" not in found and "London" in found
+        # A playthrough keeps its scenario's era.
+        _run, ids = _started(server, person, _start_with(server, person, scenario["id"], []))
+        assert synced(ids[scenario["id"]]) == {"London", "Gaslight Lamp"}

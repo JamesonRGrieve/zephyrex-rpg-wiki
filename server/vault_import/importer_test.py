@@ -262,3 +262,31 @@ def test_a_scenario_left_unplayable_is_reported_loudly(api: Api, tmp_path: Path)
     assert "UNPLAYABLE Pointer Hold" in report.text(False)
     [held] = [row for row in api.list("person") if row["name"] == "Kindless"]
     assert held["kind"] == "npc"
+
+
+def test_era_marks_canon_and_a_framing_marks_its_campaign(api: Api, tmp_path: Path) -> None:
+    """Zephyrex RPG Settings' vaults: `era:` on a canon note (one or a list) and on a scenario's
+    framing note become era taxa, so era scoping keeps other eras' canon out."""
+    (tmp_path / "Lore").mkdir()
+    (tmp_path / "Locations").mkdir()
+    (tmp_path / "Locations" / "Gaslit Street.md").write_text(
+        "---\nentity_type: location\nname: Gaslit Street\nkind: district\nsetting_wide: true\nera: Victorian\n---\nFog.\n", encoding="utf-8"
+    )
+    (tmp_path / "Locations" / "Long Bunker.md").write_text(
+        "---\nentity_type: location\nname: Long Bunker\nkind: facility\nsetting_wide: true\nera: [World War II, Cold War]\n---\nConcrete.\n", encoding="utf-8"
+    )
+    (tmp_path / "Lore" / "Fog Hunt: Campaign Framing.md").write_text(
+        "---\nentity_type: journal\nkind: campaign_framing\nname: \"Fog Hunt: Campaign Framing\"\ncampaign: Fog Hunt\nera: Victorian\n---\n"
+        "## Opening Situation\n\nFog rolls off the river as a constable's whistle shrills on the Gaslit Street.\n",
+        encoding="utf-8",
+    )
+    report = Importer(api, setting_slug=api.fantasy).run(read_vault(tmp_path))  # type: ignore[attr-defined]
+    assert report.refused == [], report.refused
+    eras = {str(row["id"]): str(row["name"]) for row in api.list("taxon", kind="era")}
+    def eras_on(kind: str, record_id: str) -> set[str]:
+        return {eras[str(row["taxon_id"])] for row in api.list("entity_taxon", target_entity_type=kind, target_entity_id=record_id) if str(row["taxon_id"]) in eras}
+    [street] = [row for row in api.list("location") if row["name"] == "Gaslit Street"]
+    [bunker] = [row for row in api.list("location") if row["name"] == "Long Bunker"]
+    [hunt] = [row for row in api.list("campaign") if row["name"] == "Fog Hunt"]
+    assert eras_on("location", street["id"]) == {"Victorian"} and eras_on("location", bunker["id"]) == {"World War II", "Cold War"}
+    assert eras_on("campaign", hunt["id"]) == {"Victorian"}

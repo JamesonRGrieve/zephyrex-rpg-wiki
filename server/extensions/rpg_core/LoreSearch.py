@@ -369,9 +369,10 @@ def lore_search(
 ) -> LoreSearched:
     """The campaign's passages for ``query``, best first, at most ``k`` and ``token_budget``."""
     from zephyrex.logic.AbstractLogicManager.models import FieldComparison
-    from zephyrex.extensions.rpg_core.BLL_RPGCore import CampaignManager, _manager, world_entities_by_id, world_entities_matching  # type: ignore[import-not-found]
+    from zephyrex.extensions.rpg_core.BLL_RPGCore import CampaignManager, _manager, era_excluded, world_entities_by_id, world_entities_matching  # type: ignore[import-not-found]
 
     campaign = _manager(model_registry, requester_id, CampaignManager).get(id=campaign_id)
+    excluded = era_excluded(model_registry, requester_id, campaign_id) if include_setting else frozenset()
     scope, params = _scope(campaign, include_setting)
     if kinds:
         scope += " AND target_entity_type IN :kinds"
@@ -460,8 +461,11 @@ def lore_search(
             ranks={name: found_ranks[one] for name, found_ranks in ranks.items() if one in found_ranks},
         )
         for one, score in fused
-        # A book's pages are canon of the setting, in scope already; a record, as its requester sees it.
-        if one in rows and (rows[one].target_entity_type == BOOK or str(rows[one].target_entity_id) in visible)
+        # A book's pages are canon of the setting, in scope already; a record, as its requester sees it;
+        # never another era's canon.
+        if one in rows
+        and (rows[one].target_entity_type == BOOK or str(rows[one].target_entity_id) in visible)
+        and str(rows[one].target_entity_id) not in excluded
     ]
     packed = [LorePassage.model_validate(one) for one in pack([passage.model_dump() for passage in ordered], token_budget)][:k]
     return LoreSearched(passages=packed, methods=methods)

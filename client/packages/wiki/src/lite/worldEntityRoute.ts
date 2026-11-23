@@ -11,6 +11,7 @@ import { ALWAYS, recordKeys, textGrams } from '../lib/worldKeys';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { prisma } from './db';
+import { eraExcluded } from './eras';
 import {
   DEFAULT_LIMIT,
   type EntityRow,
@@ -164,7 +165,7 @@ export async function worldEntityGet(request: NextRequest): Promise<NextResponse
     // The campaign's own records, and (asked for, or alone) its setting's canon: no campaign.
     const scopes: object[] = [
       ...(campaignId === null ? [] : [{ createdById: owner.id, campaignId, ...changed }]),
-      ...(canonOf === null ? [] : [{ createdById: owner.id, settingId: canonOf, campaignId: null, ...changed }]),
+      ...(canonOf === null ? [] : [{ createdById: owner.id, settingId: canonOf, campaignId: null, ...(await notAnotherEra(owner.id, campaignId)), ...changed }]),
     ];
     const rows = await Promise.all(
       scopes.flatMap((where) =>
@@ -220,7 +221,7 @@ export async function matchedEntities(
   const live = { OR: [{ isTemplate: null }, { isTemplate: false }], deletedAt: null };
   const scopes: object[] = [
     { createdById: ownerId, campaignId, ...live },
-    ...(includeSetting && campaign.settingId ? [{ createdById: ownerId, settingId: campaign.settingId, campaignId: null, ...live }] : []),
+    ...(includeSetting && campaign.settingId ? [{ createdById: ownerId, settingId: campaign.settingId, campaignId: null, ...(await notAnotherEra(ownerId, campaignId)), ...live }] : []),
   ];
   const rows = (await Promise.all(scopes.flatMap((where) => WORLD_ENTITY_KINDS.map(async (kind) => (await rowsOf(kind, where)).map((row) => entityOf(kind, row)))))).flat();
   const grams = textGrams(text);
@@ -237,4 +238,11 @@ export async function matchedEntities(
     .filter((entity) => wanted.size === 0 || entity.tags.some((tag: string) => wanted.has(tag.toLocaleLowerCase())))
     .slice(0, limit);
   return { shown, matched: Object.fromEntries(shown.map((entity) => [entity.id, [...new Set(matched.get(entity.id))].sort()])) };
+}
+
+/** A canon scope's filter keeping out another era's records (none for a setting read alone). */
+async function notAnotherEra(ownerId: string, campaignId: string | null): Promise<object> {
+  if (campaignId === null) return {};
+  const excluded = await eraExcluded(ownerId, campaignId);
+  return excluded.length === 0 ? {} : { id: { notIn: excluded } };
 }

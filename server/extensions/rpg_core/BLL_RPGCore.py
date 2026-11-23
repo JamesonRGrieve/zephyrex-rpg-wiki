@@ -1528,9 +1528,10 @@ def _gather(
     start: Optional[datetime],
     floor: Optional[tuple[datetime, str]],
     limit: int,
+    excluded: frozenset[str] = frozenset(),
 ) -> list[WorldEntity]:
     """The changes matching ``filters`` for each kind, past the cursor; with ``canon_only``, only
-    records with no campaign (a setting's canon)."""
+    records with no campaign (a setting's canon); never the ``excluded`` (another era's canon)."""
     found: list[WorldEntity] = []
     for kind in wanted:
         manager = _manager(model_registry, requester_id, WORLD_ENTITY_MANAGERS[kind])
@@ -1541,6 +1542,8 @@ def _gather(
                 record = change.record
                 campaign = getattr(record, "campaign_id", None)
                 if canon_only and campaign is not None:
+                    continue
+                if str(getattr(record, "id", "")) in excluded:
                     continue
                 # A template (S4b, W7) is copied into campaigns, never a world fact: rpg-ai never sees it.
                 if getattr(record, "is_template", None):
@@ -1697,8 +1700,32 @@ def world_entities(
     found = _gather(model_registry, requester_id, wanted, {"campaign_id": campaign_id}, False, start, floor, limit)
     setting_id = getattr(campaign, "setting_id", None)
     if include_setting and setting_id:
-        found += _gather(model_registry, requester_id, wanted, {"setting_id": setting_id}, True, start, floor, limit)
+        excluded = era_excluded(model_registry, requester_id, str(campaign.id))
+        found += _gather(model_registry, requester_id, wanted, {"setting_id": setting_id}, True, start, floor, limit, excluded)
     return _paged(found, limit, model_registry, requester_id)
+
+
+def era_excluded(model_registry: Any, requester_id: str, campaign_id: str) -> frozenset[str]:
+    """The records another era holds, kept from this campaign's view of its setting's canon (operator,
+    2026-11-23: Reality's eras work like the 40k lines; wiki_shared/Eras.py): none when the campaign
+    has no era; else every record whose eras (taxa of kind era) it shares none of. Era-less canon is
+    never excluded."""
+    from zephyrex.extensions.wiki_shared.Eras import ERA, era_visible  # type: ignore[import-not-found]
+    from zephyrex.logic.AbstractLogicManager.models import FieldComparison
+
+    taxa = {str(row.id): str(row.name or "") for row in _every(_manager(model_registry, requester_id, TaxonManager), [FieldComparison(TaxonModel, "kind", "eq", ERA)])}
+    if not taxa:
+        return frozenset()
+    links = _manager(model_registry, requester_id, EntityTaxonManager)
+    eras_of: dict[str, set[str]] = {}
+    ids = sorted(taxa)
+    for start in range(0, len(ids), 500):
+        for row in _every(links, [FieldComparison(links.Model, "taxon_id", "in", ids[start : start + 500])]):
+            eras_of.setdefault(str(row.target_entity_id), set()).add(taxa[str(row.taxon_id)])
+    own = eras_of.get(str(campaign_id), set())
+    if not own:
+        return frozenset()
+    return frozenset(target for target, eras in eras_of.items() if target != str(campaign_id) and not era_visible(eras, own))
 
 
 def setting_canon(
@@ -1940,12 +1967,13 @@ def world_entities_matching(
     setting_id = str(getattr(campaign, "setting_id", "") or "")
     grams = sorted(text_grams(text) | {ALWAYS})
     keys = WorldKeyManager(requester_id=env("SYSTEM_ID"), model_registry=model_registry)
+    excluded = era_excluded(model_registry, requester_id, str(campaign_id)) if include_setting else frozenset()
     matched: dict[str, list[str]] = {}
     kinds: dict[str, str] = {}
     for start in range(0, len(grams), KEY_BATCH):
         for row in keys.list(filters=[FieldComparison(keys.Model, "key", "in", grams[start : start + KEY_BATCH])]) or []:
             own = str(row.campaign_id or "") == str(campaign_id)
-            canon = include_setting and not row.campaign_id and setting_id and str(row.setting_id or "") == setting_id
+            canon = include_setting and not row.campaign_id and setting_id and str(row.setting_id or "") == setting_id and str(row.target_entity_id) not in excluded
             if own or canon:
                 matched.setdefault(str(row.target_entity_id), []).append(str(row.key))
                 kinds[str(row.target_entity_id)] = str(row.target_entity_type)

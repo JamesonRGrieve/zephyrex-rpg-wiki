@@ -72,7 +72,7 @@ KIND_SYNONYMS = {
 }
 # Handled elsewhere, or the note's identity; anything else in frontmatter is reported as unread.
 READ = {
-    "entity_type", "kind", "name", "campaign", "setting_wide", "is_private", "tags", "aliases", "status",
+    "entity_type", "kind", "name", "campaign", "setting_wide", "is_private", "tags", "aliases", "status", "era",
     "race", "faction", "location", "relations", "parent_location", "parent", "parent_hook", "depends_on",
     "initial_build", "canonical_sheet",
     "holder", "quantity", "session_number", "session_date", "maps", "keywords", "voice", "provenance", "source", "image", "picture", "system", "editions", "description",
@@ -681,6 +681,20 @@ class Importer:
         wanted = [] if framing else [(tag, "tag") for tag in _tags(meta, kind)]
         if _text(meta.get("race")):
             wanted.append((str(meta["race"]).strip(), "race"))
+        # era: (one or a list): era-bound canon, or on a framing note its campaign's era (operator,
+        # 2026-11-23: Reality's eras work like the 40k lines; era scoping in rpg_core).
+        eras = [str(one).strip() for one in _list(meta.get("era")) if _text(one)]
+        if framing and eras and scope.get("campaign_id"):
+            campaign_id = str(scope["campaign_id"])
+            on_campaign = {one["taxon_id"] for one in self.api.list("entity_taxon", target_entity_type="campaign", target_entity_id=campaign_id)}
+            for era in eras:
+                taxon = self._taxon(scope, era, "era")
+                if taxon not in on_campaign:
+                    self.api.create("entity_taxon", taxon_id=taxon, target_entity_type="campaign", target_entity_id=campaign_id)
+                    on_campaign.add(taxon)
+                    changed = True
+        elif eras:
+            wanted += [(era, "era") for era in eras]
         for name, taxon_kind in wanted:
             taxon = self._taxon(scope, name, taxon_kind)
             if taxon not in tagged:
