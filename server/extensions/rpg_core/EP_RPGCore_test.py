@@ -1730,3 +1730,68 @@ class TestLoreSearch:
         # A model of the wrong width is refused by name, never stored.
         with pytest.raises(ValueError, match="768"):
             LoreSearch._vector_literal([0.0] * 384)
+
+
+
+class TestEmbeddingPace:
+    """Self Hosted AI, 2026-11-23: the embed card is shared, so the full backfill runs off-hours,
+    one request at a time, backing off on failure; bifrost wants a bearer token."""
+
+    def test_the_backfill_window(self) -> None:
+        from zephyrex.extensions.rpg_core.LoreSearch import in_backfill_window  # type: ignore[import-not-found]
+
+        assert [hour for hour in range(24) if in_backfill_window(hour)] == [1, 2, 3, 4, 5, 6]
+        assert [hour for hour in range(24) if in_backfill_window(hour, "22-3")] == [0, 1, 2, 22, 23]
+        assert all(in_backfill_window(hour, "always") for hour in range(24)) and not any(in_backfill_window(hour, "never") for hour in range(24))
+
+    def test_a_failing_embedder_backs_off_and_never_stops_the_loop(self, server: TestClient) -> None:
+        import asyncio
+
+        from zephyrex.extensions.rpg_core import LoreSearch  # type: ignore[import-not-found]
+
+        registry = server.app.state.model_registry  # type: ignore[attr-defined]
+        service = LoreSearch.LoreEmbeddingService(requester_id="root", model_registry=registry)
+        LoreSearch.register_embedder(lambda texts: [[0.0] * 768 for _ in texts], "test")
+        original = LoreSearch.embed_pending
+        try:
+            def failing(*_args: object, **_kwargs: object) -> int:
+                raise RuntimeError("502 Bad Gateway")
+
+            LoreSearch.embed_pending = failing
+            asyncio.run(service.update())
+            assert service._backoff == 30.0 and service._resume_at > 0
+            service._resume_at = 0.0
+            asyncio.run(service.update())
+            assert service._backoff == 60.0
+            LoreSearch.embed_pending = lambda *_args, **_kwargs: 0
+            service._resume_at = 0.0
+            asyncio.run(service.update())
+            assert service._backoff == 0.0
+        finally:
+            LoreSearch.embed_pending = original
+            LoreSearch._registered.clear()
+
+    def test_the_http_embedder_sends_a_bearer_token(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import io
+        import json as jsonlib
+
+        from zephyrex.extensions.rpg_core import LoreSearch  # type: ignore[import-not-found]
+
+        seen: dict[str, object] = {}
+
+        class Answer(io.BytesIO):
+            def __enter__(self) -> "Answer":
+                return self
+
+            def __exit__(self, *_args: object) -> None:
+                return None
+
+        def opened(request: object, timeout: float) -> Answer:
+            seen["auth"] = request.get_header("Authorization")  # type: ignore[attr-defined]
+            seen["body"] = jsonlib.loads(request.data)  # type: ignore[attr-defined]
+            return Answer(jsonlib.dumps({"data": [{"index": 0, "embedding": [0.5]}]}).encode())
+
+        monkeypatch.setattr(LoreSearch.urllib.request, "urlopen", opened)
+        monkeypatch.delenv("WIKI_EMBED_KEY", raising=False)
+        assert LoreSearch._http_embedder("http://embed.invalid/v1", "3-5gb/nomic-embed-text-v1.5")(["search_query: hi"]) == [[0.5]]
+        assert seen == {"auth": "Bearer wiki", "body": {"model": "3-5gb/nomic-embed-text-v1.5", "input": ["search_query: hi"]}}

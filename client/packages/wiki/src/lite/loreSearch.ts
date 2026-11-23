@@ -54,7 +54,7 @@ function embedder(): { embed: Embed; model: string } | undefined {
   return {
     model,
     embed: async (texts) => {
-      const answer = await fetch(`${url.replace(/\/$/, '')}/embeddings`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, input: texts }) });
+      const answer = await fetch(`${url.replace(/\/$/, '')}/embeddings`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.WIKI_EMBED_KEY || 'wiki'}` }, body: JSON.stringify({ model, input: texts }) });
       if (!answer.ok) throw new Error(`the embedder answered ${answer.status}`);
       const body = (await answer.json()) as { data: { index: number; embedding: number[] }[] };
       return [...body.data].sort((one, two) => one.index - two.index).map((row) => row.embedding);

@@ -18,8 +18,9 @@ WIKI_EMBED_URL and WIKI_EMBED_MODEL."""
 import asyncio
 import json
 import os
+import time
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
 
 from pydantic import BaseModel as PlainModel
@@ -50,7 +51,8 @@ def _http_embedder(url: str, model: str) -> Embed:
         request = urllib.request.Request(
             url.rstrip("/") + "/embeddings",
             data=json.dumps({"model": model, "input": texts}).encode(),
-            headers={"Content-Type": "application/json"},
+            # bifrost wants a bearer token, any non-empty one (Self Hosted AI, 2026-11-23).
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {os.getenv('WIKI_EMBED_KEY') or 'wiki'}"},
             method="POST",
         )
         with urllib.request.urlopen(request, timeout=60) as answer:  # noqa: S310 - the operator's endpoint
@@ -202,9 +204,9 @@ def _vector_literal(vector: list[float]) -> str:
     return "[" + ",".join(repr(float(one)) for one in vector) + "]"
 
 
-def embed_pending(model_registry: Any, batch: int = EMBED_BATCH) -> int:
-    """One batch of passages not yet embedded, embedded. Returns how many (0 when there is no
-    embedder, no embedding column, or nothing waiting)."""
+def embed_pending(model_registry: Any, batch: int = EMBED_BATCH, since: Optional[datetime] = None) -> int:
+    """One batch of passages not yet embedded, embedded (only those made after ``since``, when
+    given). Returns how many (0 when there is no embedder, no embedding column, or nothing waiting)."""
     found = embedder()
     if found is None:
         return 0
@@ -214,7 +216,12 @@ def embed_pending(model_registry: Any, batch: int = EMBED_BATCH) -> int:
         if "embedding" not in search_columns(session.connection()):
             return 0
         rows = session.execute(
-            text("SELECT id, name, text FROM lore_chunks WHERE embedded_at IS NULL AND deleted_at IS NULL ORDER BY created_at, id LIMIT :n"), {"n": batch}
+            text(
+                "SELECT id, name, text FROM lore_chunks WHERE embedded_at IS NULL AND deleted_at IS NULL"
+                + (" AND created_at >= :since" if since is not None else "")
+                + " ORDER BY created_at, id LIMIT :n"
+            ),
+            {"n": batch, **({"since": since} if since is not None else {})},
         ).all()
         if not rows:
             return 0
@@ -234,15 +241,38 @@ def embed_pending(model_registry: Any, batch: int = EMBED_BATCH) -> int:
         session.close()
 
 
+BACKFILL_HOURS = "1-7"  # server-local hours for the full backfill (Self Hosted AI: off-hours only)
+RECENT = timedelta(hours=24)  # outside them, only passages this new: the day's pages
+BACKOFF_FIRST, BACKOFF_MOST = 30.0, 600.0
+
+
+def in_backfill_window(hour: int, spec: str = BACKFILL_HOURS) -> bool:
+    """Whether a server-local hour is in "start-end" (end exclusive, may wrap past midnight;
+    "always" or "" is every hour, "never" none)."""
+    spec = (spec or "").strip().lower()
+    if spec in ("", "always"):
+        return True
+    if spec == "never":
+        return False
+    start, _, end = spec.partition("-")
+    first, last = int(start) % 24, int(end) % 24
+    return first <= hour < last if first <= last else hour >= first or hour < last
+
+
 class LoreEmbeddingService(AbstractService):
     """Embeds waiting passages one batch at a time (EMBED_BATCH, one request in flight, a pause
-    between: the embed card is small and shared). On its first run it makes the Postgres search
-    parts where they can be made, and logs what is missing."""
+    between: the embed card is a GTX 970 shared with rpg-ai's decide model). The full backlog drains
+    only in the backfill hours (WIKI_EMBED_BACKFILL_HOURS, server-local, default 1-7); outside them
+    only the day's new passages are embedded. A failure (a 5xx, the endpoint away) backs off, 30 s
+    doubling to 10 min, and never stops the loop. On its first run it makes the Postgres search parts
+    where they can be made, and logs what is missing."""
 
     def __init__(self, requester_id: str, model_registry: Any, **kwargs: Any) -> None:
         super().__init__(requester_id=requester_id, interval_seconds=int(os.getenv("WIKI_EMBED_INTERVAL", "5")), **kwargs)
         self.model_registry = model_registry
         self._prepared = False
+        self._backoff = 0.0
+        self._resume_at = 0.0
 
     def _prepare(self) -> None:
         session = _chunks(self.model_registry).db
@@ -255,12 +285,20 @@ class LoreEmbeddingService(AbstractService):
             logger.warning(f"Lore search runs without vectors until these exist: {'; '.join(missing)}")
 
     async def update(self) -> None:
-        if embedder() is None:
+        if embedder() is None or time.monotonic() < self._resume_at:
             return
-        if not self._prepared:
-            await asyncio.to_thread(self._prepare)
-            self._prepared = True
-        await asyncio.to_thread(embed_pending, self.model_registry)
+        try:
+            if not self._prepared:
+                await asyncio.to_thread(self._prepare)
+                self._prepared = True
+            now = datetime.now()
+            since = None if in_backfill_window(now.hour, os.getenv("WIKI_EMBED_BACKFILL_HOURS", BACKFILL_HOURS)) else (datetime.now(timezone.utc) - RECENT).replace(tzinfo=None)
+            await asyncio.to_thread(embed_pending, self.model_registry, EMBED_BATCH, since)
+            self._backoff = 0.0
+        except Exception as error:  # noqa: BLE001 - backed off and retried, never the loop stopped
+            self._backoff = min(BACKOFF_MOST, max(BACKOFF_FIRST, self._backoff * 2))
+            self._resume_at = time.monotonic() + self._backoff
+            logger.warning(f"Lore embedding failed; retrying in {self._backoff:.0f} s: {str(error).splitlines()[0][:200] if str(error) else type(error).__name__}")
 
 
 class LoreSearchAsk(PlainModel):
