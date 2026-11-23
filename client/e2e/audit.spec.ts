@@ -350,6 +350,12 @@ test.describe.serial('visual audit', () => {
     expect(picked.status(), await picked.text()).toBe(200);
     const heard = (await (await request.get(`/api/v1/world_entity?ids=${seeded.person}`)).json()) as { world_entities: { tts_voice: string | null }[] };
     expect(heard.world_entities[0]!.tts_voice).toBe('onyx');
+    // A SillyTavern card as a person to chat with, in the owner's Characters campaign.
+    const carded = await request.post('/api/v1/campaign/card_person', { data: { card: { name: 'Vel', first_message: 'Late again, {{user}}?', tags: ['Courier'] } } });
+    expect(carded.status(), await carded.text()).toBe(201);
+    const cardIds = (await carded.json()) as { person_id: string; campaign_id: string };
+    const vel = (await (await request.get(`/api/v1/world_entity?ids=${cardIds.person_id}`)).json()) as { world_entities: { name: string; tags: string[]; voice: { first_message: string } | null }[] };
+    expect(vel.world_entities[0]).toMatchObject({ name: 'Vel', tags: ['Courier'], voice: { first_message: 'Late again, User?' } });
     // Parity's party fix: tag names, and a person's ties to other people.
     const party = (await (await request.get(`/api/v1/world_entity?ids=${seeded.person}`)).json()) as { world_entities: { tags: string[]; relationships: { kind: string }[] }[] };
     expect(party.world_entities[0]).toMatchObject({ tags: ['Elf', 'Lamplighters'], relationships: [{ kind: 'rival' }] });

@@ -1856,3 +1856,43 @@ class TestEras:
         # A playthrough keeps its scenario's era.
         _run, ids = _started(server, person, _start_with(server, person, scenario["id"], []))
         assert synced(ids[scenario["id"]]) == {"London", "Gaslight Lamp"}
+
+
+class TestCardPerson:
+    """Parity, 2026-11-23: chatting with a SillyTavern card needs a wiki person (rpg-ai's cast is
+    wiki persons); the operator: "a character card imports as a wiki person with its voice"."""
+
+    CARD = {
+        "name": "Vel",
+        "description": "A courier with a debt.",
+        "personality": "Wry.",
+        "scenario": "A rain-soaked dock.",
+        "first_message": "Late again, {{user}}?",
+        "example_messages": "<START>{{char}}: Hm.",
+        "alternate_greetings": ["Back so soon?"],
+        "tags": ["Courier"],
+        "avatar": "https://example.invalid/vel.png",
+    }
+
+    def test_a_card_becomes_a_person_of_the_requesters_characters_campaign(self, server: TestClient, person: Any, other: Any) -> None:
+        made = server.post("/v1/campaign/card_person", json={"card": self.CARD}, headers=_headers(person))
+        assert made.status_code == 201, made.text
+        ids = made.json()
+        vel = server.get(f"/v1/person/{ids['person_id']}", headers=_headers(person)).json()["person"]
+        assert (vel["name"], vel["kind"], vel["campaign_id"], vel["picture_url"]) == ("Vel", "npc", ids["campaign_id"], "https://example.invalid/vel.png")
+        assert json.loads(vel["voice"])["first_message"] == "Late again, User?" and json.loads(vel["voice"])["examples"] == ["Vel: Hm."]
+        campaign = server.get(f"/v1/campaign/{ids['campaign_id']}", headers=_headers(person)).json()["campaign"]
+        assert campaign["name"] == "Characters" and not campaign.get("is_scenario")
+        row = server.get(f"/v1/world_entity?ids={ids['person_id']}", headers=_headers(person)).json()["world_entities"][0]
+        assert row["tags"] == ["Courier"] and row["gm_only"] is False and "rain-soaked dock" in row["summary"] + json.dumps(vel["entry"])
+        greetings = [p for p in server.get(f"/v1/record_metadata/of?target_entity_type=person&target_entity_id={ids['person_id']}", headers=_headers(person)).json()["metadata"] if p["key"] == "Alternate greetings"]
+        assert greetings[0]["value"] == "Back so soon?" and greetings[0]["is_private"] is True
+        # A second card of the same name is a second person, in the same campaign.
+        again = server.post("/v1/campaign/card_person", json={"card": self.CARD}, headers=_headers(person)).json()
+        assert again["campaign_id"] == ids["campaign_id"] and again["person_id"] != ids["person_id"]
+        # Another user's card goes into their own Characters campaign.
+        theirs = server.post("/v1/campaign/card_person", json={"card": {"name": "Holst"}}, headers=_headers(other)).json()
+        assert theirs["campaign_id"] != ids["campaign_id"]
+        # A data URL is uploaded first.
+        refused = server.post("/v1/campaign/card_person", json={"card": {"name": "Pic", "avatar": "data:image/png;base64,AAAA"}}, headers=_headers(person))
+        assert refused.status_code == 422, refused.text

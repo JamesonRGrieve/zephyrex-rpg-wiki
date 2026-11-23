@@ -3178,3 +3178,29 @@ def _attach_lore_search() -> None:
 
 
 _attach_lore_search()
+
+
+# POST /v1/campaign/card_person (CardPerson.py): a character card as a person to chat with.
+def _attach_card_person() -> None:
+    from zephyrex.extensions.rpg_core.CardPerson import CardEnvelope, CardPersonImported  # type: ignore[import-not-found]
+
+    @custom_route(
+        method="POST",
+        path="/card_person",
+        input_model=CardEnvelope,
+        output_model=CardPersonImported,
+        authentication_type="jwt",
+        status_code=201,
+        expose_in=(ExposeIn.REST,),
+        openapi_tags=("Campaigns",),
+        summary="A character card as a person of the requester's Characters campaign, to chat with outside any scenario",
+    )
+    def card_person_route(self: Any, card: Any) -> Any:
+        from zephyrex.extensions.rpg_core.CardPerson import CardAsk, import_card_person  # type: ignore[import-not-found]
+
+        return import_card_person(self.model_registry, str(self.requester.id), CardAsk.model_validate(card).model_dump())
+
+    CampaignManager.card_person_route = card_person_route  # type: ignore[attr-defined]
+
+
+_attach_card_person()

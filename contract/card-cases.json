@@ -1,0 +1,78 @@
+{
+  "_comment": "A SillyTavern character card as a wiki person (wiki_shared/Cards.py, lib/cards.ts; rpg_core import_card_person and st_import). Fields by the spec's names or rpg-ai's (first_message, example_messages).",
+  "cards": [
+    {
+      "name": "rpg-ai's names",
+      "card": {
+        "name": "Vel",
+        "description": "A courier with a debt.",
+        "personality": "Wry, {{user}}'s ally.",
+        "scenario": "A rain-soaked dock.",
+        "first_message": "Late again, {{user}}?",
+        "example_messages": "<START>{{char}}: Hm.<START>{{char}}: Fine.",
+        "alternate_greetings": [
+          " Back so soon? ",
+          ""
+        ],
+        "tags": [
+          "Courier",
+          "courier ",
+          " "
+        ]
+      },
+      "voice": {
+        "personality": "Wry, User's ally.",
+        "speech": "",
+        "first_message": "Late again, User?",
+        "examples": [
+          "Vel: Hm.",
+          "Vel: Fine."
+        ],
+        "system_prompt": "",
+        "post_history_instructions": ""
+      },
+      "markdown": "A courier with a debt.\n\n## Scenario\n\nA rain-soaked dock.",
+      "greetings": [
+        "Back so soon?"
+      ],
+      "tags": [
+        "Courier",
+        "courier"
+      ]
+    },
+    {
+      "name": "the spec's names, a Character's Note",
+      "card": {
+        "name": "Holst",
+        "description": "",
+        "first_mes": "Stalls are full.",
+        "mes_example": "",
+        "extensions": {
+          "depth_prompt": {
+            "prompt": "Grumbles.",
+            "depth": 2,
+            "role": "system"
+          },
+          "talkativeness": "0.3"
+        }
+      },
+      "voice": {
+        "personality": "",
+        "speech": "",
+        "first_message": "Stalls are full.",
+        "examples": [],
+        "system_prompt": "",
+        "post_history_instructions": "",
+        "depth_prompt": {
+          "prompt": "Grumbles.",
+          "depth": 2,
+          "role": "system"
+        },
+        "talkativeness": 0.3
+      },
+      "markdown": "",
+      "greetings": [],
+      "tags": []
+    }
+  ]
+}

@@ -81,9 +81,9 @@ class StImporter(Importer):
             return
         record_id = str(placed.record["id"])
         made = f"person {card.name}" in self.report.created
-        description = str(card.data.get("description") or "").strip()
-        scenario = str(card.data.get("scenario") or "").strip()
-        markdown = description + (f"\n\n## Scenario\n\n{scenario}" if scenario else "")
+        from zephyrex.extensions.wiki_shared.Cards import card_greetings, card_markdown, card_tags  # type: ignore[import-not-found]
+
+        markdown = card_markdown(card.data)
         unresolved: list[str] = []
         # As the server keeps them, so a second run compares like with like.
         fields: dict[str, Any] = {"entry": to_plate(markdown, self._resolver(scope), unresolved), "voice": voice(voice_of(card))}
@@ -95,7 +95,7 @@ class StImporter(Importer):
                 self.report.refused.append((card.path, str(error)))
         changed = self._write(placed, fields)
         changed |= self._property("person", record_id, ST_SOURCE, card.path, private=True)
-        greetings = [str(one).strip() for one in card.data.get("alternate_greetings") or [] if str(one).strip()]
+        greetings = card_greetings(card.data)
         if greetings:
             changed |= self._property("person", record_id, "Alternate greetings", "\n\n".join(greetings), private=True)
         for key, label in PRIVATE_TEXTS.items():
@@ -104,7 +104,7 @@ class StImporter(Importer):
                 changed |= self._property("person", record_id, label, text, private=True)
         if not self.dry_run and not record_id.startswith("(new"):
             tagged = {one["taxon_id"] for one in self.api.list("entity_taxon", target_entity_type="person", target_entity_id=record_id)}
-            for tag in [str(one).strip() for one in card.data.get("tags") or [] if str(one).strip()]:
+            for tag in card_tags(card.data):
                 taxon = self._taxon(scope, tag, "tag")
                 if taxon not in tagged:
                     self.api.create("entity_taxon", taxon_id=taxon, target_entity_type="person", target_entity_id=record_id)

@@ -275,6 +275,17 @@ class RPGCoreExtension(AbstractStaticExtension):
         return world_entities_matching(model_registry, requester_id, campaign_id, text, limit, include_setting, tags).model_dump(mode="json")
 
     @classmethod
+    @ability("import_card_person")
+    def import_card_person(cls, model_registry: Any, requester_id: str, card: dict[str, Any]) -> dict[str, Any]:
+        """A SillyTavern character card as an NPC of the requester's own "Characters" campaign, to chat
+        with outside any scenario: {person_id, campaign_id}. The card's fields by the spec's names or
+        first_message / example_messages; avatar an https link or an uploaded asset's id. Not found
+        by name: each call makes a person."""
+        from zephyrex.extensions.rpg_core.CardPerson import import_card_person  # type: ignore[import-not-found]
+
+        return import_card_person(model_registry, requester_id, card).model_dump()
+
+    @classmethod
     @ability("lore_search")
     def lore_search(
         cls,
