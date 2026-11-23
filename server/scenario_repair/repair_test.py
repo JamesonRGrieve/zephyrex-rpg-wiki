@@ -207,3 +207,24 @@ def blocks_of_entry(entry: Any) -> list[dict[str, Any]]:
     import json as jsonlib
 
     return entry if isinstance(entry, list) else jsonlib.loads(entry)
+
+
+
+def test_a_scenario_with_no_framing_gets_one_from_what_it_already_says(api: Api) -> None:
+    """Zephyrex RPG on prod: The Split Antler (made by hand, then imported) has no framing at all."""
+    told = api.create("campaign", name="Split Antler Run", description="Rain hammers the fens as the party reaches Brindlemarsh Stable at dusk, mud to the knee.", is_scenario=True)
+    api.create("location", name="Brindlemarsh Stable", kind="building", campaign_id=told["id"])
+    silent = api.create("campaign", name="Silent Hold", is_scenario=True)
+    api.create("location", name="Silent Keep", kind="building", campaign_id=silent["id"])
+    dry = {one.campaign_id: one for one in repair(api, dry_run=True)}
+    assert dry[told["id"]].framing_written == "Split Antler Run: Campaign Framing" and dry[told["id"]].problems_after == []
+    assert "no campaign framing" in dry[silent["id"]].problems_after
+    assert not [row for row in api.list("journal", campaign_id=told["id"]) if row["kind"] == "campaign_framing"]
+    done = {one.campaign_id: one for one in repair(api, dry_run=False)}
+    [framing] = [row for row in api.list("journal", campaign_id=told["id"]) if row["kind"] == "campaign_framing"]
+    found = opening_of(blocks_of_entry(framing["entry"]))
+    assert found is not None and found[2].startswith("Rain hammers the fens") and done[told["id"]].problems_after == []
+    assert done[silent["id"]].framing_written is None and "no campaign framing" in done[silent["id"]].problems_after
+    again = {one.campaign_id: one for one in repair(api, dry_run=False)}
+    assert again[told["id"]].framing_written is None and again[told["id"]].opening is None
+    assert len([row for row in api.list("journal", campaign_id=told["id"]) if row["kind"] == "campaign_framing"]) == 1

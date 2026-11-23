@@ -33,6 +33,7 @@ class Mended:
     scenario: bool
     kinds: dict[str, int] = field(default_factory=dict)
     framing_kind: Optional[str] = None
+    framing_written: Optional[str] = None
     opening: Optional[str] = None
     start: Optional[str] = None
     origin: Optional[str] = None
@@ -42,6 +43,8 @@ class Mended:
 
     def line(self) -> str:
         parts = [f"{'scenario' if self.scenario else 'playthrough'} {self.campaign} ({self.campaign_id})"]
+        if self.framing_written:
+            parts.append(f"framing {self.framing_written!r} written")
         if self.framing_kind:
             parts.append(f"framing {self.framing_kind!r} made kind campaign_framing")
         if self.kinds:
@@ -162,6 +165,18 @@ def mend(
             mended.start = None
         elif not dry_run:
             api.update("journal", str(framing["id"]), entry=mended_blocks)
+    elif scenario:
+        # No framing at all (a campaign made by hand, then imported): one written from what the
+        # campaign already says in-world (its description, a Player Briefing), nothing invented; with
+        # nothing to write from it stays reported.
+        opening = written_opening(str(campaign.get("description") or ""), briefing_text(blocks_of(briefing.get("entry"))) if briefing else "") or None
+        if opening:
+            place = start_place(opening, locations, persons)
+            name = f"{campaign.get('name')}: Campaign Framing"
+            mended.framing_written, mended.opening = name, opening
+            mended.start = str(place.get("name") or "") if place is not None else None
+            if not dry_run:
+                api.create("journal", name=name, kind="campaign_framing", campaign_id=campaign_id, entry=mended_framing([], opening, place))
     if scenario:
         origin = _origin_of(api, campaign, framing, origins or {})
         if origin is not None:
@@ -201,4 +216,5 @@ def _predicted(mended: Mended) -> list[str]:
         if not (mended.kinds and "have no kind" in problem)
         and not (mended.opening and "Opening Situation" in problem)
         and not (mended.framing_kind and "not campaign_framing" in problem)
+        and not (mended.framing_written and problem == "no campaign framing")
     ]
