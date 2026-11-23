@@ -95,6 +95,8 @@
     "facility",
     "room",
     "vessel",
+    "void",
+    "warp",
     "underground_complex",
     "container",
     "equipment_slot",

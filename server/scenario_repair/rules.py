@@ -46,8 +46,8 @@ META = re.compile(
     re.IGNORECASE,
 )
 # A place is fully qualified when its parent chain reaches one of these (operator: the planet in
-# 40k, the region in D&D).
-ANCHOR_KINDS = ("planet", "moon", "system", "continent", "region")
+# 40k, the region in D&D; 2026-11-23: a vessel in the void or the warp too).
+ANCHOR_KINDS = ("planet", "moon", "system", "continent", "region", "void", "warp")
 SOURCES = "Sources:"
 
 
@@ -240,7 +240,7 @@ def scenario_problems(
 
 
 def unqualified_places(locations: list[dict[str, Any]]) -> list[str]:
-    """Places whose parent chain reaches no planet, moon, system, continent or region: "name (top:
+    """Places whose parent chain reaches no planet, moon, system, continent, region, void or warp: "name (top:
     root, kind)", by name."""
     by_id = {str(row["id"]): row for row in locations}
     gaps: list[str] = []

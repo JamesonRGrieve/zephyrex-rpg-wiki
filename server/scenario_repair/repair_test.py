@@ -185,6 +185,9 @@ def test_places_must_reach_a_planet_or_region() -> None:
         {"id": "r", "name": "Yard Office", "kind": "room", "parent_id": "y"},
     ]
     assert unqualified_places(places) == ["Processing Yard (top: Processing Yard, facility)", "Yard Office (top: Processing Yard, facility)"]
+    # Operator, 2026-11-23: a vessel in the void or the warp is fully qualified.
+    ships = [{"id": "w", "name": "The Warp", "kind": "warp"}, {"id": "l", "name": "Penitent Lantern", "kind": "vessel", "parent_id": "w"}, {"id": "v", "name": "The Maw", "kind": "void"}]
+    assert unqualified_places(ships) == []
 
 
 def test_an_earlier_repairs_bad_opening_is_written_again(api: Api) -> None:

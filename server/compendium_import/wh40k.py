@@ -64,7 +64,7 @@ LORE_CATEGORIES = {
     "malignancy": "Malignancy",
 }
 ORIGIN_CATEGORIES = {"homeworlds": "Homeworld", "backgrounds": "Background", "roles": "Role", "careers": "Career", "elite-advances": "Elite advance", "regiments": "Regiment", "specialities": "Speciality", "specialties": "Speciality", "archetypes": "Archetype", "motivations": "Motivation", "pride": "Pride", "disgrace": "Disgrace", "birthrights": "Birthright", "lures": "Lure", "trials": "Trial"}
-LOCATION_KINDS = {"system", "planet", "moon", "continent", "region", "city", "district", "building", "facility", "room", "vessel"}
+LOCATION_KINDS = {"system", "planet", "moon", "continent", "region", "city", "district", "building", "facility", "room", "vessel", "void", "warp"}
 STAT_KEYS = ("characteristics", "wounds", "armourPoints", "armour", "move", "size", "threatLevel", "speed", "integrity", "manoeuverability", "crew")
 
 
