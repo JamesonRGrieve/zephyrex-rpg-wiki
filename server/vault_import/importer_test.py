@@ -292,3 +292,19 @@ def test_era_marks_canon_and_a_framing_marks_its_campaign(api: Api, tmp_path: Pa
     [hunt] = [row for row in api.list("campaign") if row["name"] == "Fog Hunt"]
     assert eras_on("location", street["id"]) == {"Victorian"} and eras_on("location", bunker["id"]) == {"World War II", "Cold War"}
     assert eras_on("campaign", hunt["id"]) == {"Victorian"}
+
+
+def test_a_re_run_never_marks_a_playthrough_named_like_its_scenario(api: Api, tmp_path: Path) -> None:
+    """Zephyrex RPG, 2026-11-24: a re-run matched campaigns by name and marked the operator's
+    playthrough (named after its scenario) a scenario. A vault's campaigns are never playthroughs."""
+    (tmp_path / "Characters").mkdir()
+    (tmp_path / "Characters" / "Wick.md").write_text("---\nentity_type: person\nkind: npc\nname: Wick\ncampaign: Named Twice\n---\nA shepherd.\n", encoding="utf-8")
+    first = Importer(api, setting_slug=api.fantasy).run(read_vault(tmp_path))  # type: ignore[attr-defined]
+    assert first.refused == [], first.refused
+    [scenario] = [row for row in api.list("campaign") if row["name"] == "Named Twice"]
+    playthrough = api.create("campaign", name="Named Twice", scenario_id=scenario["id"])
+    again = Importer(api, setting_slug=api.fantasy).run(read_vault(tmp_path))  # type: ignore[attr-defined]
+    assert again.refused == [], again.refused
+    held = {row["id"]: row for row in api.list("campaign") if row["name"] == "Named Twice"}
+    assert held[scenario["id"]]["is_scenario"] is True
+    assert not held[playthrough["id"]]["is_scenario"]

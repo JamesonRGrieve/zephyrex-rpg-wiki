@@ -2073,3 +2073,22 @@ def _foundry_world(server: TestClient) -> str:
     root = env("ROOT_ID")
     provider = ProviderManager(model_registry=registry, requester_id=root).create(name=f"foundry_{uuid.uuid4().hex}")
     return str(ProviderInstanceManager(model_registry=registry, requester_id=root).create(name=f"world_{uuid.uuid4().hex}", provider_id=provider.id).id)
+
+
+class TestPlaythroughIsNoScenario:
+    """Zephyrex RPG, 2026-11-24: the operator's Missing Merchant playthrough was marked a scenario. A
+    start makes a playthrough that isn't one, and nothing may mark one a scenario after."""
+
+    def test_a_start_is_no_scenario_and_cannot_be_made_one(self, server: TestClient, person: Any) -> None:
+        scenario = _create(server, person, "campaign", name="Flagged Scenario", is_scenario=True)
+        _create(server, person, "person", name="Flagged NPC", kind="npc", campaign_id=scenario["id"])
+        start = _start(server, person, scenario["id"])
+        assert start["state"] == "done", start
+        run = server.get(f"/v1/campaign/{start['campaign_id']}", headers=_headers(person)).json()["campaign"]
+        assert (run["is_scenario"], run["scenario_id"]) == (False, scenario["id"])
+        refused = _put(server, person, "campaign", run, is_scenario=True)
+        assert refused.status_code == 422, refused.text
+        made = server.post("/v1/campaign", json={"campaign": {"name": "Odd", "is_scenario": True, "scenario_id": scenario["id"]}}, headers=_headers(person))
+        assert made.status_code == 422, made.text
+        # A scenario stays one.
+        assert _put(server, person, "campaign", scenario, description="Still a scenario.").status_code == 200

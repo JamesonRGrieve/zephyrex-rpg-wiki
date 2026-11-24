@@ -3,7 +3,7 @@
 /** A lite list's filters, as the framework's LIST reads them: equality, and `<field>__in`. */
 import { ApiError } from '@zephyrex/lite';
 import { describe, expect, it } from 'vitest';
-import { filters } from './worldRecords';
+import { filters, refusePlaythroughScenario } from './worldRecords';
 
 const query = (text: string) => new URLSearchParams(text);
 const NAMES: [string, string][] = [['campaign_id', 'campaignId']];
@@ -24,5 +24,14 @@ describe('filters', () => {
 
   it('ignores a field it does not name', () => {
     expect(filters(query('kind__in=a,b'), NAMES)).toEqual({});
+  });
+});
+
+describe('refusePlaythroughScenario', () => {
+  it('refuses is_scenario true on a playthrough, and lets everything else through', () => {
+    expect(() => refusePlaythroughScenario(true, 'scenario-1')).toThrow(ApiError);
+    expect(() => refusePlaythroughScenario(true, null)).not.toThrow();
+    expect(() => refusePlaythroughScenario(false, 'scenario-1')).not.toThrow();
+    expect(() => refusePlaythroughScenario(undefined, 'scenario-1')).not.toThrow();
   });
 });

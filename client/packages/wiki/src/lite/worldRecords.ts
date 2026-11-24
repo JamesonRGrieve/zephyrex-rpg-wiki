@@ -386,6 +386,12 @@ const CAMPAIGN_COLUMNS: Columns = {
   backend: plain('backend'),
   foundry_world_id: plain('foundryWorldId'),
 };
+/** A playthrough (a campaign with a scenario_id) is never itself a scenario, as the server's
+ * _playthrough_is_no_scenario: is_scenario true on one is a 422. */
+export function refusePlaythroughScenario(isScenario: boolean | null | undefined, scenarioId: string | null | undefined): void {
+  if (isScenario === true && typeof scenarioId === 'string' && scenarioId !== '')
+    throw validationError('A playthrough (a campaign started from a scenario) isn’t a scenario', 'is_scenario');
+}
 /** Where a campaign is kept: lite serves its own only (native, or none); a Foundry world is the SaaS edition's. */
 const nativeBackend = z.enum([NATIVE_BACKEND], { message: 'This edition keeps campaigns here only (native)' }).nullish();
 const noWorld = z.null({ message: 'This edition has no Foundry worlds' }).nullish();
@@ -497,13 +503,15 @@ export const campaigns: ResourceSpec<CampaignRow, z.infer<typeof campaignCreate>
   find: (id, ownerId) => prisma.campaign.findFirst({ where: { id, createdById: ownerId } }),
   async insert(ownerId, input, stamp) {
     await checkCampaignSetting(ownerId, input.setting_id, null);
+    refusePlaythroughScenario(input.is_scenario, input.scenario_id);
     return prisma.campaign.create({
       data: { createdById: ownerId, ...written(CAMPAIGN_COLUMNS, created(input), stamp) } as Prisma.CampaignUncheckedCreateInput,
     });
   },
   async updateIfCurrent(id, version, input, stamp, userId) {
-    const held = await prisma.campaign.findUnique({ where: { id }, select: { createdById: true, settingId: true } });
+    const held = await prisma.campaign.findUnique({ where: { id }, select: { createdById: true, settingId: true, scenarioId: true } });
     if (held !== null) await checkCampaignSetting(held.createdById, input.setting_id, held.settingId);
+    refusePlaythroughScenario(input.is_scenario, held?.scenarioId ?? null);
     const { count } = await prisma.campaign.updateMany({
       where: { id, updatedAt: version },
       data: written(CAMPAIGN_COLUMNS, await changed('campaign', id, input), stamp, userId) as Prisma.CampaignUncheckedUpdateManyInput,

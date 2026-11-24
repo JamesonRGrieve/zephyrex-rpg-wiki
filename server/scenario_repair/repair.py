@@ -40,9 +40,13 @@ class Mended:
     unqualified: list[str] = field(default_factory=list)
     problems_before: list[str] = field(default_factory=list)
     problems_after: list[str] = field(default_factory=list)
+    # A playthrough that was marked a scenario, unmarked (or, dry, would be).
+    unflagged: bool = False
 
     def line(self) -> str:
         parts = [f"{'scenario' if self.scenario else 'playthrough'} {self.campaign} ({self.campaign_id})"]
+        if self.unflagged:
+            parts.append("no longer marked a scenario")
         if self.framing_written:
             parts.append(f"framing {self.framing_written!r} written")
         if self.framing_kind:
@@ -199,13 +203,25 @@ def repair(api: Api, dry_run: bool = True, origins: Optional[dict[str, str]] = N
     if unknown:
         raise ValueError(f"origins are imported or stereotypical, not {', '.join(unknown)}")
     campaigns = [row for row in api.list("campaign") if not row.get("deleted_at")]
+    # A playthrough marked a scenario (a vault re-run matched it by name, before 2026-11-24): it is
+    # a playthrough, so it is unmarked, and mended as one.
+    unflagged: set[str] = set()
+    for row in campaigns:
+        if row.get("is_scenario") and row.get("scenario_id"):
+            if not dry_run:
+                api.update("campaign", str(row["id"]), is_scenario=False)
+            row["is_scenario"] = False
+            unflagged.add(str(row["id"]))
     scenarios = {str(row["id"]) for row in campaigns if row.get("is_scenario")}
     wanted = [row for row in campaigns if str(row["id"]) in scenarios or str(row.get("scenario_id") or "") in scenarios]
     taxa = _origin_taxa(api)
-    return [
+    report = [
         mend(api, campaign, str(campaign["id"]) in scenarios, dry_run, origins, seated, taxa)
         for campaign in sorted(wanted, key=lambda row: (str(row["id"]) not in scenarios, str(row.get("name") or "")))
     ]
+    for mended in report:
+        mended.unflagged = mended.campaign_id in unflagged
+    return report
 
 
 def _predicted(mended: Mended) -> list[str]:

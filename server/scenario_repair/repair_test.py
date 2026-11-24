@@ -231,3 +231,27 @@ def test_a_scenario_with_no_framing_gets_one_from_what_it_already_says(api: Api)
     again = {one.campaign_id: one for one in repair(api, dry_run=False)}
     assert again[told["id"]].framing_written is None and again[told["id"]].opening is None
     assert len([row for row in api.list("journal", campaign_id=told["id"]) if row["kind"] == "campaign_framing"]) == 1
+
+
+def test_a_playthrough_marked_a_scenario_is_unmarked(api: Api) -> None:
+    """Before 2026-11-24 a re-run vault import could mark a playthrough a scenario (Zephyrex RPG's
+    Missing Merchant): the repair unmarks it, dry run first."""
+    import sqlalchemy as sa
+
+    scenario = api.create("campaign", name="Unflag Scenario", is_scenario=True)
+    run = api.create("campaign", name="Unflag Scenario", scenario_id=scenario["id"])
+    # The guard now refuses the bad write, so the old state is set behind it, as it was on prod.
+    registry = api.http.app.state.model_registry  # type: ignore[attr-defined]
+    session = registry.database_manager.get_session()
+    try:
+        session.execute(sa.text("UPDATE campaigns SET is_scenario = :yes WHERE id = :id"), {"yes": True, "id": run["id"]})
+        session.commit()
+    finally:
+        session.close()
+    dry = {mended.campaign_id: mended for mended in repair(api, dry_run=True)}
+    assert dry[run["id"]].unflagged and not dry[run["id"]].scenario
+    assert {row["id"]: row for row in api.list("campaign")}[run["id"]]["is_scenario"] is True
+    applied = {mended.campaign_id: mended for mended in repair(api, dry_run=False)}
+    assert applied[run["id"]].unflagged
+    assert {row["id"]: row for row in api.list("campaign")}[run["id"]]["is_scenario"] is False
+    assert "no longer marked a scenario" in applied[run["id"]].line()

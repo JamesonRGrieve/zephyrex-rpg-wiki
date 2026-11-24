@@ -269,7 +269,9 @@ class Importer:
 
     def _campaign(self, name: str) -> str:
         if not self.campaigns:
-            rows = self.api.list("campaign")
+            # A vault's campaigns are scenarios: a playthrough (one started from a scenario, which
+            # carries its name) is never one of them, or a re-run would mark it a scenario.
+            rows = [one for one in self.api.list("campaign") if not one.get("scenario_id")]
             self.campaigns = {str(one["name"]): str(one["id"]) for one in rows}
             self._campaign_rows = {str(one["name"]): one for one in rows}
         self._touched.add(name)
