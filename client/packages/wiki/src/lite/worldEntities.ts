@@ -41,6 +41,8 @@ export interface EntityRow {
   voice?: string | null;
   /** A person's TTS voice id; other kinds have none. */
   ttsVoice?: string | null;
+  /** A person's own kind (pc, npc, …); other kinds have none. */
+  kind?: string | null;
 }
 
 export interface WorldEntity {
@@ -66,6 +68,8 @@ export interface WorldEntity {
   voice: Voice | null;
   /** A person's TTS voice id ("A voice per character"); null is the default, and for other kinds. */
   tts_voice: string | null;
+  /** A person's own kind (contract person_kinds: pc, npc, …), to tell a PC from an NPC; null for other kinds. */
+  person_kind: string | null;
   /** S4d: its lorebook activation (SillyTavern World Info's fields), or none. */
   lore: Lore | null;
   /** Where it came from: homebrew, official or adapted, and its source. */
@@ -119,6 +123,7 @@ export function entityOf(kind: WorldEntityKind, row: EntityRow): WorldEntity {
     keywords: storedNames(row.keywords),
     voice: kind === 'person' ? storedVoice(row.voice ?? null) : null,
     tts_voice: kind === 'person' ? (row.ttsVoice ?? null) || null : null,
+    person_kind: kind === 'person' ? (row.kind ?? null) || null : null,
     lore: storedLore(row.lore),
     provenance: row.provenance,
     source: row.source,

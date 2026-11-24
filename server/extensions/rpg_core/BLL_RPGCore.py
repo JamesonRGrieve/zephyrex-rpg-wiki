@@ -1469,6 +1469,9 @@ class WorldEntity(PlainModel):
     voice: Optional[dict[str, Any]] = None
     # A person's TTS voice id (operator, 2026-11-23: "A voice per character"); none is the default.
     tts_voice: Optional[str] = None
+    # A person's own kind (contract person_kinds: pc, npc, …; Zephyrex RPG, 2026-11-24: tell a PC from
+    # an NPC without the tags); none for other kinds.
+    person_kind: Optional[str] = None
     # A person's schedule and motivations (the GM side's world tick; gm_only as the record is).
     routine: Optional[list[dict[str, Any]]] = None
     motivations: Optional[list[str]] = None
@@ -1540,6 +1543,7 @@ def _entity(kind: str, record: Any, changed_at: datetime, deleted: bool) -> Worl
         keywords=stored_names(getattr(record, "keywords", None)),
         voice=stored_voice(getattr(record, "voice", None)) if kind == "person" else None,
         tts_voice=(getattr(record, "tts_voice", None) or None) if kind == "person" else None,
+        person_kind=(getattr(record, "kind", None) or None) if kind == "person" else None,
         routine=stored_routine(getattr(record, "routine", None)) if kind == "person" else None,
         motivations=stored_motivations(getattr(record, "motivations", None)) if kind == "person" else None,
         lore=stored_lore(getattr(record, "lore", None)),

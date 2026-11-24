@@ -39,6 +39,7 @@ describe('entityOf', () => {
       keywords: [],
       voice: null,
       tts_voice: null,
+      person_kind: null,
       lore: null,
       provenance: 'homebrew',
       source: null,
@@ -58,6 +59,9 @@ describe('entityOf', () => {
     const holst = entityOf('person', { ...row('p1', '2026-11-20T12:00:00Z'), aliases: '["Old Holst"]', keywords: '["stable"]', voice });
     expect([holst.aliases, holst.keywords, holst.voice?.personality]).toEqual([['Old Holst'], ['stable'], 'Gruff']);
     expect(entityOf('location', { ...row('l1', '2026-11-20T12:00:00Z'), voice }).voice).toBeNull();
+    // A person's own kind, for telling a PC from an NPC; none for other kinds.
+    expect(entityOf('person', { ...row('p2', '2026-11-20T12:00:00Z'), kind: 'pc' }).person_kind).toBe('pc');
+    expect(entityOf('location', { ...row('l2', '2026-11-20T12:00:00Z'), kind: 'region' }).person_kind).toBeNull();
   });
 
   it('marks a setting’s record with no campaign as canon (S6)', () => {

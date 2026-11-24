@@ -327,7 +327,7 @@ class TestWorldEntities:
         assert by_name["Harbour"] | {"updated_at": None} == {
             "id": harbour["id"], "kind": "location", "name": "Harbour", "aliases": [], "summary": "A port city.",
             "picture": None, "updated_at": None, "deleted": False, "setting_id": None, "canon": False, "canon_level": None,
-            "keywords": [], "voice": None, "tts_voice": None, "routine": None, "motivations": None, "tags": [], "relationships": None, "lore": None, "provenance": "homebrew", "source": None, "gm_only": False, "location_id": None, "parent_id": None,
+            "keywords": [], "voice": None, "tts_voice": None, "person_kind": None, "routine": None, "motivations": None, "tags": [], "relationships": None, "lore": None, "provenance": "homebrew", "source": None, "gm_only": False, "location_id": None, "parent_id": None,
         }
         assert page["next"] is None
 
@@ -1809,6 +1809,12 @@ class TestTtsVoice:
         assert tam["tts_voice"] == "onyx"
         row = lambda one: server.get(f"/v1/world_entity?ids={one}", headers=_headers(person)).json()["world_entities"][0]  # noqa: E731
         assert row(tam["id"])["tts_voice"] == "onyx"
+        # A person's own kind rides along (Zephyrex RPG: a PC told from an NPC without its tags).
+        assert row(tam["id"])["person_kind"] == "npc"
+        hero = _create(server, person, "person", name="Kind Hero", kind="pc", campaign_id=scenario["id"])
+        assert row(hero["id"])["person_kind"] == "pc"
+        listed = {one["name"]: one for one in server.get(f"/v1/world_entity?campaign_id={scenario['id']}", headers=_headers(person)).json()["world_entities"]}
+        assert (listed["Kind Hero"]["person_kind"], listed["Voiced Tam"]["person_kind"]) == ("pc", "npc")
         # The picker: the person's own route; "" is back to the default; too long is refused.
         assert _put(server, person, "person", tam, tts_voice="alloy").status_code == 200
         assert row(tam["id"])["tts_voice"] == "alloy"
