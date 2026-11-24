@@ -2042,16 +2042,18 @@ class TestCampaignBackends:
 
         read = loaded_ability(registry, "rpg_core", "campaign_backend")
         assert read is not None
-        assert read(registry, str(person.id), campaign_id=foundry["id"]) == {"backend": "foundry", "world_id": None, "campaign_id": foundry["id"]}
+        assert read(registry, str(person.id), campaign_id=foundry["id"]) == {"backend": "foundry", "world_id": None, "campaign_id": foundry["id"], "member": True}
+        # Another user: the same routing answer, but not a member (external_vtt reads nothing for them).
+        assert read(registry, str(other.id), campaign_id=foundry["id"]) == {"backend": "foundry", "world_id": None, "campaign_id": foundry["id"], "member": False}
         assert read(registry, str(other.id), person_id=hero["id"])["backend"] == "foundry"
-        assert read(registry, str(person.id), campaign_id="no-such-campaign") == {"backend": "native", "world_id": None, "campaign_id": None}
-        assert read(registry, str(person.id)) == {"backend": "native", "world_id": None, "campaign_id": None}
+        assert read(registry, str(person.id), campaign_id="no-such-campaign") == {"backend": "native", "world_id": None, "campaign_id": None, "member": False}
+        assert read(registry, str(person.id)) == {"backend": "native", "world_id": None, "campaign_id": None, "member": False}
         # By world (external_vtt's id-only reads): the requester's Foundry campaign on it; a
         # non-member, or a world no campaign is kept in, finds none.
         world = _foundry_world(server)
         assert server.post("/v1/campaign", json={"campaign": {"name": "Nowhere", "backend": "foundry", "foundry_world_id": "no-such-world"}}, headers=_headers(person)).status_code == 422
         on_world = _create(server, person, "campaign", name="On a World", backend="foundry", foundry_world_id=world)
-        assert read(registry, str(person.id), world_id=world) == {"backend": "foundry", "world_id": world, "campaign_id": on_world["id"]}
+        assert read(registry, str(person.id), world_id=world) == {"backend": "foundry", "world_id": world, "campaign_id": on_world["id"], "member": True}
         assert read(registry, str(other.id), world_id=world)["campaign_id"] is None
         assert read(registry, str(person.id), world_id="no-such-world")["campaign_id"] is None
         # Back to native: none or "native" both read as the wiki's own.

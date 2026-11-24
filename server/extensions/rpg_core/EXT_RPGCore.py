@@ -250,7 +250,9 @@ class RPGCoreExtension(AbstractStaticExtension):
         system (a selector runs before the ability's own access check); an unknown campaign or
         person is native. Given only ``world_id`` (external_vtt's id-only reads): the requester's
         Foundry campaign on that world, read as the requester, so a non-member finds none. The
-        answer names the campaign it is for: {"backend", "world_id", "campaign_id"}."""
+        answer names the campaign it is for and whether the requester may read it:
+        {"backend", "world_id", "campaign_id", "member"} (external_vtt's gate; the backend itself
+        is routing, read as the system)."""
         from zephyrex.extensions.rpg_core.BLL_RPGCore import campaign_backend  # type: ignore[import-not-found]
 
         return campaign_backend(model_registry, campaign_id=campaign_id, person_id=person_id, world_id=world_id, requester_id=requester_id).model_dump(mode="json")

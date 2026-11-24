@@ -2296,6 +2296,7 @@ class CampaignBackend(PlainModel):
     backend: str = Field(..., description="contract/wiki.json campaign_backends: native or foundry")
     world_id: Optional[str] = Field(None, description="The Foundry world (external_vtt's PRV_Foundry instance), for a foundry campaign")
     campaign_id: Optional[str] = Field(None, description="The campaign answered for (none: none found)")
+    member: bool = Field(False, description="The requester may read that campaign (its GM or a player): external_vtt's gate before a Foundry read")
 
 
 def _world_holds(context: HookContext) -> None:
@@ -2346,7 +2347,7 @@ def campaign_backend(
     from zephyrex.extensions.wiki_shared.Contract import NATIVE_BACKEND  # type: ignore[import-not-found]
     from zephyrex.logic.AbstractLogicManager.models import FieldComparison
 
-    native = CampaignBackend(backend=NATIVE_BACKEND, world_id=None, campaign_id=None)
+    native = CampaignBackend(backend=NATIVE_BACKEND, world_id=None, campaign_id=None, member=False)
     if not campaign_id and not person_id and world_id:
         if not requester_id:
             return native
@@ -2365,7 +2366,19 @@ def campaign_backend(
         backend=str(backend),
         world_id=getattr(rows[0], "foundry_world_id", None) if backend != NATIVE_BACKEND else None,
         campaign_id=str(rows[0].id),
+        member=_may_read_campaign(model_registry, requester_id, str(rows[0].id)),
     )
+
+
+def _may_read_campaign(model_registry: Any, requester_id: Optional[str], campaign_id: str) -> bool:
+    """Whether the requester may read the campaign (its GM or a player), read as them."""
+    if not requester_id:
+        return False
+    try:
+        _manager(model_registry, str(requester_id), CampaignManager).get(id=campaign_id)
+    except HTTPException:
+        return False
+    return True
 
 
 # A Foundry record's id, as external_vtt names it: "fvtt:<world>:<Foundry UUID>" (Zephyrex Server's
