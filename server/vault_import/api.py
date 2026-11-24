@@ -169,7 +169,8 @@ class Api:
         self._call("POST", "/v1/record_metadata", (200, 201), json={"record_metadata": body})
 
     def change_property(self, row: dict[str, Any], value: str) -> None:
-        self._call("PATCH", f"/v1/record_metadata/{row['id']}", (200,), json={"record_metadata": {"value": value}})
+        # At the version it was read at, as the wiki's own UI sends it (and the framework will require).
+        self._call("PATCH", f"/v1/record_metadata/{row['id']}", (200,), json={"record_metadata": {"value": value}}, headers={"If-Match": etag_of(row)})
 
     # ---- files (S2c, the framework's attachments) ----------------------------------------
 

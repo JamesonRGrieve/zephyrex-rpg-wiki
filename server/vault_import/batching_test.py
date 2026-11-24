@@ -211,9 +211,8 @@ def _crew(tmp_path: Path, role: str, description: str) -> Path:
 
 
 def test_changed_records_and_properties_are_saved_in_plural_puts_without_reading_them_first(server: TestClient, tmp_path: Path) -> None:
-    """A second run over edited notes: the records are changed in one plural PUT, each row at the
-    version the run listed it at, with no GET of a record to learn it. A property's value is changed
-    with its own PATCH (record_metadata has no per-row plural PUT)."""
+    """A second run over edited notes: the records and their properties are changed in one plural PUT
+    per resource, each row at the version the run listed it at, with no GET of a record to learn it."""
     api, recording = _api(server)
     slug = setting_of(api, "fixture-fantasy")
     first = Importer(api, setting_slug=slug).run(read_vault(_crew(tmp_path / "one", "Deckhand", "A deckhand,")))
@@ -224,8 +223,9 @@ def test_changed_records_and_properties_are_saved_in_plural_puts_without_reading
     puts = [(path, body) for method, path, _query, body in recording.sent if method == "PUT"]
     assert [path for path, _body in puts if path == "/v1/person"] == ["/v1/person"], puts
     assert not [path for path, _body in puts if path.startswith("/v1/person/")], puts
+    assert [path for path, _body in puts if path == "/v1/record_metadata"] == ["/v1/record_metadata"], puts
     patches = [path for method, path, _query, _body in recording.sent if method == "PATCH" and path.startswith("/v1/record_metadata/")]
-    assert len(patches) == 3, patches
+    assert patches == [], patches
     record_gets = [path for method, path, _query, _body in recording.sent if method == "GET" and path.startswith("/v1/person/")]
     assert record_gets == [], record_gets
     [campaign] = [row for row in api.list("campaign") if row["name"] == "Changed Crew"]

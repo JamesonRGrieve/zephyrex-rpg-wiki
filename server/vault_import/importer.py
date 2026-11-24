@@ -622,8 +622,7 @@ class Importer:
             self.api.add_property(kind, record_id, key, value, value_type, private)
             return True
         if held[key].get("value") != value:
-            # One at a time: record_metadata has no per-row plural PUT (Zephyrex Server, 2026-11-24).
-            self.api.change_property(held[key], value)
+            self._change("record_metadata", held[key], {"value": value}, f"{kind} {record_id}", f"property {key}")
             return True
         return False
 
