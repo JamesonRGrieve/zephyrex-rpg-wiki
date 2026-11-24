@@ -36,3 +36,28 @@ export function framingParts(entry: unknown): { public: string; gm: string } {
       .join('\n\n');
   return { public: joined(open), gm: joined(kept) };
 }
+
+/**
+ * The blocks of an entry a player may read (a record page's player view): every section but the
+ * GM's, by the framing rule above (a heading naming the GM, a game master, secrets or what's behind
+ * the scenes opens a GM section, until the next heading). The title (h1) and the text before any
+ * heading are kept. Answers the entry as JSON text, as records carry it, or null when none is left.
+ */
+export function publicEntry(entry: string | null): string | null {
+  if (entry === null || entry === '') return entry;
+  let blocks: unknown;
+  try {
+    blocks = JSON.parse(entry) as unknown;
+  } catch {
+    return entry;
+  }
+  if (!Array.isArray(blocks)) return entry;
+  const kept: unknown[] = [];
+  let hidden = false;
+  for (const block of blocks) {
+    const kind = block !== null && typeof block === 'object' ? (block as { type?: unknown }).type : undefined;
+    if (typeof kind === 'string' && HEADINGS.has(kind)) hidden = GM_HEADING.test(plainText([block]).trim());
+    if (!hidden) kept.push(block);
+  }
+  return kept.length === 0 ? null : JSON.stringify(kept);
+}

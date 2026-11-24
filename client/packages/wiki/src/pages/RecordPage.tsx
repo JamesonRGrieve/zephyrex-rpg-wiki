@@ -28,7 +28,7 @@ import { type Chip, TaxonChips } from '../components/world/TaxonChips';
 import { ENTITY_KINDS, type EntityKind, isEntityKind } from '../components/world/kinds';
 import { Unavailable } from '../components/world/Unavailable';
 import { type Capabilities, useCapabilities } from '../features/capabilities';
-import { usePlot } from '../features/data/plot';
+import { useNamed, useRowsById, useRowsWhere } from '../features/data/byId';
 import { type Property, useProperties, usePropertyActions } from '../features/data/properties';
 import {
   carried,
@@ -52,10 +52,13 @@ import {
   taxa,
   worlds,
 } from '../features/data/records';
+import { useIsGm, type Viewer, ViewerProvider } from '../features/viewer';
+import { GM_ONLY_PROPERTY } from '../contract';
 import { currentAttitude } from '../lib/dispositions';
+import { publicEntry } from '../lib/framing';
 import { storedNames, storedVoice } from '../lib/names';
-import { describeRequirement } from '../lib/requirements';
-import { scopeQuery, settingOf } from '../lib/scope';
+import { checkedRequirement, describeRequirement, hookState, leavesOf, type Requirement } from '../lib/requirements';
+import { settingOf } from '../lib/scope';
 import { useWikiBase } from '../base';
 import { useClient } from 'zephyrex';
 
@@ -74,7 +77,9 @@ interface Shown {
 }
 
 /** Other names a record goes by, and what else wakes it in the AI's lorebook (S4c). */
-function Names({ aliases, keywords }: { aliases: string[]; keywords: string[] }): ReactElement | null {
+function Names({ aliases, keywords: all }: { aliases: string[]; keywords: string[] }): ReactElement | null {
+  // The lorebook keys are the GM's (what wakes the record in the AI's context).
+  const keywords = useIsGm() ? all : [];
   if (aliases.length === 0 && keywords.length === 0) return null;
   return (
     <dl className='grid gap-1 text-sm'>
@@ -96,14 +101,20 @@ function Names({ aliases, keywords }: { aliases: string[]; keywords: string[] })
 
 const propertyId = (row: Property): string => row.id;
 
-/** The record's properties (S4b): read by type, changed where they stand, removed with an undo. */
+/** The record's properties (S4b): read by type, changed where they stand, removed with an undo. A
+ * player sees only the public ones, read only (never a private one, nor the "GM only" mark). */
 function Properties({ type, id }: { type: EntityKind; id: string }): ReactElement {
+  const gm = useIsGm();
   const rows = useProperties(type, id);
   const actions = usePropertyActions(type, id);
   const writes = useWrites(() => rows.mutate());
   const { shown, hide, show } = useHidden(rows.data ?? [], propertyId);
   const saved = async (write: Promise<unknown>, fallback: string): Promise<string | null> =>
     (await writes.run(write, fallback)) ? null : fallback;
+  if (!gm) {
+    const open = rows.data?.filter((row) => !row.is_private && row.key !== GM_ONLY_PROPERTY);
+    return <PropertyList rows={open} error={rows.error} onRetry={() => rows.mutate()} />;
+  }
   return (
     <PropertyList
       rows={rows.data === undefined ? undefined : shown}
@@ -126,19 +137,28 @@ function Properties({ type, id }: { type: EntityKind; id: string }): ReactElemen
   );
 }
 
-/** What `target` carries, each line named by its item. */
+/** What `target` carries, each line named by its item: its instances and their items read by id,
+ * never the world's catalogue (a player doesn't see an item kept to the GM). */
 function Carries({ world, type, id }: { world: string; type: EntityKind; id: string }): ReactElement {
   const base = useWikiBase();
+  const gm = useIsGm();
   const rows = carried.useList({ target_entity_type: type, target_entity_id: id });
-  const instances = itemInstances.useList();
-  const catalogue = items.useList(scopeQuery(world));
-  const itemOf = new Map((instances.data ?? []).map((one) => [one.id, one.item_id]));
-  const nameOf = new Map((catalogue.data ?? []).map((one) => [one.id, one.name]));
-  const lines: CarriedLine[] | undefined = rows.data?.map((row) => {
-    const itemId = row.item_instance_id === null ? null : (itemOf.get(row.item_instance_id) ?? null);
-    const name = itemId === null ? null : (nameOf.get(itemId) ?? null);
-    return { id: row.id, name, href: itemId === null ? null : recordPath(base, world, 'item', itemId), quantity: row.quantity ?? 1 };
-  });
+  const instances = useRowsById(itemInstances, (rows.data ?? []).map((row) => row.item_instance_id));
+  const itemOf = new Map([...(instances.data?.values() ?? [])].map((one) => [one.id, one.item_id]));
+  const named = useNamed([...itemOf.values()]);
+  const lines: CarriedLine[] | undefined = rows.data
+    ?.map((row) => {
+      const itemId = row.item_instance_id === null ? null : (itemOf.get(row.item_instance_id) ?? null);
+      const item = itemId === null ? undefined : named.data?.get(itemId);
+      return { row, itemId, item };
+    })
+    .filter(({ item }) => gm || item?.gm_only !== true)
+    .map(({ row, itemId, item }) => ({
+      id: row.id,
+      name: item?.name ?? null,
+      href: itemId === null ? null : recordPath(base, world, 'item', itemId),
+      quantity: row.quantity ?? 1,
+    }));
   return <InventoryList lines={lines} error={rows.error} onRetry={() => rows.mutate()} />;
 }
 
@@ -147,10 +167,9 @@ function Classification({ world, type, id }: { world: string; type: EntityKind; 
   const base = useWikiBase();
   const on = entityTaxa.useList({ target_entity_type: type, target_entity_id: id });
   const held = entityStatuses.useList({ target_entity_type: type, target_entity_id: id });
-  const allTaxa = taxa.useList(scopeQuery(world));
-  const allStatuses = statuses.useList(scopeQuery(world));
-  const taxonOf = new Map((allTaxa.data ?? []).map((row) => [row.id, row]));
-  const statusOf = new Map((allStatuses.data ?? []).map((row) => [row.id, row]));
+  // Only the taxa and status on this record, by id (not the world's whole taxonomy).
+  const taxonOf = useRowsById(taxa, (on.data ?? []).map((link) => link.taxon_id)).data ?? new Map();
+  const statusOf = useRowsById(statuses, (held.data ?? []).map((link) => link.status_id)).data ?? new Map();
   const chips: Chip[] | undefined = on.data?.map((link) => {
     const taxon = taxonOf.get(link.taxon_id);
     return {
@@ -177,37 +196,40 @@ function Classification({ world, type, id }: { world: string; type: EntityKind; 
 /** A person's or organisation's relations (W5), both directions, each end named and linked. */
 function Relations({ world, type, id }: { world: string; type: 'person' | 'faction'; id: string }): ReactElement {
   const base = useWikiBase();
+  const gm = useIsGm();
   const from = relationships.useList(type === 'person' ? { person_id: id } : { faction_id: id });
   const to = relationships.useList(type === 'person' ? { target_person_id: id } : { target_faction_id: id });
-  const allPeople = people.useList(scopeQuery(world));
-  const allFactions = factions.useList(scopeQuery(world));
-  const personName = new Map((allPeople.data ?? []).map((row) => [row.id, row.name]));
-  const factionName = new Map((allFactions.data ?? []).map((row) => [row.id, row.name]));
+  const ties = [...(from.data ?? []), ...(to.data ?? [])];
+  // Each other end named by id; a player never sees a tie to someone kept to the GM.
+  const named = useNamed(ties.flatMap((row) => [row.person_id, row.faction_id, row.target_person_id, row.target_faction_id]));
+  const hiddenEnd = (personId: string | null, factionId: string | null): boolean =>
+    !gm && named.data?.get(personId ?? factionId ?? '')?.gm_only === true;
   const end = (personId: string | null, factionId: string | null) =>
     personId !== null
-      ? { name: personName.get(personId) ?? null, href: recordPath(base, world, 'person', personId) }
+      ? { name: named.data?.get(personId)?.name ?? null, href: recordPath(base, world, 'person', personId) }
       : factionId !== null
-        ? { name: factionName.get(factionId) ?? null, href: recordPath(base, world, 'faction', factionId) }
+        ? { name: named.data?.get(factionId)?.name ?? null, href: recordPath(base, world, 'faction', factionId) }
         : { name: null, href: null };
   // A mirrored pair would show twice from either end; the outgoing half stands for both.
   const outgoing = from.data ?? [];
   const shown = new Set(outgoing.map((row) => row.id));
   const incoming = (to.data ?? []).filter((row) => row.mirror_relationship_id === null || !shown.has(row.mirror_relationship_id));
   // A relation's attitude now: its latest resolved influence (W56), else what it was written with.
-  const influences = relationInfluences.useList();
-  const plot = usePlot(world);
+  // Only these relations' influences, and only the hooks they name.
+  const influences = useRowsWhere(relationInfluences, 'relationship_id', ties.map((row) => row.id));
+  const resolvedAt = useResolvedAt((influences.data ?? []).map((one) => one.hook_id));
   const influenced = (id: string, written: number | null): number | null => {
     const resolved = (influences.data ?? [])
-      .filter((one) => one.relationship_id === id && plot.resolvedAt[one.hook_id] !== undefined)
-      .sort((a, b) => (plot.resolvedAt[a.hook_id] ?? '').localeCompare(plot.resolvedAt[b.hook_id] ?? ''));
+      .filter((one) => one.relationship_id === id && resolvedAt[one.hook_id] !== undefined)
+      .sort((a, b) => (resolvedAt[a.hook_id] ?? '').localeCompare(resolvedAt[b.hook_id] ?? ''));
     return resolved.at(-1)?.to_intensity ?? written;
   };
   const lines: RelationLine[] | undefined =
     from.data === undefined || to.data === undefined
       ? undefined
       : [
-          ...outgoing.map((row) => ({ row, other: end(row.target_person_id, row.target_faction_id) })),
-          ...incoming.map((row) => ({ row, other: end(row.person_id, row.faction_id) })),
+          ...outgoing.filter((row) => !hiddenEnd(row.target_person_id, row.target_faction_id)).map((row) => ({ row, other: end(row.target_person_id, row.target_faction_id) })),
+          ...incoming.filter((row) => !hiddenEnd(row.person_id, row.faction_id)).map((row) => ({ row, other: end(row.person_id, row.faction_id) })),
         ].map(({ row, other }) => ({
           id: row.id,
           ...other,
@@ -223,11 +245,13 @@ function Relations({ world, type, id }: { world: string; type: 'person' | 'facti
 function Dispositions({ world, id }: { world: string; id: string }): ReactElement {
   const base = useWikiBase();
   const rows = dispositions.useList({ person_id: id });
-  const plot = usePlot(world);
-  const allPeople = people.useList(scopeQuery(world));
-  const allFactions = factions.useList(scopeQuery(world));
-  const personName = new Map((allPeople.data ?? []).map((row) => [row.id, row.name]));
-  const factionName = new Map((allFactions.data ?? []).map((row) => [row.id, row.name]));
+  // Only the hooks that change them, and the people and organisations they're toward, by id.
+  const triggers = useRowsById(hooks, (rows.data ?? []).map((row) => row.trigger_hook_id));
+  const resolvedAt = resolvedOf(triggers.data);
+  const plot = { resolvedAt, nameOf: (hookId: string) => triggers.data?.get(hookId)?.name ?? 'a hook' };
+  const named = useNamed((rows.data ?? []).flatMap((row) => [row.target_person_id, row.target_faction_id]));
+  const personName = new Map([...(named.data?.values() ?? [])].map((row) => [row.id, row.name]));
+  const factionName = personName;
   const groups = new Map<string, NonNullable<typeof rows.data>>();
   for (const row of rows.data ?? []) {
     const key = `${row.target_kind}:${row.target_person_id ?? row.target_faction_id ?? ''}`;
@@ -266,19 +290,41 @@ function Dispositions({ world, id }: { world: string; id: string }): ReactElemen
   return <DispositionList lines={lines} error={rows.error} onRetry={() => rows.mutate()} />;
 }
 
-/** Where a hook stands (W57), and marking it as happened or not. */
-function Standing({ world, id }: { world: string; id: string }): ReactElement | null {
-  const plot = usePlot(world);
+/** When each of these hooks was resolved (ISO), read by id: what dispositions and influences turn on. */
+function resolvedOf(rows: Map<string, { id: string; resolved_at: string | null }> | undefined): Record<string, string> {
+  const resolvedAt: Record<string, string> = {};
+  for (const hook of rows?.values() ?? []) if (hook.resolved_at !== null) resolvedAt[hook.id] = hook.resolved_at;
+  return resolvedAt;
+}
+
+function useResolvedAt(ids: readonly (string | null)[]): Record<string, string> {
+  return resolvedOf(useRowsById(hooks, ids).data);
+}
+
+/** Where a hook stands (W57), and marking it as happened or not: from its own requirement (or its
+ * parents) and only the hooks that names, never the world's whole plot. */
+function Standing({ id }: { id: string }): ReactElement | null {
   const one = hooks.useOne(id);
-  const { update } = hooks.useActions();
-  const writes = useWrites(() => Promise.all([one.mutate(), plot.retry()]));
+  const parents = hookDependencies.useList({ child_hook_id: id });
   const hook = one.data;
-  if (hook === undefined || plot.hooks === undefined) return null;
-  const requirement = plot.requirementOf(hook);
+  const requirement: Requirement | null =
+    hook === undefined || parents.data === undefined
+      ? null
+      : hook.requires !== null
+        ? checkedRequirement(JSON.parse(hook.requires) as unknown)
+        : parents.data.length === 0
+          ? null
+          : { all: parents.data.map((edge) => edge.parent_hook_id) };
+  const named = useRowsById(hooks, requirement === null ? [] : leavesOf(requirement));
+  const { update } = hooks.useActions();
+  const writes = useWrites(() => Promise.all([one.mutate(), named.mutate()]));
+  if (hook === undefined || parents.data === undefined || (requirement !== null && named.data === undefined && named.error === undefined)) return null;
+  const resolved = Object.keys(resolvedOf(named.data));
+  const nameOf = (hookId: string): string => named.data?.get(hookId)?.name ?? 'a hook';
   return (
     <HookState
-      state={plot.stateOf(hook)}
-      needs={requirement === null ? null : describeRequirement(requirement, plot.nameOf)}
+      state={hookState(requirement, resolved, hook.resolved_at !== null)}
+      needs={requirement === null ? null : describeRequirement(requirement, nameOf)}
       excuse={hook.excuse}
       resolvedOn={hook.resolved_at === null ? null : new Date(hook.resolved_at).toLocaleDateString()}
       busy={writes.busy}
@@ -291,37 +337,39 @@ function Standing({ world, id }: { world: string; id: string }): ReactElement | 
 
 /** The record's picture by link, through its own resource. */
 function Picture({ kind, id }: { kind: EntityKind; id: string }): ReactElement {
+  const readOnly = !useIsGm();
   switch (kind) {
     case 'location':
-      return <PictureOf resource={places} id={id} />;
+      return <PictureOf resource={places} id={id} readOnly={readOnly} />;
     case 'person':
-      return <PictureOf resource={people} id={id} />;
+      return <PictureOf resource={people} id={id} readOnly={readOnly} />;
     case 'faction':
-      return <PictureOf resource={factions} id={id} />;
+      return <PictureOf resource={factions} id={id} readOnly={readOnly} />;
     case 'item':
-      return <PictureOf resource={items} id={id} />;
+      return <PictureOf resource={items} id={id} readOnly={readOnly} />;
     case 'journal':
-      return <PictureOf resource={journals} id={id} />;
+      return <PictureOf resource={journals} id={id} readOnly={readOnly} />;
     case 'hook':
-      return <PictureOf resource={hooks} id={id} />;
+      return <PictureOf resource={hooks} id={id} readOnly={readOnly} />;
   }
 }
 
 /** Where the record came from (homebrew, official or adapted), through its own resource. */
 function Origin({ kind, id }: { kind: EntityKind; id: string }): ReactElement {
+  const readOnly = !useIsGm();
   switch (kind) {
     case 'location':
-      return <OriginOf resource={places} id={id} />;
+      return <OriginOf resource={places} id={id} readOnly={readOnly} />;
     case 'person':
-      return <OriginOf resource={people} id={id} />;
+      return <OriginOf resource={people} id={id} readOnly={readOnly} />;
     case 'faction':
-      return <OriginOf resource={factions} id={id} />;
+      return <OriginOf resource={factions} id={id} readOnly={readOnly} />;
     case 'item':
-      return <OriginOf resource={items} id={id} />;
+      return <OriginOf resource={items} id={id} readOnly={readOnly} />;
     case 'journal':
-      return <OriginOf resource={journals} id={id} />;
+      return <OriginOf resource={journals} id={id} readOnly={readOnly} />;
     case 'hook':
-      return <OriginOf resource={hooks} id={id} />;
+      return <OriginOf resource={hooks} id={id} readOnly={readOnly} />;
   }
 }
 
@@ -358,6 +406,19 @@ function Record({
   const base = useWikiBase();
   const words = ENTITY_KINDS[kind];
   const can = useCapabilities();
+  const gm = useIsGm();
+  // A player: only what a player may read (features/viewer). Whether the record is kept to the GM
+  // comes with its name (world_entity?ids=); a hook is always the GM's.
+  const secrecy = useNamed(gm || kind === 'hook' ? [] : [id]);
+  if (!gm && (kind === 'hook' || secrecy.data?.get(id)?.gm_only === true)) {
+    return (
+      <>
+        <PageHeader title={kind === 'hook' ? 'Kept to the GM' : (record?.name ?? 'Kept to the GM')} />
+        <p className='text-sm text-muted-foreground'>This is the GM&rsquo;s, not something your character knows.</p>
+      </>
+    );
+  }
+  const entry = gm || record === undefined ? record?.entry : publicEntry(record.entry);
   return (
     <>
       <PageHeader title={record?.name ?? 'Loading'} />
@@ -374,8 +435,8 @@ function Record({
           <Names aliases={storedNames(record.aliases ?? null)} keywords={storedNames(record.keywords ?? null)} />
           <Picture kind={kind} id={id} />
           <Origin kind={kind} id={id} />
-          <EntityPage kind={record.kind} entry={record.entry} description={record.description} where={where} />
-          {extra}
+          <EntityPage kind={record.kind} entry={entry ?? null} description={gm ? record.description : null} where={where} />
+          {gm && extra}
           {can.properties && <Properties type={kind} id={id} />}
           {can.taxonomy && <Classification world={world} type={kind} id={id} />}
           {can.relations && (kind === 'person' || kind === 'faction') && <Relations world={world} type={kind} id={id} />}
@@ -422,9 +483,18 @@ function Elevate({ world, id }: { world: string; id: string }): ReactElement | n
   const campaign = worlds.useOne(settingOf(world) === null ? world : null);
   const scenario = worlds.useOne(campaign.data?.scenario_id ?? null);
   const properties = useProperties('person', id);
+  const person = people.useOne(id);
   const mark = properties.data?.find((row) => row.key === ELEVATED_PROPERTY)?.value ?? null;
   const twin = people.useOne(mark);
-  if (scenario.data === undefined || properties.data === undefined) return null;
+  // Someone the scenario already has by name (copied in at start, or elevated before) has nothing to
+  // elevate: as the server's elevate_person matches them (operator, 2026-11-24).
+  const same = people.useList(
+    { campaign_id: scenario.data?.id ?? '', name: person.data?.name ?? '' },
+    scenario.data !== undefined && person.data !== undefined && mark === null,
+  );
+  if (scenario.data === undefined || properties.data === undefined || person.data === undefined) return null;
+  if (mark !== null || (same.data ?? []).some((row) => row.name.trim().toLowerCase() === person.data?.name.trim().toLowerCase())) return null;
+  if (same.data === undefined) return null;
   const elevated = twin.data === undefined ? null : { name: twin.data.name, href: recordPath(base, scenario.data.id, 'person', twin.data.id) };
   return (
     <ElevatePanel
@@ -501,13 +571,12 @@ function Plot({ world, id }: { world: string; id: string }): ReactElement {
   const leads = hookDependencies.useList({ parent_hook_id: id });
   const mine = personHooks.useList({ hook_id: id });
   const theirs = factionHooks.useList({ hook_id: id });
-  const allHooks = hooks.useList(scopeQuery(world));
-  const allPeople = people.useList(scopeQuery(world));
-  const allFactions = factions.useList(scopeQuery(world));
-  const nameOf = (rows: readonly { id: string; name: string }[] | undefined) => new Map((rows ?? []).map((row) => [row.id, row.name]));
-  const hookName = nameOf(allHooks.data);
-  const personName = nameOf(allPeople.data);
-  const factionName = nameOf(allFactions.data);
+  // Only the hooks, people and organisations this hook names, by id.
+  const linkedHooks = useRowsById(hooks, [...(waits.data ?? []).map((edge) => edge.parent_hook_id), ...(leads.data ?? []).map((edge) => edge.child_hook_id)]);
+  const named = useNamed([...(mine.data ?? []).map((row) => row.person_id), ...(theirs.data ?? []).map((row) => row.faction_id)]);
+  const hookName = new Map([...(linkedHooks.data?.values() ?? [])].map((row) => [row.id, row.name]));
+  const personName = new Map([...(named.data?.values() ?? [])].map((row) => [row.id, row.name]));
+  const factionName = personName;
   const linked = (hookId: string): LinkedHook => ({ id: hookId, name: hookName.get(hookId) ?? null, href: recordPath(base, world, 'hook', hookId) });
   const takers: Taker[] | undefined =
     mine.data === undefined || theirs.data === undefined
@@ -558,7 +627,7 @@ function HookPage({ world, id, can }: { world: string; id: string; can: Capabili
       canPost={can.posts}
       extra={
         <>
-          <Standing world={world} id={id} />
+          <Standing id={id} />
           <Plot world={world} id={id} />
         </>
       }
@@ -568,7 +637,19 @@ function HookPage({ world, id, can }: { world: string; id: string; can: Capabili
 
 const PAGES = { location: PlacePage, person: PersonPage, faction: FactionPage, item: ItemPage, journal: JournalPage, hook: HookPage } as const;
 
-export function RecordPage(params: { world: string; kind: string; id: string }): ReactElement {
+/**
+ * A record's page. `viewer` (default 'gm') is who reads it: rpg-ai's play drawer passes
+ * `{ personId }` for a player's seat, and the page then shows only what a player may (features/viewer).
+ */
+export function RecordPage({ viewer = 'gm', ...params }: { world: string; kind: string; id: string; viewer?: Viewer }): ReactElement {
+  return (
+    <ViewerProvider viewer={viewer}>
+      <RecordPageBody {...params} />
+    </ViewerProvider>
+  );
+}
+
+function RecordPageBody(params: { world: string; kind: string; id: string }): ReactElement {
   const can = useCapabilities();
   if (!isEntityKind(params.kind)) notFound();
   const words = ENTITY_KINDS[params.kind];

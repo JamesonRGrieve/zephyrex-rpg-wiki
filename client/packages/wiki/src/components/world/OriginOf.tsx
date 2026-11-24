@@ -18,7 +18,7 @@ interface OriginResource<T extends WithOrigin> {
   useActions(): { update(seen: T, changes: { provenance: string; source: string }): Promise<T> };
 }
 
-export function OriginOf<T extends WithOrigin>({ resource, id }: { resource: OriginResource<T>; id: string }): ReactElement | null {
+export function OriginOf<T extends WithOrigin>({ resource, id, readOnly = false }: { resource: OriginResource<T>; id: string; readOnly?: boolean }): ReactElement | null {
   const one = resource.useOne(id);
   const { update } = resource.useActions();
   const writes = useWrites(() => one.mutate());
@@ -28,7 +28,8 @@ export function OriginOf<T extends WithOrigin>({ resource, id }: { resource: Ori
     <ProvenancePanel
       provenance={record.provenance}
       source={record.source}
-      onSave={async (next) =>
+      // Read only for a player (the page's viewer, features/viewer).
+      onSave={readOnly ? undefined : async (next) =>
         // "" clears a source (as both back ends read it).
         (await writes.run(update(record, { provenance: next.provenance, source: next.source ?? '' }), 'The origin could not be saved', 'Origin saved'))
           ? null

@@ -51,6 +51,8 @@ export const ALL_EXTENSIONS = [
 
 export const SETTING_ID = 'setting-1';
 export const CAMPAIGN_ID = 'campaign-1';
+/** A playthrough of the fixture's scenario (campaign-2). */
+export const PLAYTHROUGH_ID = 'campaign-3';
 /** The setting's own pages' scope (its canon). */
 export const SETTING_SCOPE = settingScope(SETTING_ID);
 
@@ -65,6 +67,7 @@ export function wikiFixture(): Fixture {
     campaign: [
       { id: CAMPAIGN_ID, name: 'Harbour Lights', setting_id: SETTING_ID, description: 'A small port town and the storm that cut it off.' },
       { id: 'campaign-2', name: 'The Quiet Valley', setting_id: SETTING_ID, description: 'A scenario: a valley that went silent overnight.', is_scenario: true },
+      { id: PLAYTHROUGH_ID, name: 'The Quiet Valley, first run', setting_id: SETTING_ID, description: 'A playthrough of the scenario.', scenario_id: 'campaign-2' },
     ],
     location: [
       { id: 'location-1', name: 'Saltmarsh Bay', kind: 'region', campaign_id: CAMPAIGN_ID, description: 'A bay of mudflats and fog.' },
@@ -73,9 +76,25 @@ export function wikiFixture(): Fixture {
       { id: 'location-4', name: 'The Old Lighthouse', kind: 'building', setting_id: SETTING_ID, description: 'Canon: dark for twenty years.' },
     ],
     person: [
-      { id: 'person-1', name: 'Mara Quill', kind: 'npc', campaign_id: CAMPAIGN_ID, location_id: 'location-3', description: 'Keeps the Lantern House.' },
+      {
+        id: 'person-1',
+        name: 'Mara Quill',
+        kind: 'npc',
+        campaign_id: CAMPAIGN_ID,
+        location_id: 'location-3',
+        description: 'Keeps the Lantern House.',
+        keywords: JSON.stringify(['innkeeper']),
+        entry: JSON.stringify([
+          { type: 'p', children: [{ text: 'Keeps the Lantern House.' }] },
+          { type: 'h2', children: [{ text: 'GM secrets' }] },
+          { type: 'p', children: [{ text: 'She lit the lighthouse herself.' }] },
+        ]),
+      },
       { id: 'person-2', name: 'Tobin Reyes', kind: 'pc', campaign_id: CAMPAIGN_ID, location_id: 'location-2', description: 'A ferryman stranded by the storm.' },
       { id: 'person-3', name: 'Harbourmaster Vell', kind: 'npc', campaign_id: CAMPAIGN_ID, description: 'Holds the keys to every boat.' },
+      { id: 'person-4', name: 'Old Wick', kind: 'npc', campaign_id: 'campaign-2', description: 'The last shepherd in the valley.' },
+      { id: 'person-5', name: 'Old Wick', kind: 'npc', campaign_id: PLAYTHROUGH_ID, description: 'Copied in at start.' },
+      { id: 'person-6', name: 'New Face', kind: 'npc', campaign_id: PLAYTHROUGH_ID, description: 'Made in play.' },
     ],
     faction: [{ id: 'faction-1', name: 'The Harbour Guild', kind: 'guild', campaign_id: CAMPAIGN_ID, description: 'Fishers and boat owners.' }],
     item: [{ id: 'item-1', name: 'Brass Lantern', kind: 'misc', campaign_id: CAMPAIGN_ID, description: 'Never quite goes out.' }],
@@ -152,8 +171,45 @@ export function wikiHandlers({
   extensions = ALL_EXTENSIONS,
   rows = {},
   extra = [],
-}: { extensions?: readonly string[]; rows?: Fixture; extra?: RequestHandler[] } = {}): RequestHandler[] {
+  gmOnly = [],
+  properties = {},
+}: {
+  extensions?: readonly string[];
+  rows?: Fixture;
+  extra?: RequestHandler[];
+  /** Records kept to the GM (their "GM only" property), by id. */
+  gmOnly?: readonly string[];
+  /** A record's properties, by its id: key, value and whether private. */
+  properties?: Record<string, readonly { key: string; value: string; is_private?: boolean }[]>;
+} = {}): RequestHandler[] {
   const fixture = { ...wikiFixture(), ...rows };
+  // GET /v1/world_entity?ids=: the named places, people, organisations, items and journals, each
+  // with gm_only (as both back ends answer it).
+  const named = http.get('*/v1/world_entity', ({ request }) => {
+    const ids = new Set((new URL(request.url).searchParams.get('ids') ?? '').split(',').filter(Boolean));
+    const world_entities = (['location', 'person', 'faction', 'item', 'journal'] as const).flatMap((kind) =>
+      (fixture[kind] ?? [])
+        .filter((row) => ids.has(String(row.id)))
+        .map((row) => ({ id: String(row.id), kind, name: String(row.name), gm_only: gmOnly.includes(String(row.id)) })),
+    );
+    return HttpResponse.json({ world_entities, next: null });
+  });
+  const metadata = http.get('*/v1/record_metadata/of', ({ request }) => {
+    const id = new URL(request.url).searchParams.get('target_entity_id') ?? '';
+    const own = [...(properties[id] ?? []), ...(gmOnly.includes(id) ? [{ key: 'GM only', value: 'true', is_private: true }] : [])];
+    return HttpResponse.json({
+      metadata: own.map((one, ordinal) => ({
+        id: `record_metadata-${id}-${String(ordinal)}`,
+        key: one.key,
+        value: one.value,
+        value_type: 'text',
+        ordinal,
+        is_private: one.is_private ?? false,
+        created_at: STAMP,
+        updated_at: STAMP,
+      })),
+    });
+  });
   const tables = RESOURCES.flatMap((resource) => {
     let stored = (fixture[resource.single] ?? []).map((fields) => served(resource.schema, fields)) as (Row & {
       created_at: string;
@@ -175,8 +231,8 @@ export function wikiHandlers({
   return [
     ...extra,
     serverExtensions(...extensions),
-    // A record's own properties (the framework's metadata extension): none in the fixture.
-    http.get('*/v1/record_metadata/of', () => HttpResponse.json({ metadata: [] })),
+    named,
+    metadata,
     ...tables,
   ];
 }
