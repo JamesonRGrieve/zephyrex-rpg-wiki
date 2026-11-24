@@ -1938,3 +1938,32 @@ class TestKnownFacts:
         assert server.delete(f"/v1/campaign/{campaign['id']}", headers=_headers(person, **{"If-Match": f'"{campaign["updated_at"] or campaign["created_at"]}"'})).status_code in (200, 204)
         left = server.get("/v1/known_fact", params={"campaign_id": campaign["id"]}, headers=_headers(person)).json()
         assert left["known_facts"] == []
+
+
+class TestCurrentAttitudes:
+    """Operator, 2026-11-24: "Combat sides should be based on character disposition". The current
+    attitude between each pair of a campaign's people, as its band; none or "missing" is absent."""
+
+    def test_by_resolved_trigger_else_the_default_as_a_band(self, server: TestClient, person: Any) -> None:
+        from zephyrex.extensions.AbstractExtensionProvider import loaded_ability
+
+        campaign = _create(server, person, "campaign", name="Sides")
+        a, b, c = (_create(server, person, "person", name=name, kind="npc", campaign_id=campaign["id"]) for name in ("Ada", "Bram", "Cass"))
+        betrayal = _create(server, person, "hook", name="The betrayal", campaign_id=campaign["id"])
+        toward = lambda who, target, attitude, **more: _create(  # noqa: E731
+            server, person, "disposition", person_id=who["id"], target_kind="person", target_person_id=target["id"], attitude=attitude, **more
+        )
+        toward(a, b, "warm", is_default=True)  # a nuance: read as its band, helpful
+        toward(a, b, "hostile", trigger_hook_id=betrayal["id"])  # not yet resolved
+        toward(b, a, "wary", is_default=True)
+        toward(c, a, "missing", is_default=True)  # absent
+        registry = server.app.state.model_registry  # type: ignore[attr-defined]
+        read = loaded_ability(registry, "rpg_core", "current_attitudes")
+        assert read is not None
+        ids = [a["id"], b["id"], c["id"]]
+        assert read(registry, str(person.id), campaign["id"], ids) == {a["id"]: {b["id"]: "helpful"}, b["id"]: {a["id"]: "wary"}}
+        # The betrayal happens: Ada's trigger entry is current.
+        _put(server, person, "hook", betrayal, resolved_at="2026-11-24T01:00:00")
+        assert read(registry, str(person.id), campaign["id"], ids)[a["id"]] == {b["id"]: "hostile"}
+        # One person, or none in the campaign: nothing to read.
+        assert read(registry, str(person.id), campaign["id"], [a["id"]]) == {}

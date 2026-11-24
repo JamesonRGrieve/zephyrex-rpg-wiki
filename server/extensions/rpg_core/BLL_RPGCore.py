@@ -2232,6 +2232,55 @@ def learn_fact(
     return KnownFactLearned(known_fact=made.model_dump(mode="json"), created=True)
 
 
+# The most people current_attitudes reads among (the framework's MAX_BATCH_SIZE, as an __in list).
+MAX_ATTITUDE_PEOPLE = 100
+
+
+def current_attitudes(model_registry: Any, requester_id: str, campaign_id: str, person_ids: list[str]) -> dict[str, dict[str, str]]:
+    """How each of the campaign's ``person_ids`` regards each other one now (operator, 2026-11-24:
+    "Combat sides should be based on character disposition"): {who_id: {toward_id: attitude}}, the
+    current disposition by resolved triggers else the default (wiki_shared/Dispositions.current),
+    read as the scale's band. A pair with none, or "missing", is absent. Read only, and only what
+    the requester may see; a person not in the campaign is left out."""
+    from zephyrex.extensions.wiki_shared.Dispositions import band, current  # type: ignore[import-not-found]
+    from zephyrex.extensions.world_narrative.BLL_WorldNarrative import DispositionManager  # type: ignore[import-not-found]
+    from zephyrex.logic.AbstractLogicManager.models import FieldComparison
+
+    _manager(model_registry, requester_id, CampaignManager).get(id=campaign_id)
+    wanted = sorted({str(one).strip() for one in person_ids if str(one).strip()})
+    if len(wanted) > MAX_ATTITUDE_PEOPLE:
+        raise HTTPException(status_code=422, detail=f"At most {MAX_ATTITUDE_PEOPLE} people")
+    if len(wanted) < 2:
+        return {}
+    people = _manager(model_registry, requester_id, PersonManager)
+    present = {str(row.id) for row in people.list(filters=[FieldComparison(people.Model, "id", "in", wanted)]) or [] if str(getattr(row, "campaign_id", "") or "") == campaign_id}
+    if len(present) < 2:
+        return {}
+    ids = sorted(present)
+    held = _manager(model_registry, requester_id, DispositionManager)
+    rows = [
+        row
+        for row in held.list(filters=[FieldComparison(held.Model, "person_id", "in", ids), FieldComparison(held.Model, "target_person_id", "in", ids)]) or []
+        if row.target_kind == "person" and str(row.person_id) != str(row.target_person_id)
+    ]
+    rows.sort(key=lambda row: (row.created_at, str(row.id)))
+    triggers = sorted({str(row.trigger_hook_id) for row in rows if row.trigger_hook_id})
+    hooks = _manager(model_registry, requester_id, HookManager)
+    resolved = {str(row.id): row.resolved_at for row in (hooks.list(filters=[FieldComparison(hooks.Model, "id", "in", triggers)]) or []) if triggers and row.resolved_at} if triggers else {}
+    pairs: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for row in rows:
+        pairs.setdefault((str(row.person_id), str(row.target_person_id)), []).append(
+            {"attitude": row.attitude, "default": bool(row.is_default), "trigger": str(row.trigger_hook_id) if row.trigger_hook_id else None}
+        )
+    found: dict[str, dict[str, str]] = {}
+    for (who, toward), entries in pairs.items():
+        attitude = current(entries, resolved)
+        if attitude is None or band(attitude) == "missing":
+            continue
+        found.setdefault(who, {})[toward] = band(attitude)
+    return found
+
+
 class PersonMoved(PlainModel):
     person_id: str
     from_location_id: Optional[str] = Field(None, alias="from")
