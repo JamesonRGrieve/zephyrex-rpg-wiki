@@ -219,10 +219,14 @@ def _list(value: Any) -> list[Any]:
 
 
 class Importer:
-    def __init__(self, api: Api, setting_slug: Optional[str] = None, dry_run: bool = False, log: Callable[[str], None] = print) -> None:
+    def __init__(
+        self, api: Api, setting_slug: Optional[str] = None, dry_run: bool = False, log: Callable[[str], None] = print, force: bool = False
+    ) -> None:
         self.api = api
         self.setting_slug = setting_slug
         self.dry_run = dry_run
+        # Every matched record's fields written as the note gives them, changed or not (--force).
+        self.force = force
         self.log = log
         self.report = Report()
         self.setting_id: Optional[str] = None
@@ -271,7 +275,8 @@ class Importer:
         if not self.campaigns:
             # A vault's campaigns are scenarios: a playthrough (one started from a scenario, which
             # carries its name) is never one of them, or a re-run would mark it a scenario.
-            rows = [one for one in self.api.list("campaign") if not one.get("scenario_id")]
+            # A deleted one (a ROOT-run import lists those too) is never a match either.
+            rows = [one for one in self.api.list("campaign") if not one.get("scenario_id") and not one.get("deleted_at")]
             self.campaigns = {str(one["name"]): str(one["id"]) for one in rows}
             self._campaign_rows = {str(one["name"]): one for one in rows}
         self._touched.add(name)
@@ -520,6 +525,8 @@ class Importer:
                 filters = {"campaign_id": scope["campaign_id"]} if scope["campaign_id"] else {"setting_id": scope["setting_id"]}
                 for kind in ENTITY_TYPES:
                     for row in self.api.list(kind, **filters):
+                        if row.get("deleted_at"):
+                            continue
                         if scope["campaign_id"] or row.get("campaign_id") is None:
                             names.setdefault(str(row["name"]), (kind, row))
                             self._aliases[key].extend((alias, (kind, row)) for alias in _aliases_of(row))
@@ -962,7 +969,8 @@ class Importer:
             label = f"{one.kind} {one.note.name}"
             try:
                 resolve = self._resolver(one.scope)
-                fields = self._changed(one, self._fields(one, resolve))
+                given = self._fields(one, resolve)
+                fields = {key: value for key, value in given.items() if value is not None} if self.force and label not in newly else self._changed(one, given)
                 if fields and not self.dry_run and not str(one.record["id"]).startswith("(new"):
                     self._change(one.kind, one.record, fields, one.note.path, "")
                 linked = self._links(one, resolve)

@@ -308,3 +308,30 @@ def test_a_re_run_never_marks_a_playthrough_named_like_its_scenario(api: Api, tm
     held = {row["id"]: row for row in api.list("campaign") if row["name"] == "Named Twice"}
     assert held[scenario["id"]]["is_scenario"] is True
     assert not held[playthrough["id"]]["is_scenario"]
+
+
+def test_a_re_run_writes_the_scenarios_own_record_beside_a_playthrough_that_has_the_change(api: Api, tmp_path: Path) -> None:
+    """Zephyrex RPG, 2026-11-24: earlier runs wrote a pregen's new Description line onto the
+    playthrough's copy (matched by name); a later run said the scenario's own PC was unchanged.
+    Unchanged means the scenario's own record matches the note: it is written, and --force writes
+    every matched record."""
+    note = tmp_path / "Characters" / "Bryn.md"
+    note.parent.mkdir()
+    head = "---\nentity_type: person\nkind: pc\nname: Bryn\ncampaign: Copied Party\n---\n## Description\n\n"
+    note.write_text(head + "A drover.\n", encoding="utf-8")
+    assert Importer(api, setting_slug=api.fantasy).run(read_vault(tmp_path)).refused == []  # type: ignore[attr-defined]
+    [scenario] = [row for row in api.list("campaign") if row["name"] == "Copied Party"]
+    mine = _one(api, "person", scenario["id"], "Bryn")
+    # The playthrough's copy already has the new line (as the misdirected runs left it).
+    playthrough = api.create("campaign", name="Copied Party", scenario_id=scenario["id"])
+    api.create("person", name="Bryn", kind="pc", campaign_id=playthrough["id"])
+    note.write_text(head + "Level 1 Human Fighter. A drover.\n", encoding="utf-8")
+    again = Importer(api, setting_slug=api.fantasy).run(read_vault(tmp_path))  # type: ignore[attr-defined]
+    assert "person Bryn" in again.updated, again.text(False)
+    held, _etag = api.get("person", mine["id"])
+    assert "Level 1 Human Fighter" in str(held["entry"])
+    # Nothing left to change: unchanged, unless forced.
+    assert "person Bryn" in Importer(api, setting_slug=api.fantasy).run(read_vault(tmp_path)).unchanged  # type: ignore[attr-defined]
+    forced = Importer(api, setting_slug=api.fantasy, force=True).run(read_vault(tmp_path))  # type: ignore[attr-defined]
+    assert forced.refused == [], forced.refused
+    assert "person Bryn" in forced.updated

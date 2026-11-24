@@ -32,6 +32,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("vaults", type=Path, nargs="+", help="Vault folders, imported in this order")
     parser.add_argument("--setting", help="The setting's slug for the vaults' campaigns (it must exist: POST /v1/setting)")
     parser.add_argument("--dry-run", action="store_true", help="Read and report; write nothing")
+    parser.add_argument("--force", action="store_true", help="Write every matched record's fields as its note gives them, changed or not")
     parser.add_argument("--base-url", help="Over HTTP: the wiki's address, e.g. http://localhost:2000")
     parser.add_argument("--lite", action="store_true", help="Over HTTP to a lite edition: the API is under /api")
     parser.add_argument("--app", help="In process: the server app's factory, module:function (rpg_ai_app:create)")
@@ -54,7 +55,7 @@ def main(argv: list[str] | None = None) -> int:
         # only once the connection has made the app (in process) or put the checkout's on the path.
         from vault_import.importer import Importer
 
-        report = Importer(api, setting_slug=args.setting, dry_run=args.dry_run).run(notes)
+        report = Importer(api, setting_slug=args.setting, dry_run=args.dry_run, force=args.force).run(notes)
     print(report.text(args.dry_run))
     return 1 if report.refused or report.unplayable else 0
 
