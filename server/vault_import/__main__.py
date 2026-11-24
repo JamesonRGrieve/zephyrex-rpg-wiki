@@ -13,9 +13,18 @@ before the campaigns that link to it.
 import argparse
 import sys
 from pathlib import Path
+from typing import Any
 
 from vault_import.connect import connection
 from vault_import.notes import read_vault
+
+
+def with_default_campaign(notes: list[Any], campaign: str) -> None:
+    """--default-campaign: a note that names no campaign and isn't setting_wide (a campaign vault's own
+    root notes) belongs to `campaign`; every other note keeps its own."""
+    for note in notes:
+        if not note.meta.get("campaign") and note.meta.get("setting_wide") is not True:
+            note.meta["campaign"] = campaign
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -39,9 +48,7 @@ def main(argv: list[str] | None = None) -> int:
     connect = connection(args.base_url, args.lite, args.app, args.owner)
     notes = [note for vault in args.vaults for note in read_vault(vault)]
     if args.default_campaign:
-        for note in notes:
-            if not note.meta.get("campaign") and note.meta.get("setting_wide") is not True:
-                note.meta["campaign"] = args.default_campaign
+        with_default_campaign(notes, args.default_campaign)
     with connect as api:
         # The importer imports the wiki's shared code (zephyrex.extensions.wiki_shared), which exists
         # only once the connection has made the app (in process) or put the checkout's on the path.

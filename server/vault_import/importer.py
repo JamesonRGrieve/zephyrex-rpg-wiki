@@ -335,8 +335,14 @@ class Importer:
                 self.report.refused.append((note.path, f"campaign {name!r} is already {held['provenance']} here"))
 
     def _queue(self, resource: str, fields: dict[str, Any], path: str, label: str) -> None:
-        """A row made later, in a plural create with the rest of its resource's (_flush_pending)."""
-        self._pending.setdefault(resource, []).append((fields, path, label))
+        """A row made later, in a plural create with the rest of its resource's (_flush_pending). The
+        same row asked for twice is queued once: a quest that depends on an objective and the objective
+        that names the quest as its parent are one hook_dependency, and a second copy would be refused
+        as a duplicate and reported as if the vault were wrong."""
+        queued = self._pending.setdefault(resource, [])
+        if any(held == fields for held, _path, _label in queued):
+            return
+        queued.append((fields, path, label))
 
     def _flush_pending(self) -> None:
         """Every queued row, one plural create per resource and per BATCH; a refused row is reported
@@ -584,11 +590,13 @@ class Importer:
             # its links are), the last value winning.
             queued = self._pending.setdefault("record_metadata", [])
             body = {"target_entity_type": kind, "target_entity_id": record_id, "key": key, "value": value, "value_type": value_type, "is_private": private}
+            # A refusal names the record (the note isn't known here).
+            where = f"{kind} {record_id}"
             for index, (held, _path, _label) in enumerate(queued):
                 if held["target_entity_id"] == record_id and held["key"] == key:
-                    queued[index] = (body, "", f"property {key}")
+                    queued[index] = (body, where, f"property {key}")
                     return True
-            self._queue("record_metadata", body, "", f"property {key}")
+            self._queue("record_metadata", body, where, f"property {key}")
             return True
         held = {row["key"]: row for row in self.api.properties(kind, record_id)}
         if key not in held:
