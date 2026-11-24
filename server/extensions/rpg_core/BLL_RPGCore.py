@@ -2236,12 +2236,17 @@ def learn_fact(
 MAX_ATTITUDE_PEOPLE = 100
 
 
+# current_attitudes' reserved key for an attitude toward the party (target_kind "party").
+PARTY = "party"
+
+
 def current_attitudes(model_registry: Any, requester_id: str, campaign_id: str, person_ids: list[str]) -> dict[str, dict[str, str]]:
-    """How each of the campaign's ``person_ids`` regards each other one now (operator, 2026-11-24:
-    "Combat sides should be based on character disposition"): {who_id: {toward_id: attitude}}, the
-    current disposition by resolved triggers else the default (wiki_shared/Dispositions.current),
-    read as the scale's band. A pair with none, or "missing", is absent. Read only, and only what
-    the requester may see; a person not in the campaign is left out."""
+    """How each of the campaign's ``person_ids`` regards each other one now, and the party
+    (operator, 2026-11-24: "Combat sides should be based on character disposition"):
+    {who_id: {"party": attitude, toward_id: attitude}}, the current disposition by resolved
+    triggers else the default (wiki_shared/Dispositions.current), read as the scale's band. A pair
+    with none, or "missing", is absent. Read only, and only what the requester may see; a person
+    not in the campaign is left out."""
     from zephyrex.extensions.wiki_shared.Dispositions import band, current  # type: ignore[import-not-found]
     from zephyrex.extensions.world_narrative.BLL_WorldNarrative import DispositionManager  # type: ignore[import-not-found]
     from zephyrex.logic.AbstractLogicManager.models import FieldComparison
@@ -2250,18 +2255,20 @@ def current_attitudes(model_registry: Any, requester_id: str, campaign_id: str, 
     wanted = sorted({str(one).strip() for one in person_ids if str(one).strip()})
     if len(wanted) > MAX_ATTITUDE_PEOPLE:
         raise HTTPException(status_code=422, detail=f"At most {MAX_ATTITUDE_PEOPLE} people")
-    if len(wanted) < 2:
+    if not wanted:
         return {}
     people = _manager(model_registry, requester_id, PersonManager)
     present = {str(row.id) for row in people.list(filters=[FieldComparison(people.Model, "id", "in", wanted)]) or [] if str(getattr(row, "campaign_id", "") or "") == campaign_id}
-    if len(present) < 2:
+    if not present:
         return {}
     ids = sorted(present)
     held = _manager(model_registry, requester_id, DispositionManager)
+    # Toward one another, and toward the party (VTT's stances fall back to it), in one read.
     rows = [
         row
-        for row in held.list(filters=[FieldComparison(held.Model, "person_id", "in", ids), FieldComparison(held.Model, "target_person_id", "in", ids)]) or []
-        if row.target_kind == "person" and str(row.person_id) != str(row.target_person_id)
+        for row in held.list(filters=[FieldComparison(held.Model, "person_id", "in", ids)]) or []
+        if (row.target_kind == "person" and str(row.target_person_id) in present and str(row.person_id) != str(row.target_person_id))
+        or row.target_kind == PARTY
     ]
     rows.sort(key=lambda row: (row.created_at, str(row.id)))
     triggers = sorted({str(row.trigger_hook_id) for row in rows if row.trigger_hook_id})
@@ -2269,7 +2276,8 @@ def current_attitudes(model_registry: Any, requester_id: str, campaign_id: str, 
     resolved = {str(row.id): row.resolved_at for row in (hooks.list(filters=[FieldComparison(hooks.Model, "id", "in", triggers)]) or []) if triggers and row.resolved_at} if triggers else {}
     pairs: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for row in rows:
-        pairs.setdefault((str(row.person_id), str(row.target_person_id)), []).append(
+        toward = PARTY if row.target_kind == PARTY else str(row.target_person_id)
+        pairs.setdefault((str(row.person_id), toward), []).append(
             {"attitude": row.attitude, "default": bool(row.is_default), "trigger": str(row.trigger_hook_id) if row.trigger_hook_id else None}
         )
     found: dict[str, dict[str, str]] = {}

@@ -247,10 +247,10 @@ class RPGCoreExtension(AbstractStaticExtension):
     @classmethod
     @ability("current_attitudes")
     def current_attitudes(cls, model_registry: Any, requester_id: str, campaign_id: str, person_ids: list[str]) -> dict[str, dict[str, str]]:
-        """How each of the campaign's ``person_ids`` regards each other one now, for combat sides
-        (operator, 2026-11-24): {who_id: {toward_id: attitude}}, the scale's band of the current
-        disposition (resolved triggers, else the default); a pair with none, or "missing", is
-        absent. Read only; at most 100 people."""
+        """How each of the campaign's ``person_ids`` regards each other one now, and the party, for
+        combat sides (operator, 2026-11-24): {who_id: {"party": attitude, toward_id: attitude}},
+        the scale's band of the current disposition (resolved triggers, else the default); a pair
+        with none, or "missing", is absent. Read only; at most 100 people."""
         from zephyrex.extensions.rpg_core.BLL_RPGCore import current_attitudes  # type: ignore[import-not-found]
 
         return current_attitudes(model_registry, requester_id, campaign_id, person_ids)
