@@ -3067,6 +3067,25 @@ hook_bll(CampaignManager, timing=HookTiming.AFTER, priority=30)(_campaign_record
 AFTER_INSTANTIATE: list[Callable[[Any, str, str, str, dict[str, str]], None]] = []
 
 
+def _hook_key(hook: Any) -> tuple[str, str]:
+    """A hook's name, as its module and qualified name: the same function imported again (an
+    extension reloaded) is the same hook."""
+    return (str(getattr(hook, "__module__", "")), str(getattr(hook, "__qualname__", repr(hook))))
+
+
+def register_instantiate_hook(hook: Callable[[Any, str, str, str, dict[str, str]], None]) -> bool:
+    """Add ``hook`` to AFTER_INSTANTIATE, called after each start with (model_registry,
+    requester_id, source_campaign_id, new_campaign_id, id_map); a failing hook is logged and never
+    undoes the start. The same hook again is not added twice: True when it was added."""
+    if not callable(hook):
+        raise HTTPException(status_code=422, detail="An instantiate hook is a function")
+    key = _hook_key(hook)
+    if any(held is hook or _hook_key(held) == key for held in AFTER_INSTANTIATE):
+        return False
+    AFTER_INSTANTIATE.append(hook)
+    return True
+
+
 def _after_instantiate(model_registry: Any, requester_id: str, source_campaign_id: str, new_campaign_id: str, id_map: dict[str, str]) -> None:
     from zephyrex.lib.Logging import logger
 

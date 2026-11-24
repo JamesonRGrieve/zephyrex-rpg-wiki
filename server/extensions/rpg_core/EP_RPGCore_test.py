@@ -1971,3 +1971,37 @@ class TestCurrentAttitudes:
         assert read(registry, str(person.id), campaign["id"], [c["id"]]) == {c["id"]: {"party": "enraged"}}
         assert read(registry, str(person.id), campaign["id"], [a["id"]]) == {}
         assert read(registry, str(person.id), campaign["id"], ["not-a-person"]) == {}
+
+
+class TestInstantiateHooks:
+    """Parity, 2026-11-24 (the operator's Foundry option: rpg-ai reaches nothing internal): a
+    composing app registers its after-start hook through an ability, once."""
+
+    def test_registered_once_called_after_a_start_and_a_failure_never_undoes_it(self, server: TestClient, person: Any) -> None:
+        from zephyrex.extensions.AbstractExtensionProvider import loaded_ability
+        from zephyrex.extensions.rpg_core.BLL_RPGCore import AFTER_INSTANTIATE  # type: ignore[import-not-found]
+
+        registry = server.app.state.model_registry  # type: ignore[attr-defined]
+        register = loaded_ability(registry, "rpg_core", "register_instantiate_hook")
+        assert register is not None
+        seen: list[tuple[str, str, int]] = []
+
+        def copy_frame(model_registry: Any, requester_id: str, source: str, made: str, id_map: dict[str, str]) -> None:
+            seen.append((source, made, len(id_map)))
+
+        def broken(model_registry: Any, requester_id: str, source: str, made: str, id_map: dict[str, str]) -> None:
+            raise RuntimeError("this hook fails")
+
+        held = list(AFTER_INSTANTIATE)
+        try:
+            assert register(registry, str(person.id), copy_frame) == {"registered": True}
+            assert register(registry, str(person.id), copy_frame) == {"registered": False}
+            assert register(registry, str(person.id), broken) == {"registered": True}
+            scenario = _create(server, person, "campaign", name="Hooked Scenario", is_scenario=True)
+            _create(server, person, "person", name="Hooked NPC", kind="npc", campaign_id=scenario["id"])
+            start = _start(server, person, scenario["id"], "Hooked Run")
+            # The broken hook is logged; the start still ends done, and the other hook ran once.
+            assert start["state"] == "done", start
+            assert len(seen) == 1 and seen[0][0] == scenario["id"] and seen[0][1] == start["campaign_id"] and seen[0][2] >= 1
+        finally:
+            AFTER_INSTANTIATE[:] = held

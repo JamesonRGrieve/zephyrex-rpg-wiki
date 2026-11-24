@@ -369,6 +369,17 @@ class RPGCoreExtension(AbstractStaticExtension):
         return rebuild_lore_chunks(model_registry, requester_id)
 
     @classmethod
+    @ability("register_instantiate_hook")
+    def register_instantiate_hook(cls, model_registry: Any, requester_id: str, hook: Any) -> dict[str, Any]:
+        """A composing app's hook, called after each scenario start with (model_registry,
+        requester_id, source_campaign_id, new_campaign_id, id_map) to copy its own rows (rpg-ai's
+        frame; the VTT's scenes and tokens): {"registered": bool}, false when that hook was already
+        registered. A failing hook is logged and never undoes the start."""
+        from zephyrex.extensions.rpg_core.BLL_RPGCore import register_instantiate_hook  # type: ignore[import-not-found]
+
+        return {"registered": register_instantiate_hook(hook)}
+
+    @classmethod
     @ability("register_embedder")
     def register_embedder(cls, model_registry: Any, requester_id: str, embed: Any, model: str) -> dict[str, Any]:
         """The composing app's embedder (texts in, 768-wide vectors out; rpg-ai's "embed"-role
