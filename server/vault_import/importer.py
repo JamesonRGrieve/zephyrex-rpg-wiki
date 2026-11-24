@@ -231,6 +231,8 @@ class Importer:
         self.names: dict[str, dict[str, tuple[str, dict[str, Any]]]] = {}
         self._taxa: dict[tuple[str, str, str], str] = {}
         self._statuses: dict[tuple[str, str, str], str] = {}
+        # Scopes whose taxa and statuses have been read (one list each, _known_labels).
+        self._labels_read: set[str] = set()
         self._fresh = 0
         self._aliases: dict[str, list[tuple[str, tuple[str, dict[str, Any]]]]] = {}
         # A campaign's provenance and source, from its notes' frontmatter (homebrew when none says).
@@ -607,18 +609,77 @@ class Importer:
             return True
         return False
 
+    def _known_labels(self, scope: dict[str, Optional[str]]) -> None:
+        """A scope's taxa and statuses, read once: one list of each, not one per name."""
+        scope_key = self._key(scope)
+        if scope_key in self._labels_read:
+            return
+        self._labels_read.add(scope_key)
+        filters = {k: v for k, v in scope.items() if v}
+        for one in self.api.list("taxon", **filters):
+            self._taxa.setdefault((scope_key, str(one.get("kind")), str(one["name"])), str(one["id"]))
+        for one in self.api.list("status", **filters):
+            self._statuses.setdefault((scope_key, str(one.get("kind")), str(one["name"])), str(one["id"]))
+
+    def _labels(self, placed: Placed) -> tuple[list[tuple[str, str]], list[str], Optional[tuple[str, str]]]:
+        """What a note tags its record with, (name, taxon kind) each; the eras a framing note gives its
+        campaign; and its status, (name, status kind)."""
+        meta, kind = placed.note.meta, placed.kind
+        # A framing note's tags are its campaign's play styles (_settle_play_styles), not its own.
+        framing = kind == "journal" and (_text(meta.get("kind")) or _text(meta.get("journal_type")) or "").lower().replace("-", "_") == "campaign_framing"
+        taxa = [] if framing else [(tag, "tag") for tag in _tags(meta, kind)]
+        if _text(meta.get("race")):
+            taxa.append((str(meta["race"]).strip(), "race"))
+        # era: (one or a list): era-bound canon, or on a framing note its campaign's era (operator,
+        # 2026-11-23: Reality's eras work like the 40k lines; era scoping in rpg_core).
+        eras = [str(one).strip() for one in _list(meta.get("era")) if _text(one)]
+        campaign_eras = eras if framing and placed.scope.get("campaign_id") else []
+        if not campaign_eras:
+            taxa += [(era, "era") for era in eras]
+        status = _text(meta.get("status"))
+        return taxa, campaign_eras, (None if status is None else (status, STATUS_KIND.get(kind, "entity_status")))
+
+    def _make_labels(self, placed: list[Placed]) -> None:
+        """Every tag, race, era and status the notes name that their scope lacks, made up front in one
+        plural create per resource; linking them later is a lookup. A batch the server refuses is left
+        to _taxon and _status, one at a time, so each refusal is its own."""
+        wanted: dict[str, dict[tuple[str, str, str], dict[str, Any]]] = {"taxon": {}, "status": {}}
+        for one in placed:
+            self._known_labels(one.scope)
+            scope_key = self._key(one.scope)
+            taxa, campaign_eras, status = self._labels(one)
+            for name, kind in taxa + [(era, "era") for era in campaign_eras]:
+                if (scope_key, kind, name) not in self._taxa:
+                    wanted["taxon"].setdefault((scope_key, kind, name), {"name": name, "kind": kind, **one.scope})
+            if status is not None and (scope_key, status[1], status[0]) not in self._statuses:
+                wanted["status"].setdefault((scope_key, status[1], status[0]), {"name": status[0], "kind": status[1], **one.scope})
+        for resource, cache in (("taxon", self._taxa), ("status", self._statuses)):
+            keys = list(wanted[resource])
+            if not keys:
+                continue
+            try:
+                made = self.api.create_many(resource, [wanted[resource][key] for key in keys])
+            except ApiError:
+                # Some may have landed before the refusal: the scopes are read again when next asked.
+                self._labels_read.clear()
+                continue
+            for key, row in zip(keys, made):
+                cache[key] = str(row["id"])
+
     def _taxon(self, scope: dict[str, Optional[str]], name: str, kind: str) -> str:
         key = (self._key(scope), kind, name)
         if key not in self._taxa:
-            found = [one for one in self.api.list("taxon", **{k: v for k, v in scope.items() if v}) if one["name"] == name and one.get("kind") == kind]
-            self._taxa[key] = str(found[0]["id"]) if found else str(self.api.create("taxon", name=name, kind=kind, **scope)["id"])
+            self._known_labels(scope)
+        if key not in self._taxa:
+            self._taxa[key] = str(self.api.create("taxon", name=name, kind=kind, **scope)["id"])
         return self._taxa[key]
 
     def _status(self, scope: dict[str, Optional[str]], name: str, kind: str) -> str:
         key = (self._key(scope), kind, name)
         if key not in self._statuses:
-            found = [one for one in self.api.list("status", **{k: v for k, v in scope.items() if v}) if one["name"] == name and one.get("kind") == kind]
-            self._statuses[key] = str(found[0]["id"]) if found else str(self.api.create("status", name=name, kind=kind, **scope)["id"])
+            self._known_labels(scope)
+        if key not in self._statuses:
+            self._statuses[key] = str(self.api.create("status", name=name, kind=kind, **scope)["id"])
         return self._statuses[key]
 
     def _fields(self, placed: Placed, resolve: Callable[[str], Optional[tuple[str, str]]]) -> dict[str, Any]:
@@ -736,34 +797,25 @@ class Importer:
             return changed
         born = record_id in self._born
         tagged = set() if born else {one["taxon_id"] for one in self.api.list("entity_taxon", target_entity_type=kind, target_entity_id=record_id)}
-        # A framing note's tags are its campaign's play styles (_settle_play_styles), not its own.
-        framing = kind == "journal" and (_text(meta.get("kind")) or _text(meta.get("journal_type")) or "").lower().replace("-", "_") == "campaign_framing"
-        wanted = [] if framing else [(tag, "tag") for tag in _tags(meta, kind)]
-        if _text(meta.get("race")):
-            wanted.append((str(meta["race"]).strip(), "race"))
-        # era: (one or a list): era-bound canon, or on a framing note its campaign's era (operator,
-        # 2026-11-23: Reality's eras work like the 40k lines; era scoping in rpg_core).
-        eras = [str(one).strip() for one in _list(meta.get("era")) if _text(one)]
-        if framing and eras and scope.get("campaign_id"):
+        wanted, campaign_eras, status_wanted = self._labels(placed)
+        if campaign_eras:
             campaign_id = str(scope["campaign_id"])
             on_campaign = {one["taxon_id"] for one in self.api.list("entity_taxon", target_entity_type="campaign", target_entity_id=campaign_id)}
-            for era in eras:
+            for era in campaign_eras:
                 taxon = self._taxon(scope, era, "era")
                 if taxon not in on_campaign:
-                    self.api.create("entity_taxon", taxon_id=taxon, target_entity_type="campaign", target_entity_id=campaign_id)
+                    self._queue("entity_taxon", {"taxon_id": taxon, "target_entity_type": "campaign", "target_entity_id": campaign_id}, placed.note.path, f"its campaign's era {era}")
                     on_campaign.add(taxon)
                     changed = True
-        elif eras:
-            wanted += [(era, "era") for era in eras]
         for name, taxon_kind in wanted:
             taxon = self._taxon(scope, name, taxon_kind)
             if taxon not in tagged:
                 self._queue("entity_taxon", {"taxon_id": taxon, "target_entity_type": kind, "target_entity_id": record_id}, placed.note.path, f"{taxon_kind} {name}")
                 tagged.add(taxon)
                 changed = True
-        status = _text(meta.get("status"))
-        if status is not None:
-            wanted_status = self._status(scope, status, STATUS_KIND.get(kind, "entity_status"))
+        if status_wanted is not None:
+            status = status_wanted[0]
+            wanted_status = self._status(scope, status, status_wanted[1])
             held = [] if born else self.api.list("entity_status", target_entity_type=kind, target_entity_id=record_id)
             if not held:
                 self._queue("entity_status", {"status_id": wanted_status, "target_entity_type": kind, "target_entity_id": record_id}, placed.note.path, f"status {status}")
@@ -884,6 +936,7 @@ class Importer:
         if not self.dry_run:
             refused = self._flush_new()
             placed = [one for one in placed if one.note.path not in refused]
+            self._make_labels(placed)
         created = {f"{one.kind} {one.note.name}" for one in placed}
         newly = set(self.report.created)
         for one in placed:

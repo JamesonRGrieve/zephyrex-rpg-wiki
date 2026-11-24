@@ -152,3 +152,50 @@ def test_default_campaign_fills_only_notes_that_name_none_and_are_not_setting_wi
     )
     with_default_campaign(notes, "Home Run")
     assert {note.name: note.meta.get("campaign") for note in notes} == {"Root": "Home Run", "Named": "Elsewhere", "Canon": None}
+
+
+def test_taxa_and_statuses_are_read_once_a_scope_and_the_missing_made_together(server: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tags, races, eras and statuses: one list of each per scope (not one per name), and the ones the
+    scope lacks made in one plural create each, before any record is linked to them."""
+    notes = {
+        f"Characters/{name}.md": f"---\nentity_type: person\nkind: npc\nname: {name}\ncampaign: Labelled\ntags: [{tag}, shared]\nrace: {race}\nstatus: {status}\n---\nSomeone.\n"
+        for name, tag, race, status in (("Ava", "smith", "Human", "alive"), ("Bram", "miller", "Dwarf", "alive"), ("Cass", "baker", "Human", "missing"))
+    }
+    api, recording = _api(server)
+    flushed_at: list[int] = []
+    flush = Importer._flush_pending
+
+    def counted(self: Importer) -> None:
+        flushed_at.append(len(recording.sent))
+        flush(self)
+
+    # Up to the links' flush: scenario_repair's origin tags come after, at the run's end.
+    monkeypatch.setattr(Importer, "_flush_pending", counted)
+    report = Importer(api, setting_slug=setting_of(api, "fixture-fantasy")).run(read_vault(_vault(tmp_path, notes)))
+    assert report.refused == [], report.refused
+    [campaign] = [row for row in api.list("campaign") if row["name"] == "Labelled"]
+    sent = recording.sent[: flushed_at[0]]
+    in_campaign = [(method, path, query, body) for method, path, query, body in sent if query.get("campaign_id") == [str(campaign["id"])] or (isinstance(body, dict) and campaign["id"] in str(body))]
+    lists = [path for method, path, query, _body in in_campaign if method == "GET" and path in ("/v1/taxon", "/v1/status")]
+    assert sorted(lists) == ["/v1/status", "/v1/taxon"], lists
+    singles = [path for method, path, _query, body in sent if method == "POST" and path in ("/v1/taxon", "/v1/status") and isinstance(body, dict) and ("taxon" in body or "status" in body)]
+    assert singles == [], singles
+    taxa = {(row["name"], row["kind"]) for row in api.list("taxon", campaign_id=campaign["id"])}
+    assert {("smith", "tag"), ("miller", "tag"), ("baker", "tag"), ("shared", "tag"), ("Human", "race"), ("Dwarf", "race")} <= taxa
+    assert {row["name"] for row in api.list("status", campaign_id=campaign["id"])} == {"alive", "missing"}
+    people = {row["name"]: str(row["id"]) for row in api.list("person", campaign_id=campaign["id"])}
+    assert len(api.list("entity_taxon", target_entity_type="person", target_entity_id=people["Bram"])) >= 3
+
+
+def test_a_framing_with_eras_and_no_campaign_tags_itself(server: TestClient, tmp_path: Path) -> None:
+    """A setting-wide framing note's eras have no campaign to go on, so they tag the note's own record."""
+    notes = {
+        "Lore/Canon Framing.md": "---\nentity_type: journal\nkind: campaign_framing\nname: Canon Framing\nsetting_wide: true\nera: Bronze Age\n---\n## Premise\n\nOld.\n",
+    }
+    api, _recording = _api(server)
+    report = Importer(api, setting_slug=setting_of(api, "fixture-fantasy")).run(read_vault(_vault(tmp_path, notes)))
+    assert report.refused == [], report.refused
+    [journal] = [row for row in api.list("journal") if row["name"] == "Canon Framing"]
+    eras = {str(row["id"]): str(row["name"]) for row in api.list("taxon", kind="era")}
+    tagged = {eras.get(str(row["taxon_id"])) for row in api.list("entity_taxon", target_entity_type="journal", target_entity_id=journal["id"])}
+    assert "Bronze Age" in tagged

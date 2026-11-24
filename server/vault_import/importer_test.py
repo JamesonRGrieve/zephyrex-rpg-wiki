@@ -145,8 +145,10 @@ def test_new_records_are_made_one_plural_create_a_kind(server: TestClient) -> No
     api.grimdark = setting_of(api, "fixture-grimdark")  # type: ignore[attr-defined]
     report = Importer(api, setting_slug=api.fantasy).run(read_vault(FIXTURE))
     assert report.refused == [], report.refused
+    records = {"person", "location", "faction", "item", "journal", "hook"}
     kinds = [resource for resource, count in api.batches if count]
-    assert sorted(kinds) == sorted(set(kinds)) and sum(count for _resource, count in api.batches) == 12
+    # One plural create a kind (taxa and statuses have theirs too: batching_test).
+    assert sorted(kinds) == sorted(set(kinds)) and sum(count for resource, count in api.batches if resource in records) == 12
     # No record of the six kinds is made alone (the campaign, its tags and links are their own calls).
     assert not {"person", "location", "faction", "item", "journal", "hook"} & set(api.singles)
 

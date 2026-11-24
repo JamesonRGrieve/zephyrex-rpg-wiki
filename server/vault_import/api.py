@@ -90,10 +90,14 @@ class Api:
                 self._plurals[resource] = next(key for key, value in body.items() if isinstance(value, list))
             except ApiError:
                 # A resource with no list (record_metadata): its plural as the framework names its routes'
-                # plural key, the same function the create route reads.
-                from zephyrex.lib.Environment import plural_noun  # type: ignore[import-not-found]
-
-                self._plurals[resource] = str(plural_noun(resource))
+                # plural key, the same function the create route reads; over HTTP from a machine without
+                # the framework, its regular plural.
+                try:
+                    from zephyrex.lib.Environment import plural_noun  # type: ignore[import-not-found]
+                except ImportError:
+                    self._plurals[resource] = f"{resource}s"
+                else:
+                    self._plurals[resource] = str(plural_noun(resource))
         return self._plurals[resource]
 
     def create_many(self, resource: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
