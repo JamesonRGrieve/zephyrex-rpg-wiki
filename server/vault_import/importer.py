@@ -14,12 +14,15 @@ kind are refused and reported). A value already as the vault says is left alone,
 changes nothing.
 """
 
+import fcntl
 import json
 import re
+import tempfile
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from datetime import date, datetime, timezone
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Iterator, Optional
 
 from vault_import.api import Api, ApiError
 from zephyrex.extensions.wiki_shared.Contract import (  # type: ignore[import-not-found]
@@ -197,6 +200,18 @@ def _aliases_of(row: dict[str, Any]) -> list[str]:
     return [str(one) for one in loaded] if isinstance(loaded, list) else []
 
 
+@contextmanager
+def _shared_lock(name: str) -> Iterator[None]:
+    """An exclusive lock shared by every importer process on this host (a lock file in the temp dir)."""
+    path = Path(tempfile.gettempdir()) / f"vault_import-{name}.lock"
+    with open(path, "w", encoding="utf-8") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
 def _list(value: Any) -> list[Any]:
     if value is None:
         return []
@@ -230,6 +245,10 @@ class Importer:
         self._new: dict[str, list[tuple[dict[str, Any], Note]]] = {}
         # Whether the back end serves attachments (asked once, when a first picture comes).
         self._attachments: Optional[bool] = None
+        # Records this run created: nothing hangs off them yet, so their links are made without first
+        # reading what they hold, and queued for one plural create per resource (_flush_pending).
+        self._born: set[str] = set()
+        self._pending: dict[str, list[tuple[dict[str, Any], str, str]]] = {}
 
     # ---- scope -----------------------------------------------------------------------------
 
@@ -273,7 +292,7 @@ class Importer:
         if not self._attachments:
             self.report.skipped.append((source, "its picture: this back end doesn't serve attachments"))
             return False
-        if self.api.attachments(kind, record_id, "primary_image"):
+        if record_id not in self._born and self.api.attachments(kind, record_id, "primary_image"):
             return False
         asset = self.api.upload(name, content_type, content)
         self.api.attach(str(asset["id"]), kind, record_id, "primary_image")
@@ -315,6 +334,20 @@ class Importer:
             if held != wanted:
                 self.report.refused.append((note.path, f"campaign {name!r} is already {held['provenance']} here"))
 
+    def _queue(self, resource: str, fields: dict[str, Any], path: str, label: str) -> None:
+        """A row made later, in a plural create with the rest of its resource's (_flush_pending)."""
+        self._pending.setdefault(resource, []).append((fields, path, label))
+
+    def _flush_pending(self) -> None:
+        """Every queued row, one plural create per resource and per BATCH; a refused row is reported
+        against its own note, and the rest are written."""
+        for resource in list(self._pending):
+            queued = self._pending.pop(resource)
+            outcomes = self.api.create_batch(resource, [fields for fields, _path, _label in queued])
+            for (_fields, path, label), refusal in zip(queued, outcomes):
+                if refusal is not None:
+                    self.report.refused.append((path, f"{label}: {refusal}" if label else refusal))
+
     def _flush_new(self) -> set[str]:
         """Pass 1's new records, one plural create per kind (contract order); each placeholder record
         is filled in place, so the name index and aliases already holding it see the real one.
@@ -340,6 +373,7 @@ class Importer:
                     continue
                 record.clear()
                 record.update(real)
+                self._born.add(str(record["id"]))
                 self._property(kind, str(record["id"]), VAULT_PATH, note.path, private=True)
         return refused
 
@@ -399,6 +433,12 @@ class Importer:
         wanted = {name: styles for name, styles in self._play_styles.items() if styles and name in self._campaign_rows}
         if not wanted or self.dry_run:
             return
+        # Play styles are shared by every setting: vaults imported side by side take turns here, so two
+        # never both make the same one.
+        with _shared_lock("play-styles"):
+            self._settle_play_styles_locked(wanted)
+
+    def _settle_play_styles_locked(self, wanted: dict[str, list[str]]) -> None:
         known = {_style(str(row["name"])): str(row["id"]) for row in self.api.list("taxon", kind=PLAY_STYLE)}
         for name, styles in sorted(wanted.items()):
             campaign_id = str(self._campaign_rows[name]["id"])
@@ -539,6 +579,17 @@ class Importer:
         """Sets a property; True when it changed something."""
         if self.dry_run or record_id.startswith("(new"):
             return False
+        if record_id in self._born:
+            # A born record's property is queued once (its vault path is set both when it is made and when
+            # its links are), the last value winning.
+            queued = self._pending.setdefault("record_metadata", [])
+            body = {"target_entity_type": kind, "target_entity_id": record_id, "key": key, "value": value, "value_type": value_type, "is_private": private}
+            for index, (held, _path, _label) in enumerate(queued):
+                if held["target_entity_id"] == record_id and held["key"] == key:
+                    queued[index] = (body, "", f"property {key}")
+                    return True
+            self._queue("record_metadata", body, "", f"property {key}")
+            return True
         held = {row["key"]: row for row in self.api.properties(kind, record_id)}
         if key not in held:
             self.api.add_property(kind, record_id, key, value, value_type, private)
@@ -675,7 +726,8 @@ class Importer:
                 self.report.unread.setdefault(placed.note.path, []).append(f"{key} (not JSON or base64 JSON)")
         if self.dry_run or record_id.startswith("(new"):
             return changed
-        tagged = {one["taxon_id"] for one in self.api.list("entity_taxon", target_entity_type=kind, target_entity_id=record_id)}
+        born = record_id in self._born
+        tagged = set() if born else {one["taxon_id"] for one in self.api.list("entity_taxon", target_entity_type=kind, target_entity_id=record_id)}
         # A framing note's tags are its campaign's play styles (_settle_play_styles), not its own.
         framing = kind == "journal" and (_text(meta.get("kind")) or _text(meta.get("journal_type")) or "").lower().replace("-", "_") == "campaign_framing"
         wanted = [] if framing else [(tag, "tag") for tag in _tags(meta, kind)]
@@ -698,15 +750,15 @@ class Importer:
         for name, taxon_kind in wanted:
             taxon = self._taxon(scope, name, taxon_kind)
             if taxon not in tagged:
-                self.api.create("entity_taxon", taxon_id=taxon, target_entity_type=kind, target_entity_id=record_id)
+                self._queue("entity_taxon", {"taxon_id": taxon, "target_entity_type": kind, "target_entity_id": record_id}, placed.note.path, f"{taxon_kind} {name}")
                 tagged.add(taxon)
                 changed = True
         status = _text(meta.get("status"))
         if status is not None:
             wanted_status = self._status(scope, status, STATUS_KIND.get(kind, "entity_status"))
-            held = self.api.list("entity_status", target_entity_type=kind, target_entity_id=record_id)
+            held = [] if born else self.api.list("entity_status", target_entity_type=kind, target_entity_id=record_id)
             if not held:
-                self.api.create("entity_status", status_id=wanted_status, target_entity_type=kind, target_entity_id=record_id)
+                self._queue("entity_status", {"status_id": wanted_status, "target_entity_type": kind, "target_entity_id": record_id}, placed.note.path, f"status {status}")
                 changed = True
             elif held[0]["status_id"] != wanted_status:
                 self.api.update("entity_status", str(held[0]["id"]), status_id=wanted_status)
@@ -721,17 +773,18 @@ class Importer:
 
     def _person_links(self, placed: Placed, resolve: Callable[[str], Optional[tuple[str, str]]]) -> bool:
         meta, record_id, changed = placed.note.meta, str(placed.record["id"]), False
+        born = record_id in self._born
         for name in [link_name(one) for one in _list(meta.get("faction"))]:
             target = resolve(name) if name else None
             if target is None or target[0] != "faction":
                 if name:
                     self.report.unresolved.setdefault(placed.note.path, []).append(name)
                 continue
-            members = self.api.list("relationship", person_id=record_id, target_faction_id=target[1])
+            members = [] if born else self.api.list("relationship", person_id=record_id, target_faction_id=target[1])
             if not members:
-                self.api.create("relationship", person_id=record_id, target_faction_id=target[1], kind="member")
+                self._queue("relationship", {"person_id": record_id, "target_faction_id": target[1], "kind": "member"}, placed.note.path, f"member of {name}")
                 changed = True
-        held = self.api.list("disposition", person_id=record_id)
+        held = [] if born else self.api.list("disposition", person_id=record_id)
         for relation in _list(meta.get("relations")):
             if not isinstance(relation, dict):
                 continue
@@ -744,19 +797,20 @@ class Importer:
             target_key = "target_person_id" if target[0] == "person" else "target_faction_id"
             if any(one.get(target_key) == target[1] and one.get("is_default") for one in held):
                 continue
-            try:
-                self.api.create(
-                    "disposition",
-                    person_id=record_id,
-                    target_kind=target[0],
-                    **{target_key: target[1]},
-                    attitude=_text(relation.get("attitude")) or "neutral",
-                    note=_text(relation.get("note")),
-                    is_default=True,
-                )
-                changed = True
-            except ApiError as error:
-                self.report.refused.append((placed.note.path, f"disposition toward {name}: {error.detail}"))
+            self._queue(
+                "disposition",
+                {
+                    "person_id": record_id,
+                    "target_kind": target[0],
+                    target_key: target[1],
+                    "attitude": _text(relation.get("attitude")) or "neutral",
+                    "note": _text(relation.get("note")),
+                    "is_default": True,
+                },
+                placed.note.path,
+                f"disposition toward {name}",
+            )
+            changed = True
         return changed
 
     def _hook_links(self, placed: Placed, resolve: Callable[[str], Optional[tuple[str, str]]]) -> bool:
@@ -771,12 +825,10 @@ class Importer:
                     self.report.unresolved.setdefault(placed.note.path, []).append(name)
                 continue
             parent, child = (target[1], record_id) if role == "prerequisite" else (record_id, target[1])
-            if not self.api.list("hook_dependency", parent_hook_id=parent, child_hook_id=child):
-                try:
-                    self.api.create("hook_dependency", parent_hook_id=parent, child_hook_id=child)
-                    changed = True
-                except ApiError as error:
-                    self.report.refused.append((placed.note.path, f"{role} {name}: {error.detail}"))
+            fresh = parent in self._born or child in self._born
+            if fresh or not self.api.list("hook_dependency", parent_hook_id=parent, child_hook_id=child):
+                self._queue("hook_dependency", {"parent_hook_id": parent, "child_hook_id": child}, placed.note.path, f"{role} {name}")
+                changed = True
         return changed
 
     def _holder(self, placed: Placed, resolve: Callable[[str], Optional[tuple[str, str]]]) -> bool:
@@ -842,6 +894,8 @@ class Importer:
                     (self.report.updated if (fields or linked) else self.report.unchanged).append(label)
             except ApiError as error:
                 self.report.refused.append((one.note.path, str(error.detail)))
+        if not self.dry_run:
+            self._flush_pending()
         try:
             self._settle_provenance()
             self._settle_play_styles()

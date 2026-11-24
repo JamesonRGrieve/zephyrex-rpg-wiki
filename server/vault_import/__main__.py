@@ -27,6 +27,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--lite", action="store_true", help="Over HTTP to a lite edition: the API is under /api")
     parser.add_argument("--app", help="In process: the server app's factory, module:function (rpg_ai_app:create)")
     parser.add_argument("--owner", help="In process: the user id whose records these become")
+    parser.add_argument(
+        "--default-campaign",
+        help="The campaign of a note that names none and isn't setting_wide (a campaign vault's own root notes)",
+    )
     args = parser.parse_args(argv)
     if (args.app is None) == (args.base_url is None):
         parser.error("give --base-url (over HTTP) or --app with --owner (in process)")
@@ -34,6 +38,10 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--app needs --owner")
     connect = connection(args.base_url, args.lite, args.app, args.owner)
     notes = [note for vault in args.vaults for note in read_vault(vault)]
+    if args.default_campaign:
+        for note in notes:
+            if not note.meta.get("campaign") and note.meta.get("setting_wide") is not True:
+                note.meta["campaign"] = args.default_campaign
     with connect as api:
         # The importer imports the wiki's shared code (zephyrex.extensions.wiki_shared), which exists
         # only once the connection has made the app (in process) or put the checkout's on the path.

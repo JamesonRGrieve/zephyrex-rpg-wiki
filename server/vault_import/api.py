@@ -36,6 +36,16 @@ def _detail(response: Any) -> Any:
     return body.get("detail", body) if isinstance(body, dict) else body
 
 
+def _missing(response: Any) -> list[str]:
+    """The body field a 422 says is missing (["record_metadata"]), or []."""
+    detail = _detail(response)
+    errors = detail.get("errors", []) if isinstance(detail, dict) else []
+    for error in errors if isinstance(errors, list) else []:
+        if isinstance(error, dict) and error.get("type") == "missing":
+            return [str(part) for part in error.get("loc", [])]
+    return []
+
+
 class Api:
     def __init__(self, http: HttpClient, headers: Optional[dict[str, str]] = None, prefix: str = "") -> None:
         self.http = http
@@ -75,8 +85,15 @@ class Api:
     def plural(self, resource: str) -> str:
         """The name a resource's list answers under (its plural, as the framework names it)."""
         if resource not in self._plurals:
-            body = self._call("GET", f"/v1/{resource}", (200,), params={"limit": 1}).json()
-            self._plurals[resource] = next(key for key, value in body.items() if isinstance(value, list))
+            try:
+                body = self._call("GET", f"/v1/{resource}", (200,), params={"limit": 1}).json()
+                self._plurals[resource] = next(key for key, value in body.items() if isinstance(value, list))
+            except ApiError:
+                # A resource with no list (record_metadata): its plural as the framework names its routes'
+                # plural key, the same function the create route reads.
+                from zephyrex.lib.Environment import plural_noun  # type: ignore[import-not-found]
+
+                self._plurals[resource] = str(plural_noun(resource))
         return self._plurals[resource]
 
     def create_many(self, resource: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -89,6 +106,34 @@ class Api:
         for start in range(0, len(rows), BATCH):
             made.extend(self._call("POST", f"/v1/{resource}", (200, 201), json={plural: rows[start : start + BATCH]}).json()[plural])
         return made
+
+    def create_batch(self, resource: str, rows: list[dict[str, Any]]) -> list[Optional[str]]:
+        """Many records in plural creates of at most BATCH each, every row attempted: per row None when
+        it was created, else why it was refused (a 207's per-row error, or the whole chunk's refusal)."""
+        outcomes: list[Optional[str]] = []
+        if not rows:
+            return outcomes
+        plural = self.plural(resource)
+        for start in range(0, len(rows), BATCH):
+            chunk = rows[start : start + BATCH]
+            response = self.http.request(
+                "POST", f"{self.prefix}/v1/{resource}", headers=dict(self.headers), json={plural: chunk}
+            )
+            if response.status_code == 422 and plural not in str(_detail(response)) and [resource] == _missing(response):
+                # A resource whose create takes one record only (record_metadata): its rows one by one.
+                for row in chunk:
+                    one = self.http.request("POST", f"{self.prefix}/v1/{resource}", headers=dict(self.headers), json={resource: row})
+                    outcomes.append(None if one.status_code in (200, 201) else str(_detail(one)))
+            elif response.status_code in (200, 201):
+                outcomes.extend([None] * len(chunk))
+            elif response.status_code == 207:
+                by_index = {int(one["index"]): one for one in response.json().get("results", [])}
+                for index in range(len(chunk)):
+                    one = by_index.get(index, {})
+                    outcomes.append(None if one.get("outcome") == "created" else str(one.get("error") or one))
+            else:
+                outcomes.extend([str(_detail(response))] * len(chunk))
+        return outcomes
 
     def update(self, resource: str, record_id: str, **fields: Any) -> dict[str, Any]:
         _current, etag = self.get(resource, record_id)
