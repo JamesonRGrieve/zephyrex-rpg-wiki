@@ -2098,3 +2098,9 @@ class TestPlaythroughIsNoScenario:
         assert made.status_code == 422, made.text
         # A scenario stays one.
         assert _put(server, person, "campaign", scenario, description="Still a scenario.").status_code == 200
+        # Nor can an update give a scenario a scenario_id (Zephyrex RPG, 2026-11-24: "can't happen during
+        # updates ever"): Update has no scenario_id, so a campaign's is fixed at its create.
+        other = _create(server, person, "campaign", name="Other Scenario", is_scenario=True)
+        _put(server, person, "campaign", other, scenario_id=scenario["id"])
+        held = server.get(f"/v1/campaign/{other['id']}", headers=_headers(person)).json()["campaign"]
+        assert (held["is_scenario"], held["scenario_id"]) == (True, None)

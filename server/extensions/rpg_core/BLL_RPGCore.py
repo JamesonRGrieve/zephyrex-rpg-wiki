@@ -622,20 +622,30 @@ hook_bll(CampaignManager, timing=HookTiming.BEFORE, priority=20)(_provenance_hol
 
 
 def _playthrough_is_no_scenario(context: HookContext) -> None:
-    """A playthrough (a campaign with a scenario_id) is never itself a scenario: is_scenario true on
-    one is a 422 (Zephyrex RPG, 2026-11-24: a re-run vault import, matching campaigns by name, had
-    marked the operator's Missing Merchant playthrough a scenario, so it showed among scenarios)."""
-    if context.method_name not in ("create", "update") or context.kwarg("is_scenario", default=None) is not True:
+    """A playthrough (a campaign with a scenario_id) is never itself a scenario: a create or update
+    that would leave is_scenario true beside a scenario_id is a 422, whichever of the two it sets
+    (Zephyrex RPG, 2026-11-24: a re-run vault import, matching campaigns by name, had marked the
+    operator's Missing Merchant playthrough a scenario, so it showed among scenarios; the operator:
+    it "can't happen during updates ever"). On an update, a field it leaves out keeps its held value
+    (Update has no scenario_id, so over REST only is_scenario can change; an in-process call may pass both)."""
+    if context.method_name not in ("create", "update"):
         return
-    scenario_id = context.kwarg("scenario_id", default=None)
-    if context.method_name == "update" and not scenario_id:
+    absent = object()
+    is_scenario = context.kwarg("is_scenario", default=absent)
+    scenario_id = context.kwarg("scenario_id", default=absent)
+    if is_scenario is absent and scenario_id is absent:
+        return
+    if context.method_name == "update" and (is_scenario is absent or scenario_id is absent):
         record_id = context.kwarg("id", default=None) or context.arg(0, default=None)
         try:
             held = context.manager.get(id=record_id) if record_id else None
         except HTTPException:
             return
-        scenario_id = getattr(held, "scenario_id", None)
-    if scenario_id:
+        if is_scenario is absent:
+            is_scenario = getattr(held, "is_scenario", None)
+        if scenario_id is absent:
+            scenario_id = getattr(held, "scenario_id", None)
+    if is_scenario is True and scenario_id and scenario_id is not absent:
         raise HTTPException(status_code=422, detail="A playthrough (a campaign started from a scenario) isn't a scenario")
 
 

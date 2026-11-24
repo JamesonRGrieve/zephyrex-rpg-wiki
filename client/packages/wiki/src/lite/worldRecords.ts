@@ -387,7 +387,7 @@ const CAMPAIGN_COLUMNS: Columns = {
   foundry_world_id: plain('foundryWorldId'),
 };
 /** A playthrough (a campaign with a scenario_id) is never itself a scenario, as the server's
- * _playthrough_is_no_scenario: is_scenario true on one is a 422. */
+ * _playthrough_is_no_scenario: is_scenario true beside a scenario_id is a 422, whichever an update sets. */
 export function refusePlaythroughScenario(isScenario: boolean | null | undefined, scenarioId: string | null | undefined): void {
   if (isScenario === true && typeof scenarioId === 'string' && scenarioId !== '')
     throw validationError('A playthrough (a campaign started from a scenario) isn’t a scenario', 'is_scenario');
@@ -509,9 +509,10 @@ export const campaigns: ResourceSpec<CampaignRow, z.infer<typeof campaignCreate>
     });
   },
   async updateIfCurrent(id, version, input, stamp, userId) {
-    const held = await prisma.campaign.findUnique({ where: { id }, select: { createdById: true, settingId: true, scenarioId: true } });
+    const held = await prisma.campaign.findUnique({ where: { id }, select: { createdById: true, settingId: true, scenarioId: true, isScenario: true } });
     if (held !== null) await checkCampaignSetting(held.createdById, input.setting_id, held.settingId);
-    refusePlaythroughScenario(input.is_scenario, held?.scenarioId ?? null);
+    // The state the update leaves (its scenario_id is fixed here; an unset is_scenario keeps the held one).
+    refusePlaythroughScenario(input.is_scenario === undefined ? held?.isScenario : input.is_scenario, held?.scenarioId ?? null);
     const { count } = await prisma.campaign.updateMany({
       where: { id, updatedAt: version },
       data: written(CAMPAIGN_COLUMNS, await changed('campaign', id, input), stamp, userId) as Prisma.CampaignUncheckedUpdateManyInput,
