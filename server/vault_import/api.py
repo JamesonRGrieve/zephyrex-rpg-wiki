@@ -36,14 +36,10 @@ def _detail(response: Any) -> Any:
     return body.get("detail", body) if isinstance(body, dict) else body
 
 
-def _missing(response: Any) -> list[str]:
-    """The body field a 422 says is missing (["record_metadata"]), or []."""
-    detail = _detail(response)
-    errors = detail.get("errors", []) if isinstance(detail, dict) else []
-    for error in errors if isinstance(errors, list) else []:
-        if isinstance(error, dict) and error.get("type") == "missing":
-            return [str(part) for part in error.get("loc", [])]
-    return []
+def etag_of(row: dict[str, Any]) -> str:
+    """A row's version as the server tags it (its updated_at, else created_at, quoted), read from the
+    row itself so a change needs no GET first."""
+    return f'"{row.get("updated_at") or row.get("created_at") or ""}"'
 
 
 class Api:
@@ -123,18 +119,36 @@ class Api:
             response = self.http.request(
                 "POST", f"{self.prefix}/v1/{resource}", headers=dict(self.headers), json={plural: chunk}
             )
-            if response.status_code == 422 and plural not in str(_detail(response)) and [resource] == _missing(response):
-                # A resource whose create takes one record only (record_metadata): its rows one by one.
-                for row in chunk:
-                    one = self.http.request("POST", f"{self.prefix}/v1/{resource}", headers=dict(self.headers), json={resource: row})
-                    outcomes.append(None if one.status_code in (200, 201) else str(_detail(one)))
-            elif response.status_code in (200, 201):
+            if response.status_code in (200, 201):
                 outcomes.extend([None] * len(chunk))
             elif response.status_code == 207:
                 by_index = {int(one["index"]): one for one in response.json().get("results", [])}
                 for index in range(len(chunk)):
                     one = by_index.get(index, {})
                     outcomes.append(None if one.get("outcome") == "created" else str(one.get("error") or one))
+            else:
+                outcomes.extend([str(_detail(response))] * len(chunk))
+        return outcomes
+
+    def update_batch(self, resource: str, changes: list[tuple[dict[str, Any], dict[str, Any]]]) -> list[Optional[str]]:
+        """Many records changed in plural PUTs of at most BATCH each, every row attempted: each change is
+        (the row as last read, its new fields), sent with that row's version as its If-Match. Per change
+        None when it was saved, else why it was refused (a 207's per-row error, or the chunk's refusal)."""
+        outcomes: list[Optional[str]] = []
+        if not changes:
+            return outcomes
+        plural = self.plural(resource)
+        for start in range(0, len(changes), BATCH):
+            chunk = changes[start : start + BATCH]
+            rows = [{"id": str(row["id"]), "if_match": etag_of(row), **fields} for row, fields in chunk]
+            response = self.http.request("PUT", f"{self.prefix}/v1/{resource}", headers=dict(self.headers), json={plural: rows})
+            if response.status_code == 200:
+                outcomes.extend([None] * len(chunk))
+            elif response.status_code == 207:
+                by_index = {int(one["index"]): one for one in response.json().get("results", [])}
+                for index in range(len(chunk)):
+                    one = by_index.get(index, {})
+                    outcomes.append(None if one.get("outcome") == "updated" else str(one.get("error") or one))
             else:
                 outcomes.extend([str(_detail(response))] * len(chunk))
         return outcomes

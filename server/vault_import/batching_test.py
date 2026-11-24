@@ -3,6 +3,7 @@
 creates, a refused row reported alone (207), record_metadata one at a time (its create takes one
 record), a born record's links made without first reading what it holds, and --default-campaign."""
 
+import json
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -199,3 +200,57 @@ def test_a_framing_with_eras_and_no_campaign_tags_itself(server: TestClient, tmp
     eras = {str(row["id"]): str(row["name"]) for row in api.list("taxon", kind="era")}
     tagged = {eras.get(str(row["taxon_id"])) for row in api.list("entity_taxon", target_entity_type="journal", target_entity_id=journal["id"])}
     assert "Bronze Age" in tagged
+
+
+def _crew(tmp_path: Path, role: str, description: str) -> Path:
+    notes = {
+        f"Characters/{name}.md": f"---\nentity_type: person\nkind: npc\nname: {name}\ncampaign: Changed Crew\nrole: {role}\n---\n{description} {name}.\n"
+        for name in ("Dara", "Eli", "Fen")
+    }
+    return _vault(tmp_path, notes)
+
+
+def test_changed_records_and_properties_are_saved_in_plural_puts_without_reading_them_first(server: TestClient, tmp_path: Path) -> None:
+    """A second run over edited notes: the records are changed in one plural PUT, each row at the
+    version the run listed it at, with no GET of a record to learn it. A property's value is changed
+    with its own PATCH (record_metadata has no per-row plural PUT)."""
+    api, recording = _api(server)
+    slug = setting_of(api, "fixture-fantasy")
+    first = Importer(api, setting_slug=slug).run(read_vault(_crew(tmp_path / "one", "Deckhand", "A deckhand,")))
+    assert first.refused == [], first.refused
+    recording.sent.clear()
+    second = Importer(api, setting_slug=slug).run(read_vault(_crew(tmp_path / "two", "Bosun", "Now the bosun,")))
+    assert second.refused == [], second.refused
+    puts = [(path, body) for method, path, _query, body in recording.sent if method == "PUT"]
+    assert [path for path, _body in puts if path == "/v1/person"] == ["/v1/person"], puts
+    assert not [path for path, _body in puts if path.startswith("/v1/person/")], puts
+    patches = [path for method, path, _query, _body in recording.sent if method == "PATCH" and path.startswith("/v1/record_metadata/")]
+    assert len(patches) == 3, patches
+    record_gets = [path for method, path, _query, _body in recording.sent if method == "GET" and path.startswith("/v1/person/")]
+    assert record_gets == [], record_gets
+    [campaign] = [row for row in api.list("campaign") if row["name"] == "Changed Crew"]
+    people = {row["name"]: row for row in api.list("person", campaign_id=campaign["id"])}
+    assert people["Eli"]["description"] == "Now the bosun, Eli."
+    roles = {row["key"]: row["value"] for row in api.properties("person", str(people["Eli"]["id"]))}
+    assert roles["Role"] == "Bosun"
+
+
+def test_a_row_changed_since_it_was_read_is_refused_alone(server: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Someone changes a record between the run's read and its save: that row's If-Match is stale, so
+    the server refuses it (a 207 row error) and the run reports it; the other rows are saved."""
+    api, _recording = _api(server)
+    slug = setting_of(api, "fixture-fantasy")
+    Importer(api, setting_slug=slug).run(read_vault(_crew(tmp_path / "one", "Deckhand", "A deckhand,")))
+    [campaign] = [row for row in api.list("campaign") if row["name"] == "Changed Crew"]
+    dara = next(row for row in api.list("person", campaign_id=campaign["id"]) if row["name"] == "Dara")
+    flush = Importer._flush_changes
+
+    def meanwhile(self: Importer) -> None:
+        api.update("person", str(dara["id"]), aliases=json.dumps(["Dee"]))
+        flush(self)
+
+    monkeypatch.setattr(Importer, "_flush_changes", meanwhile)
+    report = Importer(api, setting_slug=slug).run(read_vault(_crew(tmp_path / "two", "Deckhand", "Now the cook,")))
+    assert [path for path, _why in report.refused] == ["Characters/Dara.md"], report.refused
+    people = {row["name"]: row for row in api.list("person", campaign_id=campaign["id"])}
+    assert people["Eli"]["description"] == "Now the cook, Eli." and people["Dara"]["description"] == "A deckhand, Dara."

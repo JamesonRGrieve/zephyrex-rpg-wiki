@@ -156,6 +156,8 @@ class CompendiumImporter:
             if not row.get("campaign_id")
         }
         new: list[Merged] = []
+        # Changes to held records, saved in plural PUTs, each at the version it was listed at.
+        changed: list[tuple[str, dict[str, Any], dict[str, Any]]] = []
         for record in records:
             row = held.get(record.name.casefold())
             label = f"{entity} {record.name}"
@@ -166,22 +168,33 @@ class CompendiumImporter:
             changes = _changed(row, record.fields(setting_id))
             if not changes:
                 self.report.unchanged.append(label)
-            elif not self.dry_run:
-                self.api.update(entity, str(row["id"]), **changes)
-                self.report.updated.append(label)
-            else:
-                self.report.updated.append(label)
-        if self.dry_run or not new:
+                continue
+            self.report.updated.append(label)
+            if not self.dry_run:
+                changed.append((label, row, changes))
+        if self.dry_run:
+            return
+        for (label, _row, _changes), refusal in zip(changed, self.api.update_batch(entity, [(row, changes) for _label, row, changes in changed])):
+            if refusal is not None:
+                self.report.updated.remove(label)
+                self.report.refused.append((label, refusal))
+        if not new:
             return
         made = self.api.create_many(entity, [record.fields(setting_id) for record in new])
         tags: list[dict[str, Any]] = []
+        properties: list[tuple[str, dict[str, Any]]] = []
         for record, row in zip(new, made):
             record_id = str(row["id"])
-            self.api.add_property(entity, record_id, COMPENDIUM_SOURCE, json.dumps(record.uuids), is_private=True)
-            for key, value in record.stats.items():
-                self.api.add_property(entity, record_id, key, value, is_private=True)
+            label = f"{entity} {record.name}"
+            for key, value in [(COMPENDIUM_SOURCE, json.dumps(record.uuids)), *record.stats.items()]:
+                properties.append(
+                    (label, {"target_entity_type": entity, "target_entity_id": record_id, "key": key, "value": value, "value_type": "text", "is_private": True})
+                )
             for category in record.categories:
                 tags.append({"taxon_id": self._taxon(category, setting_id), "target_entity_type": entity, "target_entity_id": record_id})
+        for (label, _property), refusal in zip(properties, self.api.create_batch("record_metadata", [one for _label, one in properties])):
+            if refusal is not None:
+                self.report.refused.append((label, refusal))
         if tags:
             self.api.create_many("entity_taxon", tags)
 

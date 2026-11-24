@@ -251,6 +251,9 @@ class Importer:
         # reading what they hold, and queued for one plural create per resource (_flush_pending).
         self._born: set[str] = set()
         self._pending: dict[str, list[tuple[dict[str, Any], str, str]]] = {}
+        # Changes to rows already there, by resource: (the row as read, its new fields, note path, what),
+        # saved in plural PUTs with each row's version (_flush_changes).
+        self._changes: dict[str, list[tuple[dict[str, Any], dict[str, Any], str, str]]] = {}
 
     # ---- scope -----------------------------------------------------------------------------
 
@@ -353,6 +356,20 @@ class Importer:
             queued = self._pending.pop(resource)
             outcomes = self.api.create_batch(resource, [fields for fields, _path, _label in queued])
             for (_fields, path, label), refusal in zip(queued, outcomes):
+                if refusal is not None:
+                    self.report.refused.append((path, f"{label}: {refusal}" if label else refusal))
+
+    def _change(self, resource: str, row: dict[str, Any], fields: dict[str, Any], path: str, label: str) -> None:
+        """A change to a row already there, saved later with the rest of its resource's (_flush_changes)."""
+        self._changes.setdefault(resource, []).append((row, fields, path, label))
+
+    def _flush_changes(self) -> None:
+        """Every queued change, one plural PUT per resource and per BATCH, each row held to the version it
+        was read at; a refused one is reported against its own note, and the rest are saved."""
+        for resource in list(self._changes):
+            queued = self._changes.pop(resource)
+            outcomes = self.api.update_batch(resource, [(row, fields) for row, fields, _path, _label in queued])
+            for (_row, _fields, path, label), refusal in zip(queued, outcomes):
                 if refusal is not None:
                     self.report.refused.append((path, f"{label}: {refusal}" if label else refusal))
 
@@ -605,6 +622,7 @@ class Importer:
             self.api.add_property(kind, record_id, key, value, value_type, private)
             return True
         if held[key].get("value") != value:
+            # One at a time: record_metadata has no per-row plural PUT (Zephyrex Server, 2026-11-24).
             self.api.change_property(held[key], value)
             return True
         return False
@@ -821,7 +839,7 @@ class Importer:
                 self._queue("entity_status", {"status_id": wanted_status, "target_entity_type": kind, "target_entity_id": record_id}, placed.note.path, f"status {status}")
                 changed = True
             elif held[0]["status_id"] != wanted_status:
-                self.api.update("entity_status", str(held[0]["id"]), status_id=wanted_status)
+                self._change("entity_status", held[0], {"status_id": wanted_status}, placed.note.path, f"status {status}")
                 changed = True
         if kind == "person":
             changed |= self._person_links(placed, resolve)
@@ -904,7 +922,7 @@ class Importer:
         held = [one for one in self.api.list("entity_inventory", target_entity_type=target[0], target_entity_id=target[1]) if one.get("item_instance_id") in instances]
         if held:
             if held[0].get("quantity") != quantity:
-                self.api.update("entity_inventory", str(held[0]["id"]), quantity=quantity)
+                self._change("entity_inventory", held[0], {"quantity": quantity}, placed.note.path, "its quantity")
                 return True
             return False
         owner = target[1] if target[0] == "person" else None
@@ -945,7 +963,7 @@ class Importer:
                 resolve = self._resolver(one.scope)
                 fields = self._changed(one, self._fields(one, resolve))
                 if fields and not self.dry_run and not str(one.record["id"]).startswith("(new"):
-                    one.record = self.api.update(one.kind, str(one.record["id"]), **fields)
+                    self._change(one.kind, one.record, fields, one.note.path, "")
                 linked = self._links(one, resolve)
                 picture = one.note.picture
                 if picture is not None:
@@ -957,6 +975,7 @@ class Importer:
                 self.report.refused.append((one.note.path, str(error.detail)))
         if not self.dry_run:
             self._flush_pending()
+            self._flush_changes()
         try:
             self._settle_provenance()
             self._settle_play_styles()
