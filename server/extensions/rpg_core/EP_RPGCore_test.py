@@ -1896,3 +1896,45 @@ class TestCardPerson:
         # A data URL is uploaded first.
         refused = server.post("/v1/campaign/card_person", json={"card": {"name": "Pic", "avatar": "data:image/png;base64,AAAA"}}, headers=_headers(person))
         assert refused.status_code == 422, refused.text
+
+
+class TestKnownFacts:
+    """Operator, 2026-11-24: a player's view shows what their character has learned. A known fact
+    is the campaign's GM's to write; learn_fact makes the same fact once."""
+
+    def test_written_by_the_gm_once_each_and_gone_with_the_campaign(self, server: TestClient, person: Any, other: Any) -> None:
+        from zephyrex.extensions.AbstractExtensionProvider import loaded_ability
+
+        campaign = _create(server, person, "campaign", name="Known Facts")
+        hero = _create(server, person, "person", name="Ilsa", kind="pc", campaign_id=campaign["id"])
+        keep = _create(server, person, "location", name="The Keep", campaign_id=campaign["id"])
+        made = server.post(
+            "/v1/known_fact",
+            json={"known_fact": {"person_id": hero["id"], "target_entity_type": "location", "target_entity_id": keep["id"], "text": "  The gate sticks.  "}},
+            headers=_headers(person),
+        )
+        assert made.status_code in (200, 201), made.text
+        fact = made.json()["known_fact"]
+        assert (fact["text"], fact["campaign_id"]) == ("The gate sticks.", campaign["id"])
+        # A type that isn't a record's, and too much text: refused.
+        for bad in ({"target_entity_type": "dragon"}, {"text": "x" * 2001}):
+            body = {"person_id": hero["id"], "target_entity_type": "location", "target_entity_id": keep["id"], **bad}
+            assert server.post("/v1/known_fact", json={"known_fact": body}, headers=_headers(person)).status_code == 422
+        # Someone who isn't the campaign's GM can't say what its people know.
+        theirs = {"person_id": hero["id"], "target_entity_type": "location", "target_entity_id": keep["id"]}
+        assert server.post("/v1/known_fact", json={"known_fact": theirs}, headers=_headers(other)).status_code in (403, 404)
+
+        registry = server.app.state.model_registry  # type: ignore[attr-defined]
+        learn = loaded_ability(registry, "rpg_core", "learn_fact")
+        assert learn is not None
+        knows_of = learn(registry, str(person.id), hero["id"], "location", keep["id"])
+        assert (knows_of["created"], knows_of["known_fact"]["text"]) == (True, None)
+        again = learn(registry, str(person.id), hero["id"], "location", keep["id"], "The gate sticks.")
+        assert (again["created"], again["known_fact"]["id"]) == (False, fact["id"])
+        listed = server.get("/v1/known_fact", params={"person_id": hero["id"], "target_entity_id": keep["id"]}, headers=_headers(person)).json()
+        assert sorted(str(one["text"]) for one in listed["known_facts"]) == ["None", "The gate sticks."]
+
+        # Deleting the campaign takes its facts with it.
+        assert server.delete(f"/v1/campaign/{campaign['id']}", headers=_headers(person, **{"If-Match": f'"{campaign["updated_at"] or campaign["created_at"]}"'})).status_code in (200, 204)
+        left = server.get("/v1/known_fact", params={"campaign_id": campaign["id"]}, headers=_headers(person)).json()
+        assert left["known_facts"] == []

@@ -3,11 +3,12 @@
 /**
  * Reads of just the rows a page names, never a campaign's whole lists (operator, 2026-11-24: a record
  * page "took forever" opening in rpg-ai's drawer on a 970-record campaign, reading every person,
- * organisation, item, hook and link to name a few). Each is one SWR entry keyed by its ids, so
- * panels naming the same rows share it.
+ * organisation, item, hook and link to name a few). Each is one request (world_entity?ids=, or the
+ * LIST `<field>__in` filter both back ends take) and one SWR entry keyed by its ids, so panels
+ * naming the same rows share it.
  */
 import useSWR, { type SWRResponse } from 'swr';
-import { ApiError, useClient } from 'zephyrex';
+import { useClient } from 'zephyrex';
 import { z } from 'zod';
 import { MAX_IDS } from '../../lib/entityIds';
 
@@ -46,32 +47,30 @@ export function useNamed(ids: readonly (string | null | undefined)[]): SWRRespon
   });
 }
 
-/** The rows of `resource` with these ids, by id, read together; one gone or not the reader's is absent. */
-export function useRowsById<T extends { id: string }>(
-  resource: RowSource<T>,
-  ids: readonly (string | null | undefined)[],
-): SWRResponse<Map<string, T>, Error> {
+/** At most this many values one `<field>__in` takes (the framework's MAX_BATCH_SIZE). */
+const MAX_IN = 100;
+
+/** The rows of `resource` whose `field` is any of `values`: one `<field>__in` list per MAX_IN values. */
+async function listIn<T>(client: ReturnType<typeof useClient>, resource: RowSource<T>, field: string, values: readonly string[]): Promise<T[]> {
+  const rows: T[] = [];
+  for (let start = 0; start < values.length; start += MAX_IN) {
+    rows.push(...(await client.list(resource.path, resource.plural, resource.schema, { [`${field}__in`]: values.slice(start, start + MAX_IN).join(',') })));
+  }
+  return rows;
+}
+
+/** The rows of `resource` with these ids, by id, in one request (id__in); one gone or not the reader's is absent. */
+export function useRowsById<T extends { id: string }>(resource: RowSource<T>, ids: readonly (string | null | undefined)[]): SWRResponse<Map<string, T>, Error> {
   const client = useClient();
   const wanted = sorted(ids);
-  return useSWR(wanted.length === 0 ? null : `${resource.path}#ids=${wanted.join(',')}`, async () => {
-    const rows: (T | null)[] = await Promise.all(
-      wanted.map(async (id): Promise<T | null> => {
-        try {
-          const body = z.record(z.string(), z.unknown()).parse(await client.get(`${resource.path}/${encodeURIComponent(id)}`));
-          return resource.schema.parse(body[resource.single]);
-        } catch (error) {
-          if (error instanceof ApiError && (error.status === 404 || error.status === 403)) return null;
-          throw error;
-        }
-      }),
-    );
+  return useSWR(wanted.length === 0 ? null : `${resource.path}?id__in=${wanted.join(',')}`, async () => {
     const found = new Map<string, T>();
-    for (const row of rows) if (row !== null) found.set(row.id, row);
+    for (const row of await listIn(client, resource, 'id', wanted)) found.set(row.id, row);
     return found;
   });
 }
 
-/** The rows of `resource` whose `field` is each of `values` (one filtered list each), together. */
+/** The rows of `resource` whose `field` is one of `values`, in one request (`<field>__in`). */
 export function useRowsWhere<T extends { id: string }>(
   resource: RowSource<T>,
   field: string,
@@ -79,7 +78,5 @@ export function useRowsWhere<T extends { id: string }>(
 ): SWRResponse<T[], Error> {
   const client = useClient();
   const wanted = sorted(values);
-  return useSWR(wanted.length === 0 ? null : `${resource.path}#${field}=${wanted.join(',')}`, async () =>
-    (await Promise.all(wanted.map((value) => client.list(resource.path, resource.plural, resource.schema, { [field]: value })))).flat(),
-  );
+  return useSWR(wanted.length === 0 ? null : `${resource.path}?${field}__in=${wanted.join(',')}`, async () => listIn(client, resource, field, wanted));
 }

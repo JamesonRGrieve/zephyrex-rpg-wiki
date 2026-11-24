@@ -224,6 +224,27 @@ class RPGCoreExtension(AbstractStaticExtension):
         return ensure_person(model_registry, requester_id, campaign_id, name, summary).model_dump(mode="json")
 
     @classmethod
+    @ability("learn_fact")
+    def learn_fact(
+        cls,
+        model_registry: Any,
+        requester_id: str,
+        person_id: str,
+        target_entity_type: str,
+        target_entity_id: str,
+        text: Optional[str] = None,
+        learned_in: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """``person_id`` (a player's character) learns ``text`` about a record, or with no text knows
+        of it (which opens a record kept to the GM to them), learned in the session report
+        ``learned_in``: {known_fact: {id, person_id, target_entity_type, target_entity_id, text,
+        learned_in_journal_id, campaign_id, ...}, created}; the same fact twice is one row. The
+        person's campaign's GM's to do (the AI GM, when a scene reveals something)."""
+        from zephyrex.extensions.rpg_core.BLL_RPGCore import learn_fact  # type: ignore[import-not-found]
+
+        return learn_fact(model_registry, requester_id, person_id, target_entity_type, target_entity_id, text, learned_in).model_dump(mode="json")
+
+    @classmethod
     @ability("campaign_framing")
     def campaign_framing(cls, model_registry: Any, requester_id: str, campaign_id: str) -> dict[str, Any]:
         """A campaign's framing for the narrator: {"campaign_framing": {campaign_id, name,

@@ -74,11 +74,24 @@ function tombstone(): { deletedAt: Date; updatedAt: Date } {
   return { deletedAt: now, updatedAt: now };
 }
 
-function filters(query: URLSearchParams, names: readonly [string, string][]): Record<string, string> {
-  const where: Record<string, string> = {};
-  for (const [field, column] of names) {
+/** The most values one `<field>__in` takes (the framework's MAX_BATCH_SIZE, as its __in filter). */
+const MAX_IN = 100;
+
+/**
+ * A list's filters from its query: each named field by equality, and `<field>__in=a,b,c` (the id and
+ * every named field) as one of those values, as the framework's LIST reads it: comma-separated,
+ * trimmed, empties dropped, at most MAX_IN (422 past that).
+ */
+export function filters(query: URLSearchParams, names: readonly [string, string][]): Record<string, string | { in: string[] }> {
+  const where: Record<string, string | { in: string[] }> = {};
+  for (const [field, column] of [['id', 'id'] as const, ...names]) {
     const value = query.get(field);
     if (value !== null && value !== '') where[column] = value;
+    const listed = query.get(`${field}__in`);
+    if (listed === null) continue;
+    const values = [...new Set(listed.split(',').map((one) => one.trim()).filter((one) => one !== ''))];
+    if (values.length > MAX_IN) throw validationError(`At most ${String(MAX_IN)} values`, `${field}__in`);
+    where[column] = { in: values };
   }
   return where;
 }
@@ -2331,4 +2344,73 @@ export const relationInfluences: ResourceSpec<InfluenceRow, z.infer<typeof influ
     await prisma.relationInfluence.delete({ where: { id } });
   },
   fields: (row) => fieldsOf(INFLUENCE_COLUMNS, row),
+};
+
+// ---- What a person has learned (rpg_core 020's twin) ------------------------------------------
+
+const KNOWN_FACT_COLUMNS: Columns = {
+  person_id: plain('personId'),
+  target_entity_type: plain('targetEntityType'),
+  target_entity_id: plain('targetEntityId'),
+  text: plain('text'),
+  learned_in_journal_id: plain('learnedInJournalId'),
+  campaign_id: plain('campaignId'),
+};
+/** What they learned, trimmed; none (or blank) is that they know of it. */
+const knownText = z
+  .string()
+  .trim()
+  .max(LIMITS.known_fact_characters, `A known fact has at most ${String(LIMITS.known_fact_characters)} characters`)
+  .nullable()
+  .transform((value) => (value === null || value === '' ? null : value));
+const knownFactCreate = z.object({
+  person_id: z.string().min(1),
+  target_entity_type: z.enum(ENTITY_TYPES as [string, ...string[]]),
+  target_entity_id: z.string().min(1),
+  text: knownText.default(null),
+  learned_in_journal_id: reference.default(null),
+});
+const knownFactUpdate = z.object({ text: knownText, learned_in_journal_id: reference }).partial();
+type KnownFactRow = Prisma.KnownFactGetPayload<object>;
+
+export const knownFacts: ResourceSpec<KnownFactRow, z.infer<typeof knownFactCreate>, z.infer<typeof knownFactUpdate>> = {
+  resource: 'known_fact',
+  plural: 'known_facts',
+  modelName: 'KnownFactModel',
+  createSchema: knownFactCreate,
+  updateSchema: knownFactUpdate,
+  list: (ownerId, query) =>
+    prisma.knownFact.findMany({
+      where: {
+        createdById: ownerId,
+        ...filters(query, [
+          ['person_id', 'personId'],
+          ['target_entity_type', 'targetEntityType'],
+          ['target_entity_id', 'targetEntityId'],
+          ['campaign_id', 'campaignId'],
+        ]),
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
+  find: (id, ownerId) => prisma.knownFact.findFirst({ where: { id, createdById: ownerId } }),
+  async insert(ownerId, input, stamp) {
+    // The person's, in their campaign (one person, one campaign: lite has one GM, its owner).
+    const person = await prisma.person.findFirst({ where: { id: input.person_id, createdById: ownerId, deletedAt: null }, select: { campaignId: true } });
+    if (person === null) throw validationError('That person is not one of yours', 'person_id');
+    await checkOwned(ownerId, input.learned_in_journal_id, (where) => prisma.journal.count({ where: { ...where, deletedAt: null } }), 'That journal is not one of yours', 'learned_in_journal_id');
+    return prisma.knownFact.create({
+      data: { createdById: ownerId, ...written(KNOWN_FACT_COLUMNS, { ...input, campaign_id: person.campaignId }, stamp) } as Prisma.KnownFactUncheckedCreateInput,
+    });
+  },
+  async updateIfCurrent(id, version, input, stamp, userId) {
+    const { count } = await prisma.knownFact.updateMany({
+      where: { id, updatedAt: version },
+      data: written(KNOWN_FACT_COLUMNS, input, stamp, userId) as Prisma.KnownFactUncheckedUpdateManyInput,
+    });
+    return count === 0 ? null : prisma.knownFact.findUnique({ where: { id } });
+  },
+  async remove(id) {
+    await prisma.knownFact.delete({ where: { id } });
+  },
+  fields: (row) => fieldsOf(KNOWN_FACT_COLUMNS, row),
 };

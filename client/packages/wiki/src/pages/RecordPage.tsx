@@ -42,6 +42,7 @@ import {
   itemInstances,
   items,
   journals,
+  knownFacts,
   people,
   personHooks,
   places,
@@ -52,7 +53,8 @@ import {
   taxa,
   worlds,
 } from '../features/data/records';
-import { useIsGm, type Viewer, ViewerProvider } from '../features/viewer';
+import { useIsGm, useViewer, type Viewer, ViewerProvider } from '../features/viewer';
+import { type KnownFactLine, KnownFacts } from '../components/world/KnownFacts';
 import { GM_ONLY_PROPERTY } from '../contract';
 import { currentAttitude } from '../lib/dispositions';
 import { publicEntry } from '../lib/framing';
@@ -379,6 +381,47 @@ function Posts({ type, id }: { type: EntityKind; id: string }): ReactElement {
   return <PostList posts={rows.data} error={rows.error} onRetry={() => rows.mutate()} />;
 }
 
+/** What the player characters know about this record (rpg_core 020): for the GM, who knows what, a
+ * fact added for one of the campaign's characters and any removed; for a player, what their own
+ * character knows (with no text, only that they know of it, which opened the record to them). */
+function Known({ world, kind, id }: { world: string; kind: EntityKind; id: string }): ReactElement | null {
+  const viewer = useViewer();
+  const personId = viewer === 'gm' ? null : viewer.personId;
+  const facts = knownFacts.useList(personId === null ? { target_entity_id: id } : { person_id: personId, target_entity_id: id });
+  const { create, remove } = knownFacts.useActions();
+  const writes = useWrites(() => facts.mutate());
+  const self = people.useOne(personId);
+  const named = useNamed(personId === null ? (facts.data ?? []).map((row) => row.person_id) : []);
+  const inCampaign = settingOf(world) === null;
+  const characters = people.useList({ campaign_id: world, kind: 'pc' }, personId === null && inCampaign);
+  if (personId !== null) {
+    const learned = facts.data?.filter((row) => row.text !== null).map((row): KnownFactLine => ({ id: row.id, who: null, text: row.text }));
+    if (learned !== undefined && learned.length === 0) return null;
+    return <KnownFacts title={`What ${self.data?.name ?? 'your character'} knows`} lines={learned} error={facts.error} onRetry={() => facts.mutate()} />;
+  }
+  if (!inCampaign) return null;
+  const lines = facts.data?.map((row): KnownFactLine => ({ id: row.id, who: named.data?.get(row.person_id)?.name ?? 'Someone', text: row.text }));
+  return (
+    <KnownFacts
+      title='Who knows'
+      lines={lines}
+      error={facts.error}
+      onRetry={() => facts.mutate()}
+      characters={(characters.data ?? []).map((one) => ({ id: one.id, name: one.name }))}
+      problem={writes.problem}
+      onAdd={async (person, text) =>
+        (await writes.run(create({ person_id: person, target_entity_type: kind, target_entity_id: id, text: text.trim() === '' ? null : text }), 'The fact could not be added', 'Fact added'))
+          ? null
+          : 'The fact could not be added'
+      }
+      onRemove={(line) => {
+        const row = facts.data?.find((one) => one.id === line.id);
+        if (row !== undefined) void writes.run(remove(row), 'The fact could not be removed', 'Fact removed');
+      }}
+    />
+  );
+}
+
 function Record({
   world,
   kind,
@@ -407,10 +450,15 @@ function Record({
   const words = ENTITY_KINDS[kind];
   const can = useCapabilities();
   const gm = useIsGm();
-  // A player: only what a player may read (features/viewer). Whether the record is kept to the GM
+  // A player: only what a player may read (features/viewer). The plain-text copy stands in only for
+  // a record with no entry (an entry's copy would carry its GM sections). Whether the record is kept to the GM
   // comes with its name (world_entity?ids=); a hook is always the GM's.
   const secrecy = useNamed(gm || kind === 'hook' ? [] : [id]);
-  if (!gm && (kind === 'hook' || secrecy.data?.get(id)?.gm_only === true)) {
+  const viewer = useViewer();
+  // A character who knows of it (a known fact, rpg_core 020) may read a record kept to the GM.
+  const known = knownFacts.useList(viewer === 'gm' ? {} : { person_id: viewer.personId, target_entity_id: id }, viewer !== 'gm' && secrecy.data?.get(id)?.gm_only === true);
+  const unlocked = (known.data ?? []).length > 0;
+  if (!gm && (kind === 'hook' || (secrecy.data?.get(id)?.gm_only === true && !unlocked))) {
     return (
       <>
         <PageHeader title={kind === 'hook' ? 'Kept to the GM' : (record?.name ?? 'Kept to the GM')} />
@@ -435,8 +483,9 @@ function Record({
           <Names aliases={storedNames(record.aliases ?? null)} keywords={storedNames(record.keywords ?? null)} />
           <Picture kind={kind} id={id} />
           <Origin kind={kind} id={id} />
-          <EntityPage kind={record.kind} entry={entry ?? null} description={gm ? record.description : null} where={where} />
+          <EntityPage kind={record.kind} entry={entry ?? null} description={gm || record.entry === null ? record.description : null} where={where} />
           {gm && extra}
+          {kind !== 'hook' && <Known world={world} kind={kind} id={id} />}
           {can.properties && <Properties type={kind} id={id} />}
           {can.taxonomy && <Classification world={world} type={kind} id={id} />}
           {can.relations && (kind === 'person' || kind === 'faction') && <Relations world={world} type={kind} id={id} />}

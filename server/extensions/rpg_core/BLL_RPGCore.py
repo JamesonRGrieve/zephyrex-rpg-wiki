@@ -2124,6 +2124,114 @@ def _move_holds(context: HookContext) -> None:
 hook_bll(PersonMoveManager, timing=HookTiming.BEFORE, priority=20)(_move_holds)
 
 
+# ---------------------------------------------------------------------------
+# What a player's character has learned (operator, 2026-11-24: "only player visible information and
+# learned facts should be present there"): a known fact is one person's knowledge of one record, as
+# text, or with none, that they know of it (which opens a record kept to the GM to that character).
+# The GM writes them, from the record's page or as the AI GM through learn_fact.
+# ---------------------------------------------------------------------------
+
+MAX_KNOWN_FACT = int(LIMITS["known_fact_characters"])
+
+
+class KnownFactModel(ApplicationModel.Optional, UpdateMixinModel.Optional, PersonModel.Reference.Optional, metaclass=ModelMeta):
+    """One person's knowledge of one record: what they learned (text), or with none, that they know
+    of it; and the session report it was learned in, when there is one."""
+
+    Manager: ClassVar[Type["KnownFactManager"]] = None
+    table_comment: ClassVar[str] = "What a person has learned about a record, or that they know of it."
+
+    target_entity_type: Optional[str] = Field(None, description="The record's type: contract/wiki.json entity_types")
+    target_entity_id: Optional[str] = Field(None, description="The record learned about")
+    text: Optional[str] = Field(None, description="What they learned; none: they know of it")
+    learned_in_journal_id: Optional[str] = Field(None, description="FK → journals.id; the session it was learned in")
+    campaign_id: Optional[str] = Field(None, description="FK → campaigns.id; the person's campaign (set from the person)")
+
+    class Create(BaseModel, PersonModel.Reference.ID):
+        target_entity_type: str = Field(...)
+        target_entity_id: str = Field(...)
+        text: Optional[str] = None
+        learned_in_journal_id: Optional[str] = None
+        # Filled from the person, whatever a caller sends.
+        campaign_id: Optional[str] = None
+
+    class Update(BaseModel):
+        text: Optional[str] = None
+        learned_in_journal_id: Optional[str] = None
+
+    class Search(ApplicationModel.Search, PersonModel.Reference.ID.Search):
+        target_entity_type: Optional[StringSearchModel] = None
+        target_entity_id: Optional[StringSearchModel] = None
+        campaign_id: Optional[StringSearchModel] = None
+
+
+class KnownFactManager(AbstractBLLManager, RouterMixin):
+    _model = KnownFactModel
+
+
+KnownFactModel.Manager = KnownFactManager
+
+
+def _known_text(value: Any) -> Optional[str]:
+    text = str(value).strip() if value is not None else ""
+    if len(text) > MAX_KNOWN_FACT:
+        raise HTTPException(status_code=422, detail=f"A known fact has at most {MAX_KNOWN_FACT} characters")
+    return text or None
+
+
+def _fact_holds(context: HookContext) -> None:
+    """A known fact: of a record of a known type, by someone who may edit the person (the GM), in
+    the person's campaign; its text trimmed (none: they know of it)."""
+    from zephyrex.lib.RecordTarget import can_edit
+
+    if context.method_name not in ("create", "update"):
+        return
+    registry, requester = context.manager.model_registry, str(context.manager.requester.id)
+    if context.method_name == "update":
+        if "text" in context.kwargs:
+            context.kwargs["text"] = _known_text(context.kwargs.get("text"))
+        return
+    person_id, kind = context.kwarg("person_id", default=None), context.kwarg("target_entity_type", default=None)
+    if not person_id or not context.kwarg("target_entity_id", default=None):
+        raise HTTPException(status_code=422, detail="Name the person and the record they learned about")
+    if kind not in ENTITY_TYPES:
+        raise HTTPException(status_code=422, detail=f"A record's type is one of: {', '.join(ENTITY_TYPES)}")
+    person = _manager(registry, requester, PersonManager).get(id=person_id)
+    campaign_id = getattr(person, "campaign_id", None)
+    if not campaign_id or not can_edit(registry, requester, "campaign", str(campaign_id)):
+        raise HTTPException(status_code=403, detail="Only the campaign's GM says what its people know")
+    context.kwargs.update(campaign_id=str(campaign_id), text=_known_text(context.kwarg("text", default=None)))
+
+
+hook_bll(KnownFactManager, timing=HookTiming.BEFORE, priority=20)(_fact_holds)
+
+
+class KnownFactLearned(PlainModel):
+    known_fact: dict[str, Any]
+    created: bool
+
+
+def learn_fact(
+    model_registry: Any,
+    requester_id: str,
+    person_id: str,
+    target_entity_type: str,
+    target_entity_id: str,
+    text: Optional[str] = None,
+    learned_in: Optional[str] = None,
+) -> KnownFactLearned:
+    """``person_id`` learns ``text`` about the record (or, with none, knows of it), learned in the
+    session report ``learned_in``: the same fact twice is one row (created false). The person's
+    campaign's GM's to do (the AI GM, when a scene reveals something)."""
+    facts = _manager(model_registry, requester_id, KnownFactManager)
+    wanted = _known_text(text)
+    for row in facts.list(person_id=person_id, target_entity_id=target_entity_id) or []:
+        if (row.text or None) == wanted:
+            return KnownFactLearned(known_fact=row.model_dump(mode="json"), created=False)
+    made = facts.create(person_id=person_id, target_entity_type=target_entity_type, target_entity_id=target_entity_id, text=wanted, learned_in_journal_id=learned_in)
+    return KnownFactLearned(known_fact=made.model_dump(mode="json"), created=True)
+
+
 class PersonMoved(PlainModel):
     person_id: str
     from_location_id: Optional[str] = Field(None, alias="from")
@@ -2832,6 +2940,8 @@ def remove_campaign_records(model_registry: Any, requester_id: str, campaign_ids
 
             links = _manager(model_registry, requester_id, AttachmentManager)
             drop("attachment", links, [str(row.id) for row in touching(links, ("target_entity_id",), record_ids)])
+    facts = _manager(model_registry, requester_id, KnownFactManager)
+    drop("knownfact", facts, [str(row.id) for row in facts.list(filters=[FieldComparison(facts.Model, "campaign_id", "in", campaign_ids)]) or []])
     moves = _manager(model_registry, requester_id, PersonMoveManager)
     drop("personmove", moves, [str(row.id) for row in moves.list(filters=[FieldComparison(moves.Model, "campaign_id", "in", campaign_ids)]) or []])
     # A campaign's starts stay: a start is its starter's history (a failed start's undo deletes the

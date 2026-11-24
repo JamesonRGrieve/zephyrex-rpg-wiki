@@ -590,3 +590,21 @@ model PersonMove {
 
   @@index([personId])
 }
+
+/// What a person has learned about a record, or with no text that they know of it (rpg_core 020).
+model KnownFact {
+  id                 String   @id @default(uuid())
+  createdById        String
+  personId           String
+  targetEntityType   String
+  targetEntityId     String
+  text               String?
+  learnedInJournalId String?
+  campaignId         String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime
+  updatedById        String?
+
+  @@index([personId])
+  @@index([targetEntityId])
+}

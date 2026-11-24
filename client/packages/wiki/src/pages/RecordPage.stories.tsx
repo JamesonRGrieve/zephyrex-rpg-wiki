@@ -60,6 +60,10 @@ export const PlayerView: Story = {
     await expect(canvas.queryByText('Lorebook keys')).not.toBeInTheDocument();
     await expect(canvas.queryByRole('button', { name: 'Edit origin' })).not.toBeInTheDocument();
     await expect(canvas.queryByRole('button', { name: 'Elevate to scenario' })).not.toBeInTheDocument();
+    // What their character has learned, read only.
+    await expect(await canvas.findByRole('heading', { name: 'What Tobin Reyes knows' })).toBeInTheDocument();
+    await expect(canvas.getByText('Mara keeps the lamp oil in the cellar.')).toBeInTheDocument();
+    await expect(canvas.queryByRole('button', { name: 'Add known fact' })).not.toBeInTheDocument();
   },
 };
 
@@ -73,6 +77,28 @@ export const GmView: Story = {
     await expect(await canvas.findByText('She lit the lighthouse herself.')).toBeInTheDocument();
     await expect(await canvas.findByText('Mara Vane')).toBeInTheDocument();
     await expect(canvas.getByText('Lorebook keys')).toBeInTheDocument();
+    // Who knows what about her, and a fact added for one of the campaign's characters.
+    await expect(await canvas.findByRole('heading', { name: 'Who knows' })).toBeInTheDocument();
+    await expect(await canvas.findByText('Tobin Reyes:')).toBeInTheDocument();
+    await expect(await canvas.findByRole('button', { name: 'Add known fact' })).toBeInTheDocument();
+  },
+};
+
+/** A record kept to the GM that the player's character knows of (a known fact with no text): open to them. */
+export const KnownOfByTheirCharacter: Story = {
+  args: { id: 'person-3', viewer: { personId: 'person-2' } },
+  parameters: {
+    msw: {
+      handlers: wikiHandlers({
+        gmOnly: ['person-3'],
+        rows: { known_fact: [{ id: 'known_fact-9', person_id: 'person-2', target_entity_type: 'person', target_entity_id: 'person-3', text: null, campaign_id: CAMPAIGN_ID }] },
+      }),
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole('heading', { level: 1, name: 'Harbourmaster Vell' })).toBeInTheDocument();
+    await expect(await canvas.findByText('Holds the keys to every boat.')).toBeInTheDocument();
   },
 };
 

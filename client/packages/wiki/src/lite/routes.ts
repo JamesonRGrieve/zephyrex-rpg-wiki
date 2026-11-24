@@ -28,6 +28,7 @@ import { worldEntityGet, campaignMatchingPost } from './worldEntityRoute';
 import {
   campaigns,
   dispositions,
+  knownFacts,
   entityInventories,
   entityPosts,
   entityStatuses,
@@ -80,6 +81,7 @@ const ROUTES: Record<string, Routes> = {
   // A start's progress and result (lite's starts are done when answered).
   campaign_start: { collection: {}, record: { GET: campaignStartGet } },
   disposition: both(dispositions),
+  known_fact: both(knownFacts),
   entity_inventory: both(entityInventories),
   entity_post: both(entityPosts),
   entity_status: both(entityStatuses),

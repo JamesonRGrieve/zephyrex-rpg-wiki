@@ -1,6 +1,7 @@
 {
   "$comment": "Zephyrex RPG Wiki's knowledge shared by both back ends and the front end: the kinds each record may take, and the limits on what it holds. Read by server/extensions/wiki_shared/Contract.py and client/src/contract.ts; nothing restates it.",
   "limits": {
+    "known_fact_characters": 2000,
     "name_characters": 200,
     "entry_bytes": 200000,
     "entry_depth": 32,

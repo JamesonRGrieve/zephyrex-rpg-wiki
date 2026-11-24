@@ -21,6 +21,7 @@ import {
   itemInstances,
   items,
   journals,
+  knownFacts,
   people,
   personHooks,
   places,
@@ -123,6 +124,7 @@ export function wikiFixture(): Fixture {
     item_instance: [],
     entity_inventory: [],
     entity_post: [],
+    known_fact: [{ id: 'known_fact-1', person_id: 'person-2', target_entity_type: 'person', target_entity_id: 'person-1', text: 'Mara keeps the lamp oil in the cellar.', campaign_id: CAMPAIGN_ID }],
   };
 }
 
@@ -149,6 +151,7 @@ const RESOURCES: readonly ResourceHooks<Row & { created_at: string; updated_at: 
   relationships,
   dispositions,
   relationInfluences,
+  knownFacts,
 ] as unknown as readonly ResourceHooks<Row & { created_at: string; updated_at: string | null }, object, object>[];
 
 /**
@@ -216,7 +219,18 @@ export function wikiHandlers({
       updated_at: string | null;
     })[];
     const filters = [...new Set(stored.flatMap((row) => Object.keys(row)))] as (keyof (typeof stored)[number] & string)[];
-    return restTable({
+    // `<field>__in=a,b` (the framework's LIST filter, and the wiki's lite twin): restTable reads only
+    // equality, so a list naming one is answered here, and every other falls through to it.
+    const listedIn = http.get(`*${resource.path}`, ({ request }) => {
+      const query = new URL(request.url).searchParams;
+      const ins = [...query.keys()].filter((key) => key.endsWith('__in'));
+      if (ins.length === 0) return undefined;
+      const rows = stored.filter((row) =>
+        ins.every((key) => (query.get(key) ?? '').split(',').includes(String((row as Record<string, unknown>)[key.slice(0, -4)]))),
+      );
+      return HttpResponse.json({ [resource.plural]: rows });
+    });
+    return [listedIn, ...restTable({
       rows: () => stored,
       set: (next) => {
         stored = next;
@@ -226,7 +240,7 @@ export function wikiHandlers({
       single: resource.single,
       plural: resource.plural,
       filters,
-    });
+    })];
   });
   return [
     ...extra,

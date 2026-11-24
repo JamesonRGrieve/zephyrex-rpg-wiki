@@ -334,6 +334,18 @@ export const relationInfluenceSchema = z.object({
 });
 export type RelationInfluence = z.infer<typeof relationInfluenceSchema>;
 
+/** What a person has learned about a record, or with no text that they know of it (rpg_core 020). */
+export const knownFactSchema = z.object({
+  ...versioned,
+  person_id: z.string(),
+  target_entity_type: z.string(),
+  target_entity_id: z.string(),
+  text: z.string().nullable(),
+  learned_in_journal_id: z.string().nullish(),
+  campaign_id: z.string().nullish(),
+});
+export type KnownFact = z.infer<typeof knownFactSchema>;
+
 type Versioned = { id: string; created_at: string; updated_at: string | null };
 /** What a write may set: a record's own fields (and, for write-only fields, `Extra`). */
 export type Fields<T extends Versioned, Extra = object> = Partial<Omit<T, keyof Versioned>> & Extra;
@@ -488,3 +500,7 @@ export const relationInfluences = resource<
   RelationInfluence,
   Pick<RelationInfluence, 'relationship_id' | 'hook_id' | 'to_intensity'> & Fields<RelationInfluence>
 >('relation_influence', 'relation_influences', relationInfluenceSchema);
+export const knownFacts = resource<
+  KnownFact,
+  Pick<KnownFact, 'person_id' | 'target_entity_type' | 'target_entity_id'> & Fields<KnownFact>
+>('known_fact', 'known_facts', knownFactSchema);
