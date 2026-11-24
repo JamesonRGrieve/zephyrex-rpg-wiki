@@ -224,6 +224,15 @@ hook_bll(SettingManager, timing=HookTiming.BEFORE, priority=21)(_slug_fixed)
 SettingModel.Manager = SettingManager
 
 
+def checked_backend(value: Any) -> Any:
+    """Where a campaign is kept: one of contract/wiki.json campaign_backends, or none (native)."""
+    from zephyrex.extensions.wiki_shared.Contract import CAMPAIGN_BACKENDS  # type: ignore[import-not-found]
+
+    if value is not None and value not in CAMPAIGN_BACKENDS:
+        raise ValueError(f"A campaign's backend is one of: {', '.join(CAMPAIGN_BACKENDS)}")
+    return value
+
+
 class CampaignModel(
     ApplicationModel.Optional,
     UpdateMixinModel.Optional,
@@ -243,6 +252,8 @@ class CampaignModel(
     is_scenario: Optional[bool] = Field(None, description="A scenario: play never edits it; starting it copies it (instantiate)")
     scenario_id: Optional[str] = Field(None, description="FK → campaigns.id; the scenario this campaign is a playthrough of")
     clock_minutes: Optional[int] = Field(None, description="In-world time: minutes from day 1, 00:00; none = day 1, 08:00 (advance_clock)")
+    backend: Optional[str] = Field(None, description="contract/wiki.json campaign_backends: where it is kept, native (none) or foundry")
+    foundry_world_id: Optional[str] = Field(None, description="FK → provider_instances.id; the Foundry world (external_vtt's PRV_Foundry instance) a foundry campaign is kept in")
 
     class Create(BaseModel, UserModel.Reference.ID.Optional, SettingModel.Reference.ID.Optional):
         name: str = Field(...)
@@ -251,8 +262,11 @@ class CampaignModel(
         source: Optional[str] = None
         is_scenario: Optional[bool] = None
         scenario_id: Optional[str] = None
+        backend: Optional[str] = None
+        foundry_world_id: Optional[str] = None
 
         _name = field_validator("name")(checked_name)
+        _backend = field_validator("backend")(lambda value: checked_backend(value))
         _provenance = field_validator("provenance")(lambda value: None if value is None else checked_provenance(value))
         _source = field_validator("source")(checked_source)
 
@@ -264,12 +278,16 @@ class CampaignModel(
         provenance: Optional[str] = None
         # "" clears it; none leaves it as it is (read by _provenance_holds).
         source: Optional[str] = None
+        backend: Optional[str] = None
+        foundry_world_id: Optional[str] = None
 
         _name = field_validator("name")(checked_name)
+        _backend = field_validator("backend")(lambda value: checked_backend(value))
         _provenance = field_validator("provenance")(lambda value: None if value is None else checked_provenance(value))
 
     class Search(ApplicationModel.Search, UserModel.Reference.ID.Search, SettingModel.Reference.ID.Search):
         name: Optional[StringSearchModel] = None
+        backend: Optional[StringSearchModel] = None
 
 
 class CampaignStart(PlainModel):
@@ -2230,6 +2248,156 @@ def learn_fact(
             return KnownFactLearned(known_fact=row.model_dump(mode="json"), created=False)
     made = facts.create(person_id=person_id, target_entity_type=target_entity_type, target_entity_id=target_entity_id, text=wanted, learned_in_journal_id=learned_in)
     return KnownFactLearned(known_fact=made.model_dump(mode="json"), created=True)
+
+
+# ---------------------------------------------------------------------------
+# Which backend a call's campaign is kept in (the operator, 2026-11-24, "Framework selector": a
+# Foundry-backed campaign). rpg_core's @backend_selector asks this; the framework's loaded_ability
+# then runs external_vtt's Foundry implementation of the ability, or rpg_core's own.
+# ---------------------------------------------------------------------------
+
+# The arguments that name a campaign, directly or through a record in it.
+_PERSON_ARGUMENTS = ("person_id", "near_person_id")
+_LIST_ARGUMENTS = ("person_ids", "ids", "target_ids")
+
+
+def _live(rows: Any) -> list[Any]:
+    """Rows not deleted (a lookup as ROOT also returns soft-deleted rows)."""
+    return [row for row in rows or [] if getattr(row, "deleted_at", None) is None]
+
+
+def campaign_of_call(model_registry: Any, arguments: Any) -> Optional[str]:
+    """The campaign a call's arguments belong to: its campaign_id, else the campaign of the person
+    or record it names (person_id, then the first of person_ids, ids or target_ids, or
+    target_entity_id). Read as ROOT: the selector runs before the ability's own access check, and
+    tells only which backend serves the call."""
+    from zephyrex.logic.AbstractLogicManager.models import FieldComparison
+
+    if arguments.get("campaign_id"):
+        return str(arguments["campaign_id"])
+    named: list[str] = [str(arguments[key]) for key in _PERSON_ARGUMENTS if arguments.get(key)]
+    for key in _LIST_ARGUMENTS:
+        values = arguments.get(key)
+        if isinstance(values, (list, tuple)) and values:
+            named.append(str(values[0]))
+    if arguments.get("target_entity_id"):
+        named.append(str(arguments["target_entity_id"]))
+    for record_id in named:
+        for manager_class in WORLD_ENTITY_MANAGERS.values():
+            manager = _manager(model_registry, env("ROOT_ID"), manager_class)
+            for row in _live(manager.list(filters=[FieldComparison(manager.Model, "id", "in", [record_id])])):
+                campaign_id = getattr(row, "campaign_id", None)
+                if campaign_id:
+                    return str(campaign_id)
+    return None
+
+
+class CampaignBackend(PlainModel):
+    backend: str = Field(..., description="contract/wiki.json campaign_backends: native or foundry")
+    world_id: Optional[str] = Field(None, description="The Foundry world (external_vtt's PRV_Foundry instance), for a foundry campaign")
+    campaign_id: Optional[str] = Field(None, description="The campaign answered for (none: none found)")
+
+
+def _world_holds(context: HookContext) -> None:
+    """A campaign's foundry_world_id names a provider instance (a Foundry world): one that isn't is
+    a 422 here, not the database's foreign-key failure."""
+    from zephyrex.logic.AbstractLogicManager.models import FieldComparison
+    from zephyrex.logic.BLL_Providers import ProviderInstanceManager
+
+    if context.method_name not in ("create", "update"):
+        return
+    world = context.kwarg("foundry_world_id", default=None)
+    if not world:
+        return
+    instances = ProviderInstanceManager(requester_id=env("ROOT_ID"), model_registry=context.manager.model_registry)
+    if not _live(instances.list(filters=[FieldComparison(instances.Model, "id", "in", [str(world)])])):
+        raise HTTPException(status_code=422, detail="foundry_world_id names no Foundry world (provider instance)")
+
+
+hook_bll(CampaignManager, timing=HookTiming.BEFORE, priority=20)(_world_holds)
+
+
+def foundry_campaign_on(model_registry: Any, requester_id: str, world_id: str) -> Optional[str]:
+    """The Foundry campaign kept in ``world_id`` that the requester is a member of (can read), the
+    oldest when several; none otherwise (external_vtt's id-only reads: a scene's or token's)."""
+    from zephyrex.logic.AbstractLogicManager.models import FieldComparison
+
+    campaigns = _manager(model_registry, requester_id, CampaignManager)
+    rows = [
+        row
+        for row in campaigns.list(filters=[FieldComparison(campaigns.Model, "foundry_world_id", "in", [str(world_id)])]) or []
+        if getattr(row, "backend", None) == "foundry"
+    ]
+    rows.sort(key=lambda row: (row.created_at, str(row.id)))
+    return str(rows[0].id) if rows else None
+
+
+def campaign_backend(
+    model_registry: Any,
+    campaign_id: Optional[str] = None,
+    person_id: Optional[str] = None,
+    world_id: Optional[str] = None,
+    requester_id: Optional[str] = None,
+) -> CampaignBackend:
+    """Where the campaign (or the person's campaign) is kept: native, unless it says foundry, with
+    the Foundry world's provider instance and the campaign answered for. Read as ROOT; an unknown
+    or deleted campaign or person is native. Given only ``world_id``: the requester's Foundry
+    campaign on that world (read as the requester, so a non-member finds none)."""
+    from zephyrex.extensions.wiki_shared.Contract import NATIVE_BACKEND  # type: ignore[import-not-found]
+    from zephyrex.logic.AbstractLogicManager.models import FieldComparison
+
+    native = CampaignBackend(backend=NATIVE_BACKEND, world_id=None, campaign_id=None)
+    if not campaign_id and not person_id and world_id:
+        if not requester_id:
+            return native
+        campaign_id = foundry_campaign_on(model_registry, requester_id, world_id)
+        if campaign_id is None:
+            return native
+    wanted = campaign_id or campaign_of_call(model_registry, {"person_id": person_id} if person_id else {})
+    if not wanted:
+        return native
+    campaigns = _manager(model_registry, env("ROOT_ID"), CampaignManager)
+    rows = _live(campaigns.list(filters=[FieldComparison(campaigns.Model, "id", "in", [str(wanted)])]))
+    if not rows:
+        return native
+    backend = getattr(rows[0], "backend", None) or NATIVE_BACKEND
+    return CampaignBackend(
+        backend=str(backend),
+        world_id=getattr(rows[0], "foundry_world_id", None) if backend != NATIVE_BACKEND else None,
+        campaign_id=str(rows[0].id),
+    )
+
+
+# A Foundry record's id, as external_vtt names it: "fvtt:<world>:<Foundry UUID>" (Zephyrex Server's
+# design): an argument holding one is the Foundry backend's, with nothing to look up.
+FOUNDRY_ID_PREFIX = "fvtt:"
+
+
+def _foundry_ids(arguments: Any) -> bool:
+    for key, value in arguments.items():
+        if key in ("model_registry", "requester_id"):
+            continue
+        values = value if isinstance(value, (list, tuple)) else [value]
+        if any(isinstance(one, str) and one.startswith(FOUNDRY_ID_PREFIX) for one in values):
+            return True
+    return False
+
+
+def selected_backend(arguments: Any) -> Optional[str]:
+    """The backend a call is served from when it isn't the wiki's own ("foundry"), else none: an
+    argument that is a Foundry id, or a call whose campaign is kept in Foundry."""
+    from zephyrex.extensions.wiki_shared.Contract import NATIVE_BACKEND  # type: ignore[import-not-found]
+
+    if _foundry_ids(arguments):
+        return "foundry"
+    registry = arguments.get("model_registry")
+    if registry is None:
+        return None
+    campaign_id = campaign_of_call(registry, arguments)
+    if campaign_id is None:
+        return None
+    backend = campaign_backend(registry, campaign_id=campaign_id).backend
+    return None if backend == NATIVE_BACKEND else backend
 
 
 # The most people current_attitudes reads among (the framework's MAX_BATCH_SIZE, as an __in list).

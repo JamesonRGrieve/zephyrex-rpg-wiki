@@ -53,6 +53,9 @@ export const worldSchema = z.object({
   /** Copy on start: a scenario is never played; a playthrough names the scenario it was copied from. */
   is_scenario: z.boolean().nullish(),
   scenario_id: z.string().nullish(),
+  /** Where it is kept (rpg_core 021): native (none) or foundry, and the Foundry world of a foundry one. */
+  backend: z.string().nullish(),
+  foundry_world_id: z.string().nullish(),
 });
 export type World = z.infer<typeof worldSchema>;
 

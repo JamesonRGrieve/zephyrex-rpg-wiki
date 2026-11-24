@@ -11,6 +11,7 @@ import { ApiError, notFound, type ResourceSpec, STATUS, validationError } from '
 import { z } from 'zod';
 import {
   ENTITY_TYPES,
+  NATIVE_BACKEND,
   FACTION_KINDS,
   HOOK_KINDS,
   ITEM_KINDS,
@@ -382,7 +383,12 @@ const CAMPAIGN_COLUMNS: Columns = {
   scenario_id: plain('scenarioId'),
   // Read only: advanced through /v1/campaign/{id}/clock.
   clock_minutes: plain('clockMinutes'),
+  backend: plain('backend'),
+  foundry_world_id: plain('foundryWorldId'),
 };
+/** Where a campaign is kept: lite serves its own only (native, or none); a Foundry world is the SaaS edition's. */
+const nativeBackend = z.enum([NATIVE_BACKEND], { message: 'This edition keeps campaigns here only (native)' }).nullish();
+const noWorld = z.null({ message: 'This edition has no Foundry worlds' }).nullish();
 const campaignCreate = z.object({
   name,
   description: z.string().default(''),
@@ -392,10 +398,12 @@ const campaignCreate = z.object({
   // Copy on start: a scenario, never played; a playthrough names the scenario it was copied from.
   is_scenario: z.boolean().nullish(),
   scenario_id: reference.default(null),
+  backend: nativeBackend,
+  foundry_world_id: noWorld,
 });
 // A null provenance or source is "not given"; "" clears the source (as the server's).
 const campaignUpdate = z
-  .object({ name, description: z.string(), setting_id: reference, provenance: z.string().nullable(), source: z.string().nullable(), is_scenario: z.boolean().nullable() })
+  .object({ name, description: z.string(), setting_id: reference, provenance: z.string().nullable(), source: z.string().nullable(), is_scenario: z.boolean().nullable(), backend: nativeBackend, foundry_world_id: noWorld })
   .partial();
 
 /** A picture by link (an https address; "" or none is none), as a 422 on its field. */

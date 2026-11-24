@@ -42,6 +42,10 @@ model Campaign {
   scenarioId   String?
   /// In-world time: minutes from day 1, 00:00; none = day 1, 08:00.
   clockMinutes Int?
+  /// Where it is kept (rpg_core 021): native, the only one lite serves; none is native.
+  backend      String?
+  /// The Foundry world of a foundry campaign (the SaaS edition's; always none here).
+  foundryWorldId String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime
   updatedById  String?

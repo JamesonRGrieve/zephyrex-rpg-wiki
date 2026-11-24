@@ -2005,3 +2005,69 @@ class TestInstantiateHooks:
             assert len(seen) == 1 and seen[0][0] == scenario["id"] and seen[0][1] == start["campaign_id"] and seen[0][2] >= 1
         finally:
             AFTER_INSTANTIATE[:] = held
+
+
+class TestCampaignBackends:
+    """The operator, 2026-11-24 ("Framework selector"): a campaign kept in a Foundry world. Its
+    backend is native unless set; rpg_core's selector names the backend of a call's campaign, found
+    from its campaign_id or a person or record it names."""
+
+    def test_the_selector_reads_the_calls_campaign(self, server: TestClient, person: Any, other: Any) -> None:
+        from zephyrex.extensions.rpg_core.EXT_RPGCore import RPGCoreExtension  # type: ignore[import-not-found]
+
+        native = _create(server, person, "campaign", name="Kept Here")
+        foundry = _create(server, person, "campaign", name="Kept in Foundry", backend="foundry")
+        assert (native.get("backend"), foundry["backend"]) == (None, "foundry")
+        refused = server.post("/v1/campaign", json={"campaign": {"name": "Elsewhere", "backend": "roll20"}}, headers=_headers(person))
+        assert refused.status_code == 422, refused.text
+        hero = _create(server, person, "person", name="Foundry Hero", kind="pc", campaign_id=foundry["id"])
+        inn = _create(server, person, "location", name="Foundry Inn", campaign_id=foundry["id"])
+        registry = server.app.state.model_registry  # type: ignore[attr-defined]
+        call = {"model_registry": registry, "requester_id": str(person.id)}
+        select = RPGCoreExtension.select_backend
+        assert select("world_entities", {**call, "campaign_id": native["id"]}) is None
+        assert select("world_entities", {**call, "campaign_id": foundry["id"]}) == "foundry"
+        assert select("move_person", {**call, "person_id": hero["id"], "location_id": inn["id"]}) == "foundry"
+        assert select("world_entities_by_id", {**call, "ids": [inn["id"]]}) == "foundry"
+        # A Foundry id ("fvtt:<world>:<uuid>") is Foundry's, with nothing looked up.
+        assert select("move_person", {**call, "person_id": "fvtt:w1:Actor.abc", "location_id": "fvtt:w1:Scene.def"}) == "foundry"
+        assert select("world_entities_by_id", {**call, "ids": ["fvtt:w1:Actor.abc"]}) == "foundry"
+        assert select("current_attitudes", {**call, "campaign_id": foundry["id"], "person_ids": [hero["id"]]}) == "foundry"
+        # Nothing that names a campaign, or no registry: native. (Read as ROOT: the ability itself
+        # holds the caller to its access, after the selector picked its backend.)
+        assert select("register_embedder", {**call, "model": "x"}) is None
+        assert select("world_entities", {"campaign_id": foundry["id"]}) is None
+        # The ability VTT's selectors read: a campaign's, or a person's campaign's; unknown is native.
+        from zephyrex.extensions.AbstractExtensionProvider import loaded_ability
+
+        read = loaded_ability(registry, "rpg_core", "campaign_backend")
+        assert read is not None
+        assert read(registry, str(person.id), campaign_id=foundry["id"]) == {"backend": "foundry", "world_id": None, "campaign_id": foundry["id"]}
+        assert read(registry, str(other.id), person_id=hero["id"])["backend"] == "foundry"
+        assert read(registry, str(person.id), campaign_id="no-such-campaign") == {"backend": "native", "world_id": None, "campaign_id": None}
+        assert read(registry, str(person.id)) == {"backend": "native", "world_id": None, "campaign_id": None}
+        # By world (external_vtt's id-only reads): the requester's Foundry campaign on it; a
+        # non-member, or a world no campaign is kept in, finds none.
+        world = _foundry_world(server)
+        assert server.post("/v1/campaign", json={"campaign": {"name": "Nowhere", "backend": "foundry", "foundry_world_id": "no-such-world"}}, headers=_headers(person)).status_code == 422
+        on_world = _create(server, person, "campaign", name="On a World", backend="foundry", foundry_world_id=world)
+        assert read(registry, str(person.id), world_id=world) == {"backend": "foundry", "world_id": world, "campaign_id": on_world["id"]}
+        assert read(registry, str(other.id), world_id=world)["campaign_id"] is None
+        assert read(registry, str(person.id), world_id="no-such-world")["campaign_id"] is None
+        # Back to native: none or "native" both read as the wiki's own.
+        moved = _put(server, person, "campaign", foundry, backend="native")
+        assert moved.status_code == 200, moved.text
+        assert select("world_entities", {**call, "campaign_id": foundry["id"]}) is None
+
+
+def _foundry_world(server: TestClient) -> str:
+    """A provider instance standing in for a Foundry world (a campaign's foundry_world_id)."""
+    import uuid
+
+    from zephyrex.lib.Environment import env
+    from zephyrex.logic.BLL_Providers import ProviderInstanceManager, ProviderManager
+
+    registry = server.app.state.model_registry  # type: ignore[attr-defined]
+    root = env("ROOT_ID")
+    provider = ProviderManager(model_registry=registry, requester_id=root).create(name=f"foundry_{uuid.uuid4().hex}")
+    return str(ProviderInstanceManager(model_registry=registry, requester_id=root).create(name=f"world_{uuid.uuid4().hex}", provider_id=provider.id).id)

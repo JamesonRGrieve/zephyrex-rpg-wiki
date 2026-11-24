@@ -5,7 +5,7 @@ nothing depends back on it from Tier 1 (operator, 2026-11-20)."""
 from datetime import datetime
 from typing import Any, ClassVar, Optional
 
-from zephyrex.extensions.AbstractExtensionProvider import AbstractStaticExtension, ability
+from zephyrex.extensions.AbstractExtensionProvider import AbstractStaticExtension, ability, backend_selector
 from zephyrex.lib.Dependencies import Dependencies, EXT_Dependency
 
 
@@ -222,6 +222,38 @@ class RPGCoreExtension(AbstractStaticExtension):
         from zephyrex.extensions.rpg_core.BLL_RPGCore import ensure_person  # type: ignore[import-not-found]
 
         return ensure_person(model_registry, requester_id, campaign_id, name, summary).model_dump(mode="json")
+
+    @classmethod
+    @backend_selector
+    def select_backend(cls, ability_name: str, arguments: dict[str, Any]) -> Optional[str]:
+        """Which backend serves a call to one of rpg_core's abilities (the operator, 2026-11-24,
+        "Framework selector"): "foundry" when an id argument is a Foundry one ("fvtt:..."), or the
+        call's campaign (its campaign_id, or that of the person or record it names) is kept in a
+        Foundry world; else none (rpg_core's own)."""
+        from zephyrex.extensions.rpg_core.BLL_RPGCore import selected_backend  # type: ignore[import-not-found]
+
+        return selected_backend(arguments)
+
+    @classmethod
+    @ability("campaign_backend")
+    def campaign_backend(
+        cls,
+        model_registry: Any,
+        requester_id: str,
+        campaign_id: Optional[str] = None,
+        person_id: Optional[str] = None,
+        world_id: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """Where a campaign (or a person's campaign) is kept, for every native @backend_selector
+        and external_vtt (Zephyrex Server's Foundry design): {"backend": "native" | "foundry",
+        "world_id": the Foundry world's provider instance (PRV_Foundry) or none}. Read as the
+        system (a selector runs before the ability's own access check); an unknown campaign or
+        person is native. Given only ``world_id`` (external_vtt's id-only reads): the requester's
+        Foundry campaign on that world, read as the requester, so a non-member finds none. The
+        answer names the campaign it is for: {"backend", "world_id", "campaign_id"}."""
+        from zephyrex.extensions.rpg_core.BLL_RPGCore import campaign_backend  # type: ignore[import-not-found]
+
+        return campaign_backend(model_registry, campaign_id=campaign_id, person_id=person_id, world_id=world_id, requester_id=requester_id).model_dump(mode="json")
 
     @classmethod
     @ability("learn_fact")

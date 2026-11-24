@@ -48,3 +48,6 @@ export const PLAY_STYLE = 'play_style';
 export const DOCUMENT_KINDS = contract.document_kinds as readonly string[];
 /** A new campaign's clock: minutes from day 1, 00:00 (day 1, 08:00). */
 export const CLOCK_START_MINUTES: number = contract.clock_start_minutes;
+/** Where a campaign is kept (rpg_core 021): native (the default) or foundry. */
+export const CAMPAIGN_BACKENDS = contract.campaign_backends as readonly string[];
+export const NATIVE_BACKEND = 'native';

@@ -61,3 +61,7 @@ SETTING_SLUG_PATTERN: str = CONTRACT["setting_slug"]["pattern"]
 SETTING_SLUG_CHARACTERS: int = CONTRACT["setting_slug"]["max_characters"]
 # The settings every wiki has (S6b): SYSTEM's, so everyone reads them and nobody else changes them.
 SEED_SETTINGS: tuple[dict[str, str], ...] = tuple(CONTRACT["seed_settings"])
+# Where a campaign is kept (the operator, 2026-11-24: a Foundry-backed campaign): native (the wiki's own
+# tables, the default) or foundry (a Foundry VTT world, through external_vtt).
+CAMPAIGN_BACKENDS: tuple[str, ...] = tuple(CONTRACT["campaign_backends"])
+NATIVE_BACKEND = "native"

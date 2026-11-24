@@ -278,6 +278,7 @@
     "gallery",
     "document"
   ],
+  "campaign_backends": ["native", "foundry"],
   "seed_settings": [
     { "slug": "reality", "name": "Reality" }
   ],
