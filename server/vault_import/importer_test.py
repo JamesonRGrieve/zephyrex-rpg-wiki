@@ -57,7 +57,7 @@ def test_the_vault_imports_with_its_links_and_a_second_run_changes_nothing(serve
     # The vault's own kind fields read as kinds; a word that isn't one is reported, never guessed.
     assert first.unread.get("Locations/The Fens.md") == ["location_type: warp-passage (not one of the location kinds)"]
 
-    [campaign] = [row for row in api.list("campaign") if row["name"] == "The Split Antler"]
+    [campaign] = [row for row in api.list("campaign") if row["name"] == "The Split Antler" and api.mine(row)]
     dnd = next(row for row in api.list("setting") if row["slug"] == api.fantasy)
     assert campaign["setting_id"] == dnd["id"]
     # The campaign's provenance is its framing note's; a note's own is its record's (homebrew when none).
@@ -130,7 +130,7 @@ def test_a_dry_run_writes_nothing(server: TestClient) -> None:
     api.grimdark = setting_of(api, "fixture-grimdark")  # type: ignore[attr-defined]
     report = Importer(api, setting_slug=api.fantasy, dry_run=True).run(read_vault(FIXTURE))
     assert len(report.created) == 13
-    assert [row for row in api.list("campaign") if row["name"] == "The Split Antler"] == []
+    assert [row for row in api.list("campaign") if row["name"] == "The Split Antler" and api.mine(row)] == []
 
 
 def test_new_records_are_made_one_plural_create_a_kind(server: TestClient) -> None:

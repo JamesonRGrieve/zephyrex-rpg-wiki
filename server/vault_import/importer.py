@@ -151,6 +151,8 @@ class Report:
     unplayable: dict[str, list[str]] = field(default_factory=dict)
     # Each place's map, a line a floor: created, updated, would be made, skipped (why) or refused (why).
     maps: list[tuple[str, str]] = field(default_factory=list)
+    # A system import's shared copy: system_adopt's line for the setting (made the template account's).
+    shared: list[str] = field(default_factory=list)
 
     def text(self, dry_run: bool) -> str:
         made = "would create" if dry_run else "created"
@@ -163,6 +165,7 @@ class Report:
         lines += [f"  unresolved in {path}: {', '.join(sorted(set(names)))}" for path, names in sorted(self.unresolved.items())]
         lines += [f"  unread in {path}: {', '.join(keys)}" for path, keys in sorted(self.unread.items())]
         lines += [f"  map {path}: {what}" for path, what in self.maps]
+        lines += [f"  shared: {line}" for line in self.shared]
         lines += [f"  UNPLAYABLE {name}: {'; '.join(problems)}" for name, problems in sorted(self.unplayable.items())]
         return "\n".join(lines)
 
@@ -1078,7 +1081,19 @@ class Importer:
             self.report.refused.append(("(campaigns)", str(error.detail)))
         if not self.dry_run:
             self._mend_and_validate()
+            self._share()
         return self.report
+
+    def _share(self) -> None:
+        """A system import's setting made the template account's (operator, 2026-11-25: one shared
+        copy for every account, "template user owned"), through system_adopt: what this run made as
+        SYSTEM joins the shared copy, VTT's adopt hooks included; rows already TEMPLATE's stay."""
+        registry = getattr(self.api, "model_registry", None)
+        if not self.api.system or registry is None or self.setting_id is None:
+            return
+        from zephyrex.extensions.rpg_core.SystemAdopt import adopt_settings  # type: ignore[import-not-found]
+
+        self.report.shared.extend(one.line() for one in adopt_settings(registry, [self.setting_slug], dry_run=False))
 
     def _map_entries(self, note: Note) -> list[dict[str, Any]]:
         """A place note's maps, ground floor first: its `map:` (one file or a list; an entry a file

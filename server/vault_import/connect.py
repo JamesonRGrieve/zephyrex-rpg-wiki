@@ -72,6 +72,8 @@ def in_process(app_path: str, owner: Optional[str], system: bool = False) -> Ite
         api.model_registry = registry  # type: ignore[attr-defined]
         api.owner_id = str(user.id)
         api.system = system
+        if system:
+            api.also_mine = {str(env("TEMPLATE_ID"))}
         yield api
 
 

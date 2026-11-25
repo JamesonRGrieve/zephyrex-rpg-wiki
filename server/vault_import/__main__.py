@@ -43,7 +43,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--lite", action="store_true", help="Over HTTP to a lite edition: the API is under /api")
     parser.add_argument("--app", help="In process: the server app's factory, module:function (rpg_ai_app:create)")
     parser.add_argument("--owner", help="In process: the user id whose records these become")
-    parser.add_argument("--system", action="store_true", help="In process: system level, as SYSTEM (the SRD's content), instead of --owner")
+    parser.add_argument("--system", action="store_true", help="In process: system level (the SRD's content), written as SYSTEM into one shared copy the template account owns, instead of --owner")
     parser.add_argument("--setting-name", help="With --system: the system setting's name, to make it when no setting has the slug")
     parser.add_argument(
         "--default-campaign",

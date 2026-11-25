@@ -28,7 +28,7 @@ def test_in_process_it_imports_as_the_owner_and_again_changes_nothing(capsys: py
     assert main([str(FIXTURE), "--app", "rpg_wiki_app:create", "--owner", str(owner.id), "--setting", api.fantasy]) == 0
     assert capsys.readouterr().out.startswith("created: 13, updated: 0")
     mine = Api(server, {"Authorization": f"Bearer {owner.jwt}"})
-    assert [row["name"] for row in mine.list("campaign")] == ["The Split Antler"]
+    assert [row["name"] for row in mine.list("campaign") if mine.mine(row)] == ["The Split Antler"]
     assert main([str(FIXTURE), "--app", "rpg_wiki_app:create", "--owner", str(owner.id), "--setting", api.fantasy]) == 0
     assert capsys.readouterr().out.startswith("created: 0, updated: 0, unchanged: 12")
 

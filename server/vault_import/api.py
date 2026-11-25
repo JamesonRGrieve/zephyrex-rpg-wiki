@@ -53,6 +53,9 @@ class Api:
         # whether that is SYSTEM; over HTTP, asked of the server once (writer()).
         self.owner_id: Optional[str] = None
         self.system = False
+        # Authors whose rows are the writer's too: for a system import, the template account
+        # (system_adopt makes the shared copy TEMPLATE's; SYSTEM writes and updates it).
+        self.also_mine: set[str] = set()
         self._writer_asked = False
 
     def writer(self) -> Optional[str]:
@@ -73,7 +76,9 @@ class Api:
         A system-level import sees every account's rows and an owner sees SYSTEM's, so a row made by
         anyone else is never matched. A back end with no accounts makes every row the writer's."""
         writer = self.writer()
-        return writer is None or "created_by_user_id" not in row or str(row.get("created_by_user_id") or "") == writer
+        if writer is None or "created_by_user_id" not in row:
+            return True
+        return str(row.get("created_by_user_id") or "") in {writer, *self.also_mine}
 
     def _call(self, method: str, path: str, ok: tuple[int, ...], **kwargs: Any) -> Any:
         headers = {**self.headers, **kwargs.pop("headers", {})}

@@ -49,6 +49,8 @@ def _system(server: TestClient) -> Api:
     api = Api(server, {"Authorization": f"Bearer {token}"})
     api.owner_id = str(user.id)
     api.system = True
+    api.also_mine = {str(env("TEMPLATE_ID"))}
+    api.model_registry = registry  # type: ignore[attr-defined]
     return api
 
 
@@ -91,13 +93,20 @@ def test_a_system_import_is_every_accounts_to_read_and_play_and_the_servers_to_c
     assert first.refused == [], first.refused
     assert "setting Fixture SRD" in first.created and f"campaign {SCENARIO}" in first.created
     scenario = _scenario_of(system, slug)
-    assert scenario["created_by_user_id"] == env("SYSTEM_ID")
+    # The operator, 2026-11-25: one shared copy, "template user owned": the import writes as SYSTEM
+    # and makes the setting the template account's.
+    assert scenario["created_by_user_id"] == env("TEMPLATE_ID")
+    assert first.shared and "made system level" in first.shared[0], first.shared
     assert scenario["id"] != theirs["id"]
     held = mine.get("campaign", theirs["id"])[0]
     assert (held["created_by_user_id"], held["updated_at"]) == (owner.id, theirs["updated_at"])
     # A second run matches SYSTEM's own rows only, so it makes and changes nothing.
     again = Importer(system, setting_slug=slug).run(read_vault(FIXTURE))
     assert (again.created, again.refused) == ([], []), again.created
+    # And SYSTEM still changes the shared copy: a forced re-import writes it, and it stays TEMPLATE's.
+    forced = Importer(system, setting_slug=slug, force=True).run(read_vault(FIXTURE))
+    assert (forced.created, forced.refused) == ([], []) and forced.updated, (forced.created, forced.refused)
+    assert _scenario_of(system, slug)["created_by_user_id"] == env("TEMPLATE_ID")
 
     # The setting decides the level, both ways.
     with pytest.raises(ValueError, match="isn't yours"):
@@ -172,15 +181,15 @@ def test_an_accounts_copy_is_adopted_in_place_and_anothers_merged_into_it(server
     assert [(one[0], one[3]) for one in seen] == [(setting_id, False), (setting_id, False)]
     assert seen[1][2][sides["b"]["scenario"]["id"]] == scenario["id"]
 
-    # A's copy is SYSTEM's in place: every account reads it, ids unchanged.
+    # A's copy is TEMPLATE's in place: every account reads it, ids unchanged.
     as_reader = _as(server, reader)
     adopted = as_reader.get("campaign", scenario["id"])[0]
-    assert adopted["created_by_user_id"] == env("SYSTEM_ID")
+    assert adopted["created_by_user_id"] == env("TEMPLATE_ID")
     people = as_reader.list("person", campaign_id=scenario["id"])
     names = [row["name"] for row in people]
     assert len(names) == len(set(names)) and "Only In B" in names, names
-    assert {row["created_by_user_id"] for row in people} == {env("SYSTEM_ID")}
-    assert as_reader.get("faction", sides["a"]["guild"]["id"])[0]["created_by_user_id"] == env("SYSTEM_ID")
+    assert {row["created_by_user_id"] for row in people} == {env("TEMPLATE_ID")}
+    assert as_reader.get("faction", sides["a"]["guild"]["id"])[0]["created_by_user_id"] == env("TEMPLATE_ID")
     assert as_reader.get("person", only["id"])[0]["campaign_id"] == scenario["id"]
 
     # A's playthrough is still A's, its link to the canon guild too.

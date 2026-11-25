@@ -101,7 +101,7 @@ def test_record_metadata_goes_one_at_a_time_and_a_born_records_property_once(ser
     assert report.refused == [], report.refused
     singles = [body for method, path, _query, body in recording.sent if method == "POST" and path == "/v1/record_metadata" and "record_metadata" in (body or {})]
     assert singles, "no single record_metadata creates"
-    [campaign] = [row for row in api.list("campaign") if row["name"] == "The Split Antler"]
+    [campaign] = [row for row in api.list("campaign") if row["name"] == "The Split Antler" and api.mine(row)]
     holst = next(row for row in api.list("person", campaign_id=campaign["id"]) if row["name"] == "Holst")
     keys = [row["key"] for row in api.properties("person", str(holst["id"]))]
     assert keys.count(VAULT_PATH) == 1, keys

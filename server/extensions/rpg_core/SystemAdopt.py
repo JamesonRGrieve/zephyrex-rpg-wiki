@@ -2,22 +2,25 @@
 """System level (operator, 2026-11-25: "The out of the box scenarios, pregens, everything with the
 SRD should also be system level down to campaigns which are user level"): an account's copy of such
 content, a setting with its canon (pregens among it), its scenarios and everything they hold, made
-SYSTEM's in place, and every other account's copy of the same merged into it.
+the template account's (TEMPLATE_ID) in place, and every other account's copy of the same merged
+into it. The operator, 2026-11-25: "template user owned should just work out of the box permission
+wise": the framework lets every account view, copy and share TEMPLATE's rows and only ROOT and
+SYSTEM change them, so the server (running as SYSTEM) keeps updating the one shared copy.
 
 ``adopt_settings(model_registry, [primary, duplicate, …])``:
 
-- **The primary** (an account's setting) becomes SYSTEM's where it lies: the setting, its canon, its
+- **The primary** (an account's setting, or one SYSTEM authored) becomes TEMPLATE's where it lies: the setting, its canon, its
   scenarios (campaigns of it that are scenarios, not playthroughs) and every record in them, with
   each link, tag and status, holding, item instance, property, picture, known fact and move on
   them. Ids stay, so its owner's playthroughs keep every reference. Every account then reads it,
-  and only the server changes it (the framework's rule for SYSTEM's rows); starting a scenario
+  and only the server changes it (the framework's rule for TEMPLATE's rows); starting a scenario
   makes the starter's own playthrough, as before.
 - **Each duplicate** (another account's copy) is merged into it. Its records are matched to the
   primary's by kind and name: its canon to the primary's canon, its scenarios by name, then each
   scenario's records within the matching scenario. A matched record and every row hanging only on
   matched records (a duplicate link, property or picture) is removed (soft-deleted where the table
   keeps deleted rows); anything unmatched is moved in (its campaign and setting the primary's) and
-  made SYSTEM's, not lost. Every row that names a removed one (the duplicate's owner's
+  made TEMPLATE's, not lost. Every row that names a removed one (the duplicate's owner's
   playthroughs: their scenario_id, setting_id, a canon place, a scenario's template, an id inside
   an entry's JSON) is turned to the primary's.
 - **Other extensions** (VTT's scenes and sheets) adopt their own rows through ``register_adopt_hook``:
@@ -216,7 +219,7 @@ def _chunks(ids: list[str]) -> Iterable[list[str]]:
 
 
 def _adopt(session: Any, table: Any, ids: list[str], system: str, dry_run: bool, touched: set[str]) -> int:
-    """Rows made SYSTEM's (those not already): how many."""
+    """Rows made the shared owner's (``system``: TEMPLATE_ID; those not already): how many."""
     from sqlalchemy import func, or_, select
 
     made = 0
@@ -379,7 +382,8 @@ def adopt_settings(model_registry: Any, slugs: list[str], dry_run: bool = True) 
         raise HTTPException(status_code=422, detail="Name the settings: the first becomes system level")
     if len(set(slugs)) != len(slugs):
         raise HTTPException(status_code=422, detail="A setting is named once")
-    system = env("SYSTEM_ID")
+    # The shared copy's author: the template account (an earlier run's SYSTEM rows move to it too).
+    system = env("TEMPLATE_ID")
     settings = _manager(model_registry, env("ROOT_ID"), SettingManager)
     found = []
     for slug in slugs:
@@ -392,7 +396,7 @@ def adopt_settings(model_registry: Any, slugs: list[str], dry_run: bool = True) 
     session = model_registry.DB.session()
     touched: set[str] = set()
     try:
-        # The primary, made SYSTEM's where it lies.
+        # The primary, made TEMPLATE's where it lies.
         made = Adoption(slug=str(found[0].slug), setting_id=str(found[0].id))
         made.adopted["settings"] = _adopt(session, _table(settings), [str(found[0].id)], system, dry_run, touched)
         campaigns_table = _table(_manager(model_registry, env("ROOT_ID"), _campaign_manager()))
