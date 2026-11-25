@@ -1,0 +1,203 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""System-level content (operator, 2026-11-25: "The out of the box scenarios, pregens, everything
+with the SRD should also be system level down to campaigns which are user level"): a system import
+writes SYSTEM's content, which every account reads and plays a copy of and only the server changes;
+an account's existing copy is adopted in place, and another's merged into it."""
+
+import time
+import uuid
+from pathlib import Path
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+from zephyrex.lib.Environment import env
+from zephyrex.logic.BLL_Auth import UserManager
+from zephyrex.testing.factories import create_user
+
+from rpg_wiki_app import create
+from vault_import.api import Api
+from vault_import.importer import Importer
+from vault_import.notes import read_vault
+from vault_import.testing import setting_of
+
+# The fixture vault's Holst.png is uploaded as his picture.
+pytestmark = pytest.mark.usefixtures("memory_store")
+
+FIXTURE = Path(__file__).resolve().parents[1] / "vault_import" / "fixtures" / "vault"
+SCENARIO = "The Split Antler"
+
+
+@pytest.fixture(scope="module")
+def server() -> TestClient:
+    return TestClient(create())
+
+
+def _registry(server: TestClient) -> Any:
+    return server.app.state.model_registry  # type: ignore[attr-defined]
+
+
+def _as(server: TestClient, user: Any) -> Api:
+    return Api(server, {"Authorization": f"Bearer {user.jwt}"})
+
+
+def _system(server: TestClient) -> Api:
+    """The API as SYSTEM, as vault_import --system signs in (connect.in_process)."""
+    registry = _registry(server)
+    user = UserManager(requester_id=env("ROOT_ID"), model_registry=registry).get(id=env("SYSTEM_ID"))
+    token = UserManager.generate_jwt_token(user_id=str(user.id), email=str(user.email), expiration_hours=1, model_registry=registry)
+    api = Api(server, {"Authorization": f"Bearer {token}"})
+    api.owner_id = str(user.id)
+    api.system = True
+    return api
+
+
+def _headers(user: Any) -> dict[str, str]:
+    return {"Authorization": f"Bearer {user.jwt}"}
+
+
+def _scenario_of(api: Api, setting_slug: str) -> dict[str, Any]:
+    setting = next(row for row in api.list("setting") if row["slug"] == setting_slug)
+    [found] = [row for row in api.list("campaign", setting_id=setting["id"]) if row["name"] == SCENARIO and row.get("is_scenario") and not row.get("scenario_id")]
+    return found
+
+
+def _start(server: TestClient, user: Any, scenario_id: str) -> dict[str, Any]:
+    """A start followed to its end; its playthrough, as its starter reads it."""
+    accepted = server.post(f"/v1/campaign/{scenario_id}/instantiate", json={"instantiate": {}}, headers=_headers(user))
+    assert accepted.status_code == 202, accepted.text
+    start = accepted.json()["start"]
+    deadline = time.monotonic() + 60
+    while start["state"] == "running":
+        assert time.monotonic() < deadline, start
+        time.sleep(0.5)
+        start = server.get(f"/v1/campaign_start/{start['id']}", headers=_headers(user)).json()["campaign_start"]
+    assert start["state"] == "done", start
+    campaign: dict[str, Any] = server.get(f"/v1/campaign/{start['campaign_id']}", headers=_headers(user)).json()["campaign"]
+    return campaign
+
+
+def test_a_system_import_is_every_accounts_to_read_and_play_and_the_servers_to_change(server: TestClient) -> None:
+    system = _system(server)
+    slug = f"srd-{uuid.uuid4().hex[:8]}"
+    owner = create_user(server)
+    mine = _as(server, owner)
+    own = setting_of(mine, f"own-{uuid.uuid4().hex[:8]}")
+    # An account's own copy of the same vault, imported first: the system import never touches it.
+    assert Importer(mine, setting_slug=own).run(read_vault(FIXTURE)).refused == []
+    theirs = _scenario_of(mine, own)
+
+    first = Importer(system, setting_slug=slug, setting_name="Fixture SRD").run(read_vault(FIXTURE))
+    assert first.refused == [], first.refused
+    assert "setting Fixture SRD" in first.created and f"campaign {SCENARIO}" in first.created
+    scenario = _scenario_of(system, slug)
+    assert scenario["created_by_user_id"] == env("SYSTEM_ID")
+    assert scenario["id"] != theirs["id"]
+    held = mine.get("campaign", theirs["id"])[0]
+    assert (held["created_by_user_id"], held["updated_at"]) == (owner.id, theirs["updated_at"])
+    # A second run matches SYSTEM's own rows only, so it makes and changes nothing.
+    again = Importer(system, setting_slug=slug).run(read_vault(FIXTURE))
+    assert (again.created, again.refused) == ([], []), again.created
+
+    # The setting decides the level, both ways.
+    with pytest.raises(ValueError, match="isn't yours"):
+        Importer(mine, setting_slug=slug).run(read_vault(FIXTURE))
+    with pytest.raises(ValueError, match="an account's own"):
+        Importer(system, setting_slug=own).run(read_vault(FIXTURE))
+
+    # Every account reads it and plays a copy of it; no account writes it.
+    reader = create_user(server)
+    seen = [row["id"] for row in _as(server, reader).list("campaign") if row.get("is_scenario")]
+    assert scenario["id"] in seen
+    holst = next(row for row in _as(server, reader).list("person", campaign_id=scenario["id"]) if row["name"] == "Holst")
+    etag = server.get(f"/v1/person/{holst['id']}", headers=_headers(reader)).headers.get("etag", "")
+    assert server.put(f"/v1/person/{holst['id']}", json={"person": {"description": "Mine now."}}, headers={**_headers(reader), "If-Match": etag}).status_code in (403, 404)
+    setting_id = scenario["setting_id"]
+    into = server.post("/v1/person", json={"person": {"name": "Stowaway", "campaign_id": scenario["id"], "setting_id": setting_id}}, headers=_headers(reader))
+    assert into.status_code == 403, into.text
+    canon = server.post("/v1/person", json={"person": {"name": "Squatter", "setting_id": setting_id}}, headers=_headers(reader))
+    assert canon.status_code == 403, canon.text
+    # A campaign of the reader's own in it is theirs (campaigns are user level).
+    assert server.post("/v1/campaign", json={"campaign": {"name": "My Table", "setting_id": setting_id}}, headers=_headers(reader)).status_code == 201
+    run = _start(server, reader, scenario["id"])
+    assert (run["created_by_user_id"], run["scenario_id"], run["is_scenario"]) == (reader.id, scenario["id"], False)
+    copies = _as(server, reader).list("person", campaign_id=run["id"])
+    assert {row["name"] for row in copies} >= {"Holst", "Dingus"}
+    assert {row["created_by_user_id"] for row in copies} == {reader.id}
+
+
+def test_an_accounts_copy_is_adopted_in_place_and_anothers_merged_into_it(server: TestClient) -> None:
+    registry = _registry(server)
+    from zephyrex.extensions.rpg_core.SystemAdopt import ADOPT_HOOKS, adopt_settings  # type: ignore[import-not-found]
+
+    a, b, reader = create_user(server), create_user(server), create_user(server)
+    sides: dict[str, dict[str, Any]] = {}
+    for name, user in (("a", a), ("b", b)):
+        api = _as(server, user)
+        slug = setting_of(api, f"adopt-{name}-{uuid.uuid4().hex[:8]}")
+        assert Importer(api, setting_slug=slug).run(read_vault(FIXTURE)).refused == []
+        scenario = _scenario_of(api, slug)
+        setting_id = scenario["setting_id"]
+        # Canon (the setting's, no campaign) a scenario's record links to: a start shares it.
+        guild = api.create("faction", name="Old Guild", setting_id=setting_id)
+        holst = next(row for row in api.list("person", campaign_id=scenario["id"]) if row["name"] == "Holst")
+        api.create("relationship", person_id=holst["id"], target_faction_id=guild["id"], kind="member_of")
+        sides[name] = {"user": user, "api": api, "slug": slug, "scenario": scenario, "setting_id": setting_id, "guild": guild}
+    only = sides["b"]["api"].create("person", name="Only In B", kind="npc", campaign_id=sides["b"]["scenario"]["id"], setting_id=sides["b"]["setting_id"])
+    for side in sides.values():
+        side["run"] = _start(server, side["user"], side["scenario"]["id"])
+        copied = next(row for row in side["api"].list("person", campaign_id=side["run"]["id"]) if row["name"] == "Holst")
+        # The copy's own link to the shared canon guild (beside the vault's to the Circle Compact).
+        [side["link"]] = [row for row in side["api"].list("relationship", person_id=copied["id"]) if row.get("target_faction_id") == side["guild"]["id"]]
+
+    seen: list[tuple[str, list[str], dict[str, str], bool]] = []
+
+    def vtt(model_registry: Any, setting_id: str, scenario_ids: list[str], id_map: dict[str, str], dry_run: bool) -> str:
+        seen.append((setting_id, scenario_ids, id_map, dry_run))
+        return "vtt: nothing of its own here"
+
+    ADOPT_HOOKS.append(vtt)
+    try:
+        dry = adopt_settings(registry, [sides["a"]["slug"], sides["b"]["slug"]], dry_run=True)
+        assert sides["a"]["api"].get("campaign", sides["a"]["scenario"]["id"])[0]["created_by_user_id"] == a.id
+        assert sides["b"]["api"].get("campaign", sides["b"]["scenario"]["id"])[0]["id"] == sides["b"]["scenario"]["id"]
+        assert "Only In B" in dry[1].line() and dry[1].removed.get("campaigns") == 1, dry[1].line()
+        seen.clear()
+        done = adopt_settings(registry, [sides["a"]["slug"], sides["b"]["slug"]], dry_run=False)
+    finally:
+        ADOPT_HOOKS.remove(vtt)
+    assert done[0].adopted["campaigns"] == 1 and done[0].adopted["settings"] == 1, done[0].line()
+    assert "vtt: nothing of its own here" in done[1].hooks
+    scenario, setting_id = sides["a"]["scenario"], sides["a"]["setting_id"]
+    assert [(one[0], one[3]) for one in seen] == [(setting_id, False), (setting_id, False)]
+    assert seen[1][2][sides["b"]["scenario"]["id"]] == scenario["id"]
+
+    # A's copy is SYSTEM's in place: every account reads it, ids unchanged.
+    as_reader = _as(server, reader)
+    adopted = as_reader.get("campaign", scenario["id"])[0]
+    assert adopted["created_by_user_id"] == env("SYSTEM_ID")
+    people = as_reader.list("person", campaign_id=scenario["id"])
+    names = [row["name"] for row in people]
+    assert len(names) == len(set(names)) and "Only In B" in names, names
+    assert {row["created_by_user_id"] for row in people} == {env("SYSTEM_ID")}
+    assert as_reader.get("faction", sides["a"]["guild"]["id"])[0]["created_by_user_id"] == env("SYSTEM_ID")
+    assert as_reader.get("person", only["id"])[0]["campaign_id"] == scenario["id"]
+
+    # A's playthrough is still A's, its link to the canon guild too.
+    run_a = sides["a"]["api"].get("campaign", sides["a"]["run"]["id"])[0]
+    assert (run_a["created_by_user_id"], run_a["scenario_id"]) == (a.id, scenario["id"])
+    assert sides["a"]["api"].get("relationship", sides["a"]["link"]["id"])[0]["created_by_user_id"] == a.id
+
+    # B's playthrough is B's, now of the system scenario, in the system setting, linked to its guild.
+    run_b = sides["b"]["api"].get("campaign", sides["b"]["run"]["id"])[0]
+    assert (run_b["created_by_user_id"], run_b["scenario_id"], run_b["setting_id"]) == (b.id, scenario["id"], setting_id)
+    link_b = sides["b"]["api"].get("relationship", sides["b"]["link"]["id"])[0]
+    assert (link_b["created_by_user_id"], link_b["target_faction_id"]) == (b.id, sides["a"]["guild"]["id"])
+    # B's duplicates are gone.
+    assert server.get(f"/v1/campaign/{sides['b']['scenario']['id']}", headers=_headers(b)).status_code == 404
+    assert server.get(f"/v1/faction/{sides['b']['guild']['id']}", headers=_headers(b)).status_code == 404
+    assert sides["b"]["slug"] not in {row["slug"] for row in sides["b"]["api"].list("setting")}
+    # Nobody but the server changes it now, A included.
+    holst = next(row for row in people if row["name"] == "Holst")
+    etag = server.get(f"/v1/person/{holst['id']}", headers=_headers(a)).headers.get("etag", "")
+    assert server.put(f"/v1/person/{holst['id']}", json={"person": {"description": "Mine still?"}}, headers={**_headers(a), "If-Match": etag}).status_code in (403, 404)

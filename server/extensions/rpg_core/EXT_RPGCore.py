@@ -414,6 +414,17 @@ class RPGCoreExtension(AbstractStaticExtension):
         return {"registered": register_instantiate_hook(hook)}
 
     @classmethod
+    @ability("register_adopt_hook")
+    def register_adopt_hook(cls, model_registry: Any, requester_id: str, hook: Any) -> dict[str, Any]:
+        """A composing app's hook, called after each setting is made system level (system_adopt, the
+        SRD's content: operator, 2026-11-25) with (model_registry, setting_id, scenario_ids, id_map,
+        dry_run), to adopt its own rows and turn references to a merged duplicate's ids (VTT's
+        scenes and sheets); it may return lines for the report: {"registered": bool}."""
+        from zephyrex.extensions.rpg_core.SystemAdopt import register_adopt_hook  # type: ignore[import-not-found]
+
+        return {"registered": register_adopt_hook(hook)}
+
+    @classmethod
     @ability("register_embedder")
     def register_embedder(cls, model_registry: Any, requester_id: str, embed: Any, model: str) -> dict[str, Any]:
         """The composing app's embedder (texts in, 768-wide vectors out; rpg-ai's "embed"-role

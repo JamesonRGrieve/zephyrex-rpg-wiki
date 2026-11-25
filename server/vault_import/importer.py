@@ -220,10 +220,18 @@ def _list(value: Any) -> list[Any]:
 
 class Importer:
     def __init__(
-        self, api: Api, setting_slug: Optional[str] = None, dry_run: bool = False, log: Callable[[str], None] = print, force: bool = False
+        self,
+        api: Api,
+        setting_slug: Optional[str] = None,
+        dry_run: bool = False,
+        log: Callable[[str], None] = print,
+        force: bool = False,
+        setting_name: Optional[str] = None,
     ) -> None:
         self.api = api
         self.setting_slug = setting_slug
+        # A system-level import's setting, made when no setting has the slug (--setting-name).
+        self.setting_name = setting_name
         self.dry_run = dry_run
         # Every matched record's fields written as the note gives them, changed or not (--force).
         self.force = force
@@ -266,8 +274,25 @@ class Importer:
             if not self.setting_slug:
                 raise ValueError("Name the setting these campaigns belong to: --setting <slug>")
             found = [one for one in self.api.list("setting") if one.get("slug") == self.setting_slug]
+            system = bool(getattr(self.api, "system", False))
+            if not found and system and self.setting_name:
+                # A system setting made here, as SYSTEM (in a dry run, a placeholder).
+                if self.dry_run:
+                    self.setting_id = self._placeholder()
+                else:
+                    self.setting_id = str(self.api.create("setting", name=self.setting_name, slug=self.setting_slug)["id"])
+                self.report.created.append(f"setting {self.setting_name}")
+                return self.setting_id
             if not found:
-                raise ValueError(f"No setting has the slug {self.setting_slug!r}: make it first (POST /v1/setting {{\"setting\": {{\"name\": …, \"slug\": \"{self.setting_slug}\"}}}})")
+                made_by = "--setting-name NAME to make it as SYSTEM" if system else f"make it first (POST /v1/setting {{\"setting\": {{\"name\": …, \"slug\": \"{self.setting_slug}\"}}}})"
+                raise ValueError(f"No setting has the slug {self.setting_slug!r}: {made_by}")
+            # The setting decides the level: a system import writes only into a system setting, an
+            # owner's only into their own (operator, 2026-11-25: the SRD's content is system level;
+            # "Private stuff is personal").
+            if not self.api.mine(found[0]):
+                if system:
+                    raise ValueError(f"The setting {self.setting_slug!r} is an account's own: a system-level import (--system) writes only into a system setting")
+                raise ValueError(f"The setting {self.setting_slug!r} isn't yours (a system setting is imported in process with --system)")
             self.setting_id = str(found[0]["id"])
         return self.setting_id
 
@@ -276,7 +301,8 @@ class Importer:
             # A vault's campaigns are scenarios: a playthrough (one started from a scenario, which
             # carries its name) is never one of them, or a re-run would mark it a scenario.
             # A deleted one (a ROOT-run import lists those too) is never a match either.
-            rows = [one for one in self.api.list("campaign") if not one.get("scenario_id") and not one.get("deleted_at")]
+            # And only the writer's own: SYSTEM sees every account's, an owner sees SYSTEM's scenarios.
+            rows = [one for one in self.api.list("campaign") if not one.get("scenario_id") and not one.get("deleted_at") and self.api.mine(one)]
             self.campaigns = {str(one["name"]): str(one["id"]) for one in rows}
             self._campaign_rows = {str(one["name"]): one for one in rows}
         self._touched.add(name)
@@ -471,7 +497,9 @@ class Importer:
             self._settle_play_styles_locked(wanted)
 
     def _settle_play_styles_locked(self, wanted: dict[str, list[str]]) -> None:
-        known = {_style(str(row["name"])): str(row["id"]) for row in self.api.list("taxon", kind=PLAY_STYLE)}
+        # A system import uses SYSTEM's own (the seeded ones) only, never an account's.
+        system = bool(getattr(self.api, "system", False))
+        known = {_style(str(row["name"])): str(row["id"]) for row in self.api.list("taxon", kind=PLAY_STYLE) if not system or self.api.mine(row)}
         for name, styles in sorted(wanted.items()):
             campaign_id = str(self._campaign_rows[name]["id"])
             held = {str(row["taxon_id"]) for row in self.api.list("entity_taxon", target_entity_type="campaign", target_entity_id=campaign_id)}

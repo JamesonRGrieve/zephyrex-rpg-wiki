@@ -50,7 +50,7 @@ def over_http(base_url: str, lite: bool) -> Iterator[Api]:
 
 
 @contextmanager
-def in_process(app_path: str, owner: str) -> Iterator[Api]:
+def in_process(app_path: str, owner: Optional[str], system: bool = False) -> Iterator[Api]:
     from fastapi.testclient import TestClient
     from zephyrex.lib.Environment import env
     from zephyrex.logic.BLL_Auth import UserManager
@@ -60,7 +60,9 @@ def in_process(app_path: str, owner: str) -> Iterator[Api]:
     app: Any = getattr(importlib.import_module(module), factory or "create")()
     with TestClient(app) as http:
         registry = app.state.model_registry
-        user = UserManager(requester_id=env("ROOT_ID"), model_registry=registry).get(id=owner)
+        # A system-level import (the SRD's scenarios, pregens and canon: operator, 2026-11-25) writes
+        # as SYSTEM: what it makes every account reads, and only the server changes.
+        user = UserManager(requester_id=env("ROOT_ID"), model_registry=registry).get(id=env("SYSTEM_ID") if system else owner)
         token = UserManager.generate_jwt_token(
             user_id=str(user.id), email=str(user.email), expiration_hours=SESSION_HOURS, model_registry=registry
         )
@@ -68,17 +70,21 @@ def in_process(app_path: str, owner: str) -> Iterator[Api]:
         api = Api(http, {"Authorization": f"Bearer {token}"})
         # For an importer that calls an ability in process (book_import): the app's registry and owner.
         api.model_registry = registry  # type: ignore[attr-defined]
-        api.owner_id = str(user.id)  # type: ignore[attr-defined]
+        api.owner_id = str(user.id)
+        api.system = system
         yield api
 
 
 
-def connection(base_url: Optional[str], lite: bool, app: Optional[str], owner: Optional[str]) -> ContextManager[Api]:
-    """In process when ``app`` is given (with ``owner``), else over HTTP to ``base_url``."""
+def connection(base_url: Optional[str], lite: bool, app: Optional[str], owner: Optional[str], system: bool = False) -> ContextManager[Api]:
+    """In process when ``app`` is given (with ``owner``, or ``system`` to write as SYSTEM), else over
+    HTTP to ``base_url`` (never as SYSTEM: no token is SYSTEM's)."""
     if app is not None:
-        if not owner:
-            raise ValueError("in process needs the owner's user id")
-        return in_process(app, owner)
+        if system == bool(owner):
+            raise ValueError("in process needs the owner's user id, or system (not both)")
+        return in_process(app, owner, system)
+    if system:
+        raise ValueError("a system-level import runs in process only (--app)")
     if base_url is None:
         raise ValueError("give a base URL (over HTTP) or an app with its owner (in process)")
     return over_http(base_url, lite)

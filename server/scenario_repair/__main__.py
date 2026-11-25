@@ -22,10 +22,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--lite", action="store_true", help="Over HTTP to a lite edition")
     parser.add_argument("--app", help="In process: the server app's factory, module:function")
     parser.add_argument("--owner", help="In process: the owner's user id")
+    parser.add_argument("--system", action="store_true", help="In process: SYSTEM's own (system-level) scenarios, instead of --owner")
     args = parser.parse_args(argv)
     origins = json.loads(args.origins.read_text(encoding="utf-8")) if args.origins else {}
     seated = {line.strip() for line in args.seated.read_text(encoding="utf-8").splitlines() if line.strip()} if args.seated else set()
-    with connection(args.base_url, args.lite, args.app, args.owner) as api:
+    with connection(args.base_url, args.lite, args.app, args.owner, args.system) as api:
         # The rules import the wiki's shared code (zephyrex.extensions.wiki_shared), which exists
         # only once the connection has made the app (in process) or put the checkout's on the path.
         from scenario_repair.repair import repair

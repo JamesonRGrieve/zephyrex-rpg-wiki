@@ -1033,6 +1033,29 @@ def _setting_fits(context: HookContext) -> None:
             _manager(registry, requester, SettingManager).get(id=setting)
         except HTTPException as error:
             raise HTTPException(status_code=422, detail="That setting is not one of yours") from error
+        # A setting's canon (a record of it with no campaign) is written by whoever may change the
+        # setting: a system setting's (SYSTEM's, as the SRD's) server-side only, though every account
+        # reads it and plays campaigns in it (operator, 2026-11-25: "The out of the box scenarios,
+        # pregens, everything with the SRD should also be system level down to campaigns which are
+        # user level").
+        becomes_canon = not campaign and (context.method_name == "create" or wanted_campaign is not _UNSET or wanted_setting is not _UNSET)
+        if becomes_canon:
+            from zephyrex.lib.RecordTarget import can_edit
+
+            if not can_edit(registry, requester, "setting", str(setting)):
+                raise HTTPException(status_code=403, detail="That setting's canon is written by its owner only (a system setting's, server-side)")
+    if campaign and (context.method_name == "create" or wanted_campaign is not _UNSET):
+        # A scenario's records are written by whoever may change the scenario (a system one's,
+        # server-side): its readers play a copy of it.
+        try:
+            holder = _manager(registry, requester, CampaignManager).get(id=campaign)
+        except HTTPException:
+            holder = None
+        if holder is not None and getattr(holder, "is_scenario", None):
+            from zephyrex.lib.RecordTarget import can_edit
+
+            if not can_edit(registry, requester, "campaign", str(campaign)):
+                raise HTTPException(status_code=403, detail="That scenario's records are written by its owner only (a system scenario's, server-side)")
     if setting and campaign:
         try:
             enclosing = getattr(_manager(registry, requester, CampaignManager).get(id=campaign), "setting_id", None)

@@ -202,7 +202,9 @@ def repair(api: Api, dry_run: bool = True, origins: Optional[dict[str, str]] = N
     unknown = sorted({value for value in origins.values() if value not in ORIGINS})
     if unknown:
         raise ValueError(f"origins are imported or stereotypical, not {', '.join(unknown)}")
-    campaigns = [row for row in api.list("campaign") if not row.get("deleted_at")]
+    # The caller's own only: an owner also sees SYSTEM's scenarios (system level, the SRD's), and
+    # SYSTEM sees everyone's; each is mended by whoever made it.
+    campaigns = [row for row in api.list("campaign") if not row.get("deleted_at") and api.mine(row)]
     # A playthrough marked a scenario (a vault re-run matched it by name, before 2026-11-24): it is
     # a playthrough, so it is unmarked, and mended as one.
     unflagged: set[str] = set()

@@ -49,6 +49,31 @@ class Api:
         self._plurals: dict[str, str] = {}
         # "/api" for a lite edition served by Next, "" for the server.
         self.prefix = prefix
+        # Who the writes are by (in process: the owner, or SYSTEM for a system-level import), and
+        # whether that is SYSTEM; over HTTP, asked of the server once (writer()).
+        self.owner_id: Optional[str] = None
+        self.system = False
+        self._writer_asked = False
+
+    def writer(self) -> Optional[str]:
+        """The id the writes are made as: the owner (or SYSTEM) in process, else the token's user
+        (GET /v1/user); none where the back end has no accounts (the lite edition)."""
+        if self.owner_id is None and not self._writer_asked:
+            self._writer_asked = True
+            try:
+                body = self._call("GET", "/v1/user", (200,)).json()
+            except ApiError:
+                return None
+            user = body.get("user") if isinstance(body, dict) else None
+            self.owner_id = str(user["id"]) if isinstance(user, dict) and user.get("id") else None
+        return self.owner_id
+
+    def mine(self, row: dict[str, Any]) -> bool:
+        """Whether ``row`` is the writer's own (created by them): what an import matches and changes.
+        A system-level import sees every account's rows and an owner sees SYSTEM's, so a row made by
+        anyone else is never matched. A back end with no accounts makes every row the writer's."""
+        writer = self.writer()
+        return writer is None or "created_by_user_id" not in row or str(row.get("created_by_user_id") or "") == writer
 
     def _call(self, method: str, path: str, ok: tuple[int, ...], **kwargs: Any) -> Any:
         headers = {**self.headers, **kwargs.pop("headers", {})}
