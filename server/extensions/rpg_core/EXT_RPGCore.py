@@ -414,6 +414,17 @@ class RPGCoreExtension(AbstractStaticExtension):
         return {"registered": register_instantiate_hook(hook)}
 
     @classmethod
+    @ability("known_names")
+    def known_names(cls, model_registry: Any, requester_id: str, campaign_id: str) -> dict[str, Any]:
+        """Whose names the party knows (operator, 2026-11-25: NPCs read by a generic description,
+        WorldEntity.unnamed_as, until the party learns their name): {party: [person ids], by_pc:
+        {pc_id: [person ids]}}. Knowing of a person (learn_fact with no text) is knowing their name;
+        the PCs know each other. One read per round."""
+        from zephyrex.extensions.rpg_core.BLL_RPGCore import known_names  # type: ignore[import-not-found]
+
+        return known_names(model_registry, requester_id, campaign_id).model_dump()
+
+    @classmethod
     @ability("register_adopt_hook")
     def register_adopt_hook(cls, model_registry: Any, requester_id: str, hook: Any) -> dict[str, Any]:
         """A composing app's hook, called after each setting is made system level (system_adopt, the

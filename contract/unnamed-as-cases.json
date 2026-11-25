@@ -1,0 +1,22 @@
+{
+  "_comment": "How a person reads to a party that doesn't know their name (operator, 2026-11-25: \"NPCs should have generic descriptions unless the player knows their name which gets replaced as names are learned\"). `stored`: their own unnamed_as, one short noun phrase, trimmed, at most unnamed_as_characters, no control characters; empty is none. `generic`: with none of their own, one built from their species (a species, race or creature_type tag), their Role (a short one: at most 4 words and 40 characters, else left out) and their gender (woman, man or person), with a or an; \"a stranger\" when nothing is known. wiki_shared/Names.unnamed_as_text and generic_unnamed and lib/names.unnamedAs and genericUnnamed compute the same.",
+  "stored": [
+    { "name": "a phrase, trimmed", "value": "  the hooded woman ", "stored": "the hooded woman" },
+    { "name": "empty is none", "value": "   ", "stored": null },
+    { "name": "none is none", "value": null, "stored": null },
+    { "name": "too long", "value": "a very long description that goes on and on past the limit of one hundred and twenty characters for a short noun phrase ok", "error": "at most 120" },
+    { "name": "a control character", "value": "the hooded\nwoman", "error": "control" },
+    { "name": "not text", "value": 7, "error": "text" }
+  ],
+  "generic": [
+    { "name": "species, role and gender", "species": "Dwarf", "role": "Barkeep", "gender": "female", "generic": "a dwarf barkeep" },
+    { "name": "species and gender", "species": "Half-Orc", "role": null, "gender": "Male", "generic": "a half-orc man" },
+    { "name": "a vowel takes an", "species": "Elf", "role": null, "gender": null, "generic": "an elf" },
+    { "name": "role alone", "species": null, "role": "Innkeeper", "gender": null, "generic": "an innkeeper" },
+    { "name": "gender alone", "species": null, "role": null, "gender": "woman", "generic": "a woman" },
+    { "name": "a gender outside the two", "species": null, "role": null, "gender": "non-binary", "generic": "a person" },
+    { "name": "an unknown gender word is left out", "species": "Gnome", "role": null, "gender": "unknown", "generic": "a gnome" },
+    { "name": "a long role is left out", "species": null, "role": "Owner of the Rusty Anchor tavern on the docks", "gender": "f", "generic": "a woman" },
+    { "name": "nothing known", "species": null, "role": "  ", "gender": "", "generic": "a stranger" }
+  ]
+}

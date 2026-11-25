@@ -26,7 +26,8 @@
     "motivation_characters": 500,
     "clock_advance_minutes": 525600,
     "move_reason_characters": 500,
-    "tts_voice_characters": 64
+    "tts_voice_characters": 64,
+    "unnamed_as_characters": 120
   },
   "clock_start_minutes": 480,
   "gm_only_property": "GM only",

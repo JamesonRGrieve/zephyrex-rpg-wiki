@@ -40,6 +40,7 @@ describe('entityOf', () => {
       voice: null,
       tts_voice: null,
       person_kind: null,
+      unnamed_as: null,
       lore: null,
       provenance: 'homebrew',
       source: null,
@@ -62,6 +63,14 @@ describe('entityOf', () => {
     // A person's own kind, for telling a PC from an NPC; none for other kinds.
     expect(entityOf('person', { ...row('p2', '2026-11-20T12:00:00Z'), kind: 'pc' }).person_kind).toBe('pc');
     expect(entityOf('location', { ...row('l2', '2026-11-20T12:00:00Z'), kind: 'region' }).person_kind).toBeNull();
+  });
+
+  it('reads a person by their own unnamed_as, else a generic one; none for other kinds', () => {
+    expect(entityOf('person', { ...row('p3', '2026-11-20T12:00:00Z'), unnamedAs: 'the hooded woman' }).unnamed_as).toBe('the hooded woman');
+    // The route adds species and Role a page at a time; here, gender alone.
+    expect(entityOf('person', { ...row('p4', '2026-11-20T12:00:00Z'), gender: 'female' }).unnamed_as).toBe('a woman');
+    expect(entityOf('person', { ...row('p5', '2026-11-20T12:00:00Z'), unnamedAs: '' }).unnamed_as).toBe('a stranger');
+    expect(entityOf('location', { ...row('l3', '2026-11-20T12:00:00Z'), unnamedAs: 'a place' }).unnamed_as).toBeNull();
   });
 
   it('marks a setting’s record with no campaign as canon (S6)', () => {

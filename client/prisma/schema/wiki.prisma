@@ -120,6 +120,8 @@ model Person {
   voice       String?
   /// "A voice per character" (2026-11-23): the TTS model's voice id for their lines; null is the default.
   ttsVoice    String?
+  /// How they read to a party that doesn't know their name (2026-11-25: "the hooded woman"); null: built from species, Role and gender.
+  unnamedAs   String?
   /// The world tick: their schedule and motivations (JSON text, GM-facing).
   routine     String?
   motivations String?

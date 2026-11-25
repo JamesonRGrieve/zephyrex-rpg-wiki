@@ -35,7 +35,7 @@ from zephyrex.extensions.wiki_shared.Contract import (  # type: ignore[import-no
     LOCATION_KINDS,
     PERSON_KINDS,
 )
-from zephyrex.extensions.wiki_shared.Names import names, voice  # type: ignore[import-not-found]
+from zephyrex.extensions.wiki_shared.Names import names, unnamed_as_text, voice  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Pictures import picture_url  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Provenance import HOMEBREW, provenance  # type: ignore[import-not-found]
 from vault_import.markdown import to_plate
@@ -79,6 +79,7 @@ READ = {
     "race", "faction", "location", "relations", "parent_location", "parent", "parent_hook", "depends_on",
     "initial_build", "canonical_sheet",
     "holder", "quantity", "session_number", "session_date", "maps", "keywords", "voice", "provenance", "source", "image", "picture", "system", "editions", "description",
+    "unnamed_as",
     *PROPERTIES,
     *(one for fields in KIND_FIELDS.values() for one in fields),
 }
@@ -770,6 +771,12 @@ class Importer:
                 "first_message": str(given.get("first_message") or ""),
                 "examples": [str(one) for one in _list(given.get("examples")) if _text(one)],
             })
+        if kind == "person" and _text(meta.get("unnamed_as")):
+            # How they read to a party that doesn't know their name (operator, 2026-11-25).
+            try:
+                fields["unnamed_as"] = unnamed_as_text(_text(meta.get("unnamed_as")))
+            except ValueError as error:
+                self.report.unread.setdefault(placed.note.path, []).append(f"unnamed_as: {error}")
         if unresolved:
             self.report.unresolved[placed.note.path] = unresolved
 

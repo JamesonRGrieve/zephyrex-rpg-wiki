@@ -147,3 +147,46 @@ def tts_voice_text(value: Any) -> Any:
     if any(ord(character) < 32 or ord(character) == 127 for character in text):
         raise ValueError("A TTS voice has no control characters")
     return text or None
+
+
+MAX_UNNAMED_AS = LIMITS["unnamed_as_characters"]
+# A person's species, from the first tag of these kinds (contract taxon_kinds).
+SPECIES_KINDS = ("species", "race", "creature_type")
+# A Role short enough to name someone by (contract/unnamed-as-cases.json).
+ROLE_WORDS, ROLE_CHARACTERS = 4, 40
+_GENDER_NOUNS = {
+    **dict.fromkeys(("female", "woman", "f", "girl", "lady"), "woman"),
+    **dict.fromkeys(("male", "man", "m", "boy", "gentleman"), "man"),
+    **dict.fromkeys(("non-binary", "nonbinary", "enby", "nb", "agender", "genderfluid"), "person"),
+}
+
+
+def unnamed_as_text(value: Any) -> Any:
+    """How a person reads to a party that doesn't know their name (contract/unnamed-as-cases.json):
+    one short noun phrase, trimmed; empty or none is none."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("A description for the unnamed is text")
+    text = value.strip()
+    if len(text) > MAX_UNNAMED_AS:
+        raise ValueError(f"A description for the unnamed has at most {MAX_UNNAMED_AS} characters")
+    if any(ord(character) < 32 or ord(character) == 127 for character in text):
+        raise ValueError("A description for the unnamed has no control characters")
+    return text or None
+
+
+def generic_unnamed(species: Any = None, role: Any = None, gender: Any = None) -> str:
+    """A person with no unnamed_as of their own, as a party that doesn't know their name sees them
+    (contract/unnamed-as-cases.json): their species, a short Role or else their gender, with a or an;
+    "a stranger" when nothing is known."""
+    words: list[str] = []
+    kind = str(species or "").strip().casefold()
+    if kind:
+        words.append(kind)
+    job = " ".join(str(role or "").split()).casefold()
+    noun = job if job and len(job.split()) <= ROLE_WORDS and len(job) <= ROLE_CHARACTERS else _GENDER_NOUNS.get(str(gender or "").strip().casefold())
+    if noun:
+        words.append(noun)
+    phrase = " ".join(words) or "stranger"
+    return f"{'an' if phrase[:1] in 'aeiou' else 'a'} {phrase}"

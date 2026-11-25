@@ -25,6 +25,7 @@ import { campaignInstantiatePost, campaignStartGet } from './scenarios';
 import { clockGet, clockPost, personMovePost, personMovesGet } from './worldTick';
 import { sessionReportGet, sessionReportPost } from './sessionReportRoutes';
 import { worldEntityGet, campaignMatchingPost } from './worldEntityRoute';
+import { campaignKnownNamesGet } from './knownNames';
 import {
   campaigns,
   dispositions,
@@ -74,7 +75,7 @@ const ROUTES: Record<string, Routes> = {
   campaign: {
     ...both(campaigns),
     actions: { card_person: { POST: campaignCardPersonPost } },
-    recordActions: { instantiate: { POST: campaignInstantiatePost }, clock: { GET: clockGet, POST: clockPost }, person: { POST: campaignPersonPost }, framing: { GET: campaignFramingGet }, fill_person: { POST: campaignFillPersonPost }, elevate: { POST: campaignElevatePost }, matching: { POST: campaignMatchingPost }, lore_search: { POST: campaignLoreSearchPost } },
+    recordActions: { instantiate: { POST: campaignInstantiatePost }, clock: { GET: clockGet, POST: clockPost }, person: { POST: campaignPersonPost }, framing: { GET: campaignFramingGet }, known_names: { GET: campaignKnownNamesGet }, fill_person: { POST: campaignFillPersonPost }, elevate: { POST: campaignElevatePost }, matching: { POST: campaignMatchingPost }, lore_search: { POST: campaignLoreSearchPost } },
   },
   // The world tick: people moved by the GM, each move kept.
   person_move: { collection: { GET: personMovesGet, POST: personMovePost }, record: {} },

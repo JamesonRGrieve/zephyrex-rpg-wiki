@@ -40,7 +40,7 @@ import { checkedKit, KitError } from '../lib/properties';
 import { lore } from '../lib/lore';
 import { pictureUrl } from '../lib/pictureUrl';
 import { HOMEBREW, type Provenance, ProvenanceError, provenance } from '../lib/provenance';
-import { names, ttsVoice, voice } from '../lib/names';
+import { names, ttsVoice, unnamedAs, voice } from '../lib/names';
 import { motivations, routine } from '../lib/routine';
 import { freeSlug, isSlug, SLUG_RULE, slugify } from '../lib/slug';
 
@@ -135,6 +135,17 @@ const nameList = z.unknown().transform((value, context) => {
 const loreText = z.unknown().transform((value, context) => {
   try {
     return JSON.stringify(lore(value));
+  } catch (error) {
+    context.addIssue({ code: 'custom', message: error instanceof Error ? error.message : String(error) });
+    return z.NEVER;
+  }
+});
+
+/** How a person reads to a party that doesn't know their name (contract/unnamed-as-cases.json);
+ * empty is none (the generic one). */
+const unnamedAsText = z.unknown().transform((value, context) => {
+  try {
+    return unnamedAs(value);
   } catch (error) {
     context.addIssue({ code: 'custom', message: error instanceof Error ? error.message : String(error) });
     return z.NEVER;
@@ -693,6 +704,7 @@ const PERSON_COLUMNS: Columns = {
   picture_url: plain('pictureUrl'),
   voice: plain('voice'),
   tts_voice: plain('ttsVoice'),
+  unnamed_as: plain('unnamedAs'),
   routine: plain('routine'),
   motivations: plain('motivations'),
   location_id: plain('locationId'),
@@ -715,6 +727,7 @@ const personFields = {
     picture_url: pictureLink,
   voice: voiceText,
   tts_voice: ttsVoiceText,
+  unnamed_as: unnamedAsText,
   routine: routineText,
   motivations: motivationsText,
   location_id: reference,
@@ -737,6 +750,7 @@ const personCreate = z.object({
   picture_url: pictureLink.optional(),
   voice: voiceText.optional(),
   tts_voice: ttsVoiceText.optional(),
+  unnamed_as: unnamedAsText.optional(),
   routine: routineText.optional(),
   motivations: motivationsText.optional(),
   location_id: reference.default(null),

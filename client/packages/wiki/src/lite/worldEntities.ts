@@ -7,7 +7,7 @@
  */
 import { type Lore, storedLore } from '../lib/lore';
 import { type Slot, storedMotivations, storedRoutine } from '../lib/routine';
-import { storedNames, storedVoice, type Voice } from '../lib/names';
+import { genericUnnamed, storedNames, storedVoice, type Voice } from '../lib/names';
 import { summary } from '../lib/summary';
 
 export const WORLD_ENTITY_KINDS = ['location', 'person', 'faction', 'item', 'journal'] as const;
@@ -43,6 +43,9 @@ export interface EntityRow {
   ttsVoice?: string | null;
   /** A person's own kind (pc, npc, …); other kinds have none. */
   kind?: string | null;
+  /** How a person reads to a party that doesn't know their name, and their gender; other kinds have none. */
+  unnamedAs?: string | null;
+  gender?: string | null;
 }
 
 export interface WorldEntity {
@@ -70,6 +73,12 @@ export interface WorldEntity {
   tts_voice: string | null;
   /** A person's own kind (contract person_kinds: pc, npc, …), to tell a PC from an NPC; null for other kinds. */
   person_kind: string | null;
+  /**
+   * How a person reads to a party that doesn't know their name (operator, 2026-11-25): their own
+   * unnamed_as, else one built from their species, Role and gender (lib/names genericUnnamed); null
+   * for other kinds.
+   */
+  unnamed_as: string | null;
   /** S4d: its lorebook activation (SillyTavern World Info's fields), or none. */
   lore: Lore | null;
   /** Where it came from: homebrew, official or adapted, and its source. */
@@ -124,6 +133,8 @@ export function entityOf(kind: WorldEntityKind, row: EntityRow): WorldEntity {
     voice: kind === 'person' ? storedVoice(row.voice ?? null) : null,
     tts_voice: kind === 'person' ? (row.ttsVoice ?? null) || null : null,
     person_kind: kind === 'person' ? (row.kind ?? null) || null : null,
+    // Their own, else from gender alone here; the route adds species and Role a page at a time.
+    unnamed_as: kind === 'person' ? (row.unnamedAs ?? null) || genericUnnamed(null, null, row.gender ?? null) : null,
     lore: storedLore(row.lore),
     provenance: row.provenance,
     source: row.source,

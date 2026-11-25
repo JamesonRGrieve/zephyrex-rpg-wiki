@@ -127,3 +127,39 @@ export function ttsVoice(value: unknown): string | null {
   if ([...text].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)) throw new Error('A TTS voice has no control characters');
   return text === '' ? null : text;
 }
+
+/** A person's species, from the first tag of these kinds (contract taxon_kinds). */
+export const SPECIES_KINDS = ['species', 'race', 'creature_type'] as const;
+// A Role short enough to name someone by (contract/unnamed-as-cases.json).
+const ROLE_WORDS = 4;
+const ROLE_CHARACTERS = 40;
+const GENDER_NOUNS: Record<string, string> = {
+  ...Object.fromEntries(['female', 'woman', 'f', 'girl', 'lady'].map((word) => [word, 'woman'])),
+  ...Object.fromEntries(['male', 'man', 'm', 'boy', 'gentleman'].map((word) => [word, 'man'])),
+  ...Object.fromEntries(['non-binary', 'nonbinary', 'enby', 'nb', 'agender', 'genderfluid'].map((word) => [word, 'person'])),
+};
+
+/** How a person reads to a party that doesn't know their name (contract/unnamed-as-cases.json): one
+ * short noun phrase, trimmed; empty or none is null. */
+export function unnamedAs(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'string') throw new Error('A description for the unnamed is text');
+  const text = value.trim();
+  if (text.length > LIMITS.unnamed_as_characters) throw new Error(`A description for the unnamed has at most ${LIMITS.unnamed_as_characters} characters`);
+  if ([...text].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)) throw new Error('A description for the unnamed has no control characters');
+  return text === '' ? null : text;
+}
+
+/** A person with no unnamed_as of their own, as a party that doesn't know their name sees them
+ * (contract/unnamed-as-cases.json): their species, a short Role or else their gender, with a or an;
+ * "a stranger" when nothing is known. */
+export function genericUnnamed(species?: string | null, role?: string | null, gender?: string | null): string {
+  const words: string[] = [];
+  const kind = (species ?? '').trim().toLowerCase();
+  if (kind !== '') words.push(kind);
+  const job = (role ?? '').split(/\s+/).filter((word) => word !== '').join(' ').toLowerCase();
+  const noun = job !== '' && job.split(' ').length <= ROLE_WORDS && job.length <= ROLE_CHARACTERS ? job : GENDER_NOUNS[(gender ?? '').trim().toLowerCase()];
+  if (noun) words.push(noun);
+  const phrase = words.join(' ') || 'stranger';
+  return `${'aeiou'.includes(phrase.charAt(0)) ? 'an' : 'a'} ${phrase}`;
+}

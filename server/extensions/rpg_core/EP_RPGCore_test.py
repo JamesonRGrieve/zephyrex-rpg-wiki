@@ -327,7 +327,7 @@ class TestWorldEntities:
         assert by_name["Harbour"] | {"updated_at": None} == {
             "id": harbour["id"], "kind": "location", "name": "Harbour", "aliases": [], "summary": "A port city.",
             "picture": None, "updated_at": None, "deleted": False, "setting_id": None, "canon": False, "canon_level": None,
-            "keywords": [], "voice": None, "tts_voice": None, "person_kind": None, "routine": None, "motivations": None, "tags": [], "relationships": None, "lore": None, "provenance": "homebrew", "source": None, "gm_only": False, "location_id": None, "parent_id": None,
+            "keywords": [], "voice": None, "tts_voice": None, "person_kind": None, "unnamed_as": None, "routine": None, "motivations": None, "tags": [], "relationships": None, "lore": None, "provenance": "homebrew", "source": None, "gm_only": False, "location_id": None, "parent_id": None,
         }
         assert page["next"] is None
 
@@ -2104,3 +2104,54 @@ class TestPlaythroughIsNoScenario:
         _put(server, person, "campaign", other, scenario_id=scenario["id"])
         held = server.get(f"/v1/campaign/{other['id']}", headers=_headers(person)).json()["campaign"]
         assert (held["is_scenario"], held["scenario_id"]) == (True, None)
+
+
+class TestUnnamedAndKnownNames:
+    """Operator, 2026-11-25: "NPCs should have generic descriptions unless the player knows their name
+    which gets replaced as names are learned." A person's unnamed_as (their own, else a generic one),
+    and whose names the party knows."""
+
+    def test_a_person_reads_by_a_description_until_the_party_knows_their_name(self, server: TestClient, person: Any, other: Any) -> None:
+        world = _create(server, person, "campaign", name="Saltmere Run")
+        tam = _create(server, person, "person", name="Tam", kind="pc", campaign_id=world["id"])
+        wren = _create(server, person, "person", name="Wren", kind="pc", campaign_id=world["id"])
+        mags = _create(server, person, "person", name="Mags Thornbury", kind="npc", campaign_id=world["id"], unnamed_as="  a woman in a grey hood ")
+        brom = _create(server, person, "person", name="Brom", kind="npc", campaign_id=world["id"], gender="female")
+        nobody = _create(server, person, "person", name="Quill", kind="npc", campaign_id=world["id"])
+        dwarf = _create(server, person, "taxon", name="Dwarf", kind="race", campaign_id=world["id"])
+        _create(server, person, "entity_taxon", taxon_id=dwarf["id"], target_entity_type="person", target_entity_id=brom["id"])
+        assert mags["unnamed_as"] == "a woman in a grey hood"
+        too_long = server.post("/v1/person", json={"person": {"name": "Long", "campaign_id": world["id"], "unnamed_as": "x" * 121}}, headers=_headers(person))
+        assert too_long.status_code == 422, too_long.text
+
+        seen = {one["name"]: one for one in server.get(f"/v1/world_entity?campaign_id={world['id']}", headers=_headers(person)).json()["world_entities"]}
+        assert (seen["Mags Thornbury"]["unnamed_as"], seen["Brom"]["unnamed_as"], seen["Quill"]["unnamed_as"]) == ("a woman in a grey hood", "a dwarf woman", "a stranger")
+        by_id = server.get(f"/v1/world_entity?ids={mags['id']},{brom['id']}", headers=_headers(person)).json()["world_entities"]
+        assert [one["unnamed_as"] for one in by_id] == ["a woman in a grey hood", "a dwarf woman"]
+        # Cleared, a person reads by the generic one again.
+        assert _put(server, person, "person", mags, unnamed_as="").status_code == 200
+        again = {one["name"]: one for one in server.get(f"/v1/world_entity?campaign_id={world['id']}", headers=_headers(person)).json()["world_entities"]}
+        assert again["Mags Thornbury"]["unnamed_as"] == "a stranger"
+
+        # Knowing of a person is knowing their name; a fact about them alone is not.
+        for body in (
+            {"person_id": tam["id"], "target_entity_type": "person", "target_entity_id": mags["id"]},
+            {"person_id": wren["id"], "target_entity_type": "person", "target_entity_id": brom["id"], "text": "The dwarf at the bar pours short."},
+        ):
+            made = server.post("/v1/known_fact", json={"known_fact": body}, headers=_headers(person))
+            assert made.status_code == 201, made.text
+        known = server.get(f"/v1/campaign/{world['id']}/known_names", headers=_headers(person))
+        assert known.status_code == 200, known.text
+        names = known.json()["known_names"]
+        assert names["party"] == sorted([tam["id"], wren["id"], mags["id"]])
+        assert names["by_pc"] == {tam["id"]: sorted([tam["id"], wren["id"], mags["id"]]), wren["id"]: sorted([tam["id"], wren["id"]])}
+        assert nobody["id"] not in names["party"] and brom["id"] not in names["party"]
+        # For rpg-ai in process, the same.
+        registry = server.app.state.model_registry  # type: ignore[attr-defined]
+        from zephyrex.extensions.AbstractExtensionProvider import loaded_ability
+
+        assert loaded_ability(registry, "rpg_core", "known_names")(registry, str(person.id), world["id"]) == names
+        # Someone who can't see the campaign learns nothing of it.
+        assert server.get(f"/v1/campaign/{world['id']}/known_names", headers=_headers(other)).status_code in (403, 404)
+        empty = _create(server, person, "campaign", name="No Party")
+        assert server.get(f"/v1/campaign/{empty['id']}/known_names", headers=_headers(person)).json()["known_names"] == {"party": [], "by_pc": {}}

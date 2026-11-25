@@ -25,7 +25,7 @@ from typing import Any, Callable, ClassVar, Optional, Type
 
 from fastapi import HTTPException
 from pydantic import BaseModel as PlainModel
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, PrivateAttr, field_validator, model_validator
 from zephyrex.extensions.genealogy.BLL_Genealogy import PersonManager, PersonModel
 from zephyrex.lib.Rooms import room_of
 from zephyrex.extensions.wiki_shared.Contract import PERSON_KINDS  # type: ignore[import-not-found]
@@ -41,7 +41,7 @@ from zephyrex.extensions.wiki_shared.EntityIds import EntityIdsError, entity_ids
 from zephyrex.extensions.wiki_shared.Lore import lore_text, stored_lore  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Pictures import picture_url as checked_picture_url  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Provenance import HOMEBREW, checked_provenance, checked_source, provenance  # type: ignore[import-not-found]
-from zephyrex.extensions.wiki_shared.Names import names_text, stored_names, stored_voice, tts_voice_text, voice_text  # type: ignore[import-not-found]
+from zephyrex.extensions.wiki_shared.Names import SPECIES_KINDS, generic_unnamed, names_text, stored_names, stored_voice, tts_voice_text, unnamed_as_text, voice_text  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Routine import (  # type: ignore[import-not-found]
     clock,
     motivations_text,
@@ -677,6 +677,8 @@ class RPG_PersonModel(BaseModel):
     voice: Optional[str] = Field(None, description="How the AI plays them: personality, speech, first_message, examples, as JSON text (S4c; GM-facing)")
     # Operator, 2026-11-23: "A voice per character": the TTS model's voice their lines are read in.
     tts_voice: Optional[str] = Field(None, description="The TTS model's voice id for their lines (alloy, onyx…); none is the default")
+    # Operator, 2026-11-25: "NPCs should have generic descriptions unless the player knows their name".
+    unnamed_as: Optional[str] = Field(None, description="How they read to a party that doesn't know their name (\"the hooded woman\"); none: built from species, Role and gender")
     # The world tick (operator, 2026-11-21): the GM side pilots each person by these as time advances.
     routine: Optional[str] = Field(None, description="Their schedule: slots {from, to, days, location_id, activity}, as JSON text (GM-facing)")
     motivations: Optional[str] = Field(None, description="Their goals, fears and current intent, a list as JSON text (GM-facing)")
@@ -707,6 +709,8 @@ class RPG_PersonModel(BaseModel):
         _voice = field_validator("voice")(voice_text)
         tts_voice: Optional[str] = None
         _tts_voice = field_validator("tts_voice")(tts_voice_text)
+        unnamed_as: Optional[str] = None
+        _unnamed_as = field_validator("unnamed_as")(unnamed_as_text)
         routine: Optional[Any] = None
         _routine = field_validator("routine")(routine_text)
         motivations: Optional[Any] = None
@@ -745,6 +749,9 @@ class RPG_PersonModel(BaseModel):
         # "" clears it back to the default (none leaves it as it is).
         tts_voice: Optional[str] = None
         _tts_voice = field_validator("tts_voice")(lambda value: value if value is None else (tts_voice_text(value) or ""))
+        # "" clears it back to the generic one (none leaves it as it is).
+        unnamed_as: Optional[str] = None
+        _unnamed_as = field_validator("unnamed_as")(lambda value: value if value is None else (unnamed_as_text(value) or ""))
         routine: Optional[Any] = None
         _routine = field_validator("routine")(routine_text)
         motivations: Optional[Any] = None
@@ -1505,6 +1512,12 @@ class WorldEntity(PlainModel):
     # A person's own kind (contract person_kinds: pc, npc, …; Zephyrex RPG, 2026-11-24: tell a PC from
     # an NPC without the tags); none for other kinds.
     person_kind: Optional[str] = None
+    # How a person reads to a party that doesn't know their name (operator, 2026-11-25: "NPCs should
+    # have generic descriptions unless the player knows their name"): their own unnamed_as, else one
+    # built from their species, Role and gender (wiki_shared/Names.generic_unnamed); none for other kinds.
+    unnamed_as: Optional[str] = None
+    _own_unnamed: bool = PrivateAttr(default=False)
+    _gender: Optional[str] = PrivateAttr(default=None)
     # A person's schedule and motivations (the GM side's world tick; gm_only as the record is).
     routine: Optional[list[dict[str, Any]]] = None
     motivations: Optional[list[str]] = None
@@ -1568,7 +1581,9 @@ def _checked_page(kinds: Optional[list[str]], limit: int) -> list[str]:
 def _entity(kind: str, record: Any, changed_at: datetime, deleted: bool) -> WorldEntity:
     """A record as rpg-ai's lorebook reads it (the sync's and the by-id read's one shaping)."""
     campaign = getattr(record, "campaign_id", None)
-    return WorldEntity(
+    own = (getattr(record, "unnamed_as", None) or None) if kind == "person" else None
+    gender = (getattr(record, "gender", None) or None) if kind == "person" else None
+    entity = WorldEntity(
         id=str(record.id),
         kind=kind,
         name=str(record.name or ""),
@@ -1592,7 +1607,12 @@ def _entity(kind: str, record: Any, changed_at: datetime, deleted: bool) -> Worl
         parent_id=getattr(record, "parent_id", None) if kind in ("location", "faction") else None,
         provenance=getattr(record, "provenance", None) or HOMEBREW,
         source=getattr(record, "source", None),
+        # Their own, else from gender alone here; _with_tags_and_ties adds species and Role.
+        unnamed_as=(own or generic_unnamed(gender=gender)) if kind == "person" else None,
     )
+    entity._own_unnamed = own is not None
+    entity._gender = gender
+    return entity
 
 
 def _gather(
@@ -1692,6 +1712,31 @@ def _gm_only(model_registry: Any, ids: list[str]) -> set[tuple[str, str]]:
     }
 
 
+# A person's public properties a generic unnamed_as reads (the vault's role: and gender:).
+ROLE_PROPERTY, GENDER_PROPERTY = "Role", "Gender"
+
+
+def _with_unnamed(model_registry: Any, shown: list[WorldEntity], species: dict[str, str]) -> None:
+    """Each person with no unnamed_as of their own: one built from their species tag, their Role and
+    their gender (their own field, else their Gender property), public properties only, in one
+    query for the page (as SYSTEM: the caller already sees each person)."""
+    wanting = [entity for entity in shown if entity.kind == "person" and not entity._own_unnamed]
+    if not wanting:
+        return
+    said: dict[tuple[str, str], str] = {}
+    if _serves(model_registry, "metadata"):
+        from zephyrex.extensions.metadata.BLL_Metadata import MetadataManager  # type: ignore[import-not-found]
+        from zephyrex.logic.AbstractLogicManager.models import FieldComparison
+
+        rows = MetadataManager(requester_id=env("SYSTEM_ID"), model_registry=model_registry)
+        ids = sorted({entity.id for entity in wanting})
+        for row in rows.list(filters=[FieldComparison(rows.Model, "target_entity_id", "in", ids), FieldComparison(rows.Model, "key", "in", [ROLE_PROPERTY, GENDER_PROPERTY])]) or []:
+            if row.target_entity_type == "person" and not getattr(row, "is_private", False) and str(row.value or "").strip():
+                said.setdefault((str(row.target_entity_id), str(row.key)), str(row.value))
+    for entity in wanting:
+        entity.unnamed_as = generic_unnamed(species.get(entity.id), said.get((entity.id, ROLE_PROPERTY)), entity._gender or said.get((entity.id, GENDER_PROPERTY)))
+
+
 def _with_secrecy(model_registry: Any, shown: list[WorldEntity]) -> list[WorldEntity]:
     """Each record kept to the GM, marked gm_only."""
     secret = _gm_only(model_registry, [entity.id for entity in shown])
@@ -1713,12 +1758,21 @@ def _with_tags_and_ties(model_registry: Any, requester_id: str, shown: list[Worl
     links = _manager(model_registry, requester_id, EntityTaxonManager)
     rows = links.list(filters=[FieldComparison(links.Model, "target_entity_id", "in", ids)]) or []
     taxa = _manager(model_registry, requester_id, TaxonManager)
-    names = {str(one.id): str(one.name or "") for one in (taxa.list(filters=[FieldComparison(taxa.Model, "id", "in", sorted({str(row.taxon_id) for row in rows}))]) or [])} if rows else {}
+    held_taxa = (taxa.list(filters=[FieldComparison(taxa.Model, "id", "in", sorted({str(row.taxon_id) for row in rows}))]) or []) if rows else []
+    names = {str(one.id): str(one.name or "") for one in held_taxa}
+    kinds = {str(one.id): str(getattr(one, "kind", None) or "") for one in held_taxa}
     tagged: dict[tuple[str, str], list[str]] = {}
+    # A person's species (for unnamed_as): their first tag of a species kind, in SPECIES_KINDS order.
+    species: dict[str, tuple[int, str]] = {}
     for row in rows:
         name = names.get(str(row.taxon_id))
         if name:
             tagged.setdefault((row.target_entity_type, row.target_entity_id), []).append(name)
+            kind = kinds.get(str(row.taxon_id), "")
+            if row.target_entity_type == "person" and kind in SPECIES_KINDS:
+                ranked = (SPECIES_KINDS.index(kind), name)
+                species[str(row.target_entity_id)] = min(species.get(str(row.target_entity_id), ranked), ranked)
+    _with_unnamed(model_registry, shown, {one: name for one, (_rank, name) in species.items()})
     people = [entity.id for entity in shown if entity.kind == "person"]
     ties = _manager(model_registry, requester_id, RelationshipManager)
     held = (ties.list(filters=[FieldComparison(ties.Model, "person_id", "in", people)]) or []) if people else []
@@ -1741,7 +1795,11 @@ def _shown(model_registry: Any, shown: list[WorldEntity], requester_id: Optional
     """The page as rpg-ai reads it: each record's picture, whether it's the GM's alone, its tags and a
     person's ties."""
     shown = _with_secrecy(model_registry, _with_pictures(model_registry, shown))
-    return shown if requester_id is None else _with_tags_and_ties(model_registry, requester_id, shown)
+    if requester_id is None:
+        # No tags read here: unnamed_as from Role and gender alone.
+        _with_unnamed(model_registry, shown, {})
+        return shown
+    return _with_tags_and_ties(model_registry, requester_id, shown)
 
 
 def _paged(found: list[WorldEntity], limit: int, model_registry: Any, requester_id: Optional[str] = None) -> WorldEntitiesPage:
@@ -2306,6 +2364,65 @@ def learn_fact(
             return KnownFactLearned(known_fact=row.model_dump(mode="json"), created=False)
     made = facts.create(person_id=person_id, target_entity_type=target_entity_type, target_entity_id=target_entity_id, text=wanted, learned_in_journal_id=learned_in)
     return KnownFactLearned(known_fact=made.model_dump(mode="json"), created=True)
+
+
+# Whose names the party knows (operator, 2026-11-25: "NPCs should have generic descriptions unless
+# the player knows their name which gets replaced as names are learned"). Knowing of a person (a
+# known fact with no text, learn_fact's default) is knowing their name: it already opens their page,
+# named, to that PC. A fact with text alone ("the hooded woman sells poison") is not.
+
+
+class KnownNames(PlainModel):
+    party: list[str] = Field(..., description="Every person some PC of the campaign knows by name, the PCs among them")
+    by_pc: dict[str, list[str]] = Field(..., description="Each PC the caller may see: the persons they know by name, themselves and the party among them")
+
+
+class KnownNamesOne(PlainModel):
+    known_names: KnownNames
+
+
+def known_names(model_registry: Any, requester_id: str, campaign_id: str) -> KnownNames:
+    """For a campaign, which persons each PC knows the name of (they know of them, or are of the
+    party), and which the party does: what the narrator, the cast and the picker name rather than
+    describe (WorldEntity.unnamed_as). One read per round; the caller must see the campaign. The
+    party's knowledge is shared at the table, so it comes whole to anyone who sees the campaign;
+    each PC's own comes only for the PCs the caller sees."""
+    from zephyrex.logic.AbstractLogicManager.models import FieldComparison
+
+    _manager(model_registry, requester_id, CampaignManager).get(id=campaign_id)
+    root = env("ROOT_ID")
+    every_pc = [row for row in _live(_manager(model_registry, root, PersonManager).list(campaign_id=campaign_id, kind="pc")) if not getattr(row, "is_template", None)]
+    pcs = sorted(str(row.id) for row in every_pc)
+    if not pcs:
+        return KnownNames(party=[], by_pc={})
+    facts = _manager(model_registry, root, KnownFactManager)
+    knows: dict[str, set[str]] = {one: set(pcs) for one in pcs}
+    for row in _live(facts.list(filters=[FieldComparison(facts.Model, "person_id", "in", pcs)])):
+        if row.target_entity_type == "person" and not (row.text or None) and str(row.person_id) in knows:
+            knows[str(row.person_id)].add(str(row.target_entity_id))
+    seen = _manager(model_registry, requester_id, PersonManager)
+    visible = {str(row.id) for row in seen.list(filters=[FieldComparison(seen.Model, "id", "in", pcs)]) or []}
+    return KnownNames(party=sorted(set().union(*knows.values())), by_pc={one: sorted(knows[one]) for one in pcs if one in visible})
+
+
+# GET /v1/campaign/{id}/known_names, attached as lore_search is (its model comes after the manager's).
+def _attach_known_names() -> None:
+    @custom_route(
+        method="GET",
+        path="/{id}/known_names",
+        output_model=KnownNamesOne,
+        authentication_type="jwt",
+        expose_in=(ExposeIn.REST,),
+        openapi_tags=("Campaigns",),
+        summary="Whose names the party knows: each PC's (they know of them, or are of the party) and the party's",
+    )
+    def known_names_route(self: Any, id: str) -> KnownNamesOne:
+        return KnownNamesOne(known_names=known_names(self.model_registry, str(self.requester.id), id))
+
+    CampaignManager.known_names_route = known_names_route  # type: ignore[attr-defined]
+
+
+_attach_known_names()
 
 
 # ---------------------------------------------------------------------------
