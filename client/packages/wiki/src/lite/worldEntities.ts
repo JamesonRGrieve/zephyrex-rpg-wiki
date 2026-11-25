@@ -79,6 +79,8 @@ export interface WorldEntity {
    * for other kinds.
    */
   unnamed_as: string | null;
+  /** A person's gender as authored: their own field, else (the route) their public Gender property; null for other kinds. */
+  gender: string | null;
   /** S4d: its lorebook activation (SillyTavern World Info's fields), or none. */
   lore: Lore | null;
   /** Where it came from: homebrew, official or adapted, and its source. */
@@ -135,6 +137,7 @@ export function entityOf(kind: WorldEntityKind, row: EntityRow): WorldEntity {
     person_kind: kind === 'person' ? (row.kind ?? null) || null : null,
     // Their own, else from gender alone here; the route adds species and Role a page at a time.
     unnamed_as: kind === 'person' ? (row.unnamedAs ?? null) || genericUnnamed(null, null, row.gender ?? null) : null,
+    gender: kind === 'person' ? (row.gender ?? null) || null : null,
     lore: storedLore(row.lore),
     provenance: row.provenance,
     source: row.source,

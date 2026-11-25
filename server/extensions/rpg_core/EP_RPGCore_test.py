@@ -327,7 +327,7 @@ class TestWorldEntities:
         assert by_name["Harbour"] | {"updated_at": None} == {
             "id": harbour["id"], "kind": "location", "name": "Harbour", "aliases": [], "summary": "A port city.",
             "picture": None, "updated_at": None, "deleted": False, "setting_id": None, "canon": False, "canon_level": None,
-            "keywords": [], "voice": None, "tts_voice": None, "person_kind": None, "unnamed_as": None, "routine": None, "motivations": None, "tags": [], "relationships": None, "lore": None, "provenance": "homebrew", "source": None, "gm_only": False, "location_id": None, "parent_id": None,
+            "keywords": [], "voice": None, "tts_voice": None, "person_kind": None, "unnamed_as": None, "gender": None, "routine": None, "motivations": None, "tags": [], "relationships": None, "lore": None, "provenance": "homebrew", "source": None, "gm_only": False, "location_id": None, "parent_id": None,
         }
         assert page["next"] is None
 
@@ -2156,6 +2156,24 @@ class TestUnnamedAndKnownNames:
         assert _put(server, person, "person", mags, unnamed_as="").status_code == 200
         again = {one["name"]: one for one in server.get(f"/v1/world_entity?campaign_id={world['id']}", headers=_headers(person)).json()["world_entities"]}
         assert again["Mags Thornbury"]["unnamed_as"] == "a stranger"
+
+        # Their gender as authored, for pronouns (operator, 2026-11-25: "It's misgendering characters
+        # … Need pronoun enforcement"): the field, else a public Gender property (vault_import's
+        # gender:), never a private one.
+        seraphine = _create(server, person, "person", name="Seraphine Dusk", kind="npc", campaign_id=world["id"])
+        hidden = _create(server, person, "person", name="Veiled", kind="npc", campaign_id=world["id"])
+        for who, private in ((seraphine, False), (hidden, True)):
+            said = server.post(
+                "/v1/record_metadata",
+                json={"record_metadata": {"target_entity_type": "person", "target_entity_id": who["id"], "key": "Gender", "value": "female", "value_type": "text", "is_private": private}},
+                headers=_headers(person),
+            )
+            assert said.status_code in (200, 201), said.text
+        gendered = {one["name"]: one for one in server.get(f"/v1/world_entity?campaign_id={world['id']}", headers=_headers(person)).json()["world_entities"]}
+        assert (gendered["Brom"]["gender"], gendered["Seraphine Dusk"]["gender"], gendered["Veiled"]["gender"], gendered["Quill"]["gender"]) == ("female", "female", None, None)
+        assert gendered["Seraphine Dusk"]["unnamed_as"] == "a woman"
+        matched = server.post(f"/v1/campaign/{world['id']}/matching", json={"matching": {"text": "Seraphine Dusk walks in."}}, headers=_headers(person)).json()["world_entities"]
+        assert [one["gender"] for one in matched if one["name"] == "Seraphine Dusk"] == ["female"]
 
         # Knowing of a person is knowing their name; a fact about them alone is not.
         for body in (

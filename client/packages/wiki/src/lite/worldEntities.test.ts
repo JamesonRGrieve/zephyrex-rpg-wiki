@@ -41,6 +41,7 @@ describe('entityOf', () => {
       tts_voice: null,
       person_kind: null,
       unnamed_as: null,
+      gender: null,
       lore: null,
       provenance: 'homebrew',
       source: null,
@@ -69,6 +70,9 @@ describe('entityOf', () => {
     expect(entityOf('person', { ...row('p3', '2026-11-20T12:00:00Z'), unnamedAs: 'the hooded woman' }).unnamed_as).toBe('the hooded woman');
     // The route adds species and Role a page at a time; here, gender alone.
     expect(entityOf('person', { ...row('p4', '2026-11-20T12:00:00Z'), gender: 'female' }).unnamed_as).toBe('a woman');
+    // Their gender as authored, for pronouns (operator, 2026-11-25: "Need pronoun enforcement").
+    expect(entityOf('person', { ...row('p6', '2026-11-20T12:00:00Z'), gender: 'female' }).gender).toBe('female');
+    expect(entityOf('location', { ...row('l4', '2026-11-20T12:00:00Z'), gender: 'female' }).gender).toBeNull();
     expect(entityOf('person', { ...row('p5', '2026-11-20T12:00:00Z'), unnamedAs: '' }).unnamed_as).toBe('a stranger');
     expect(entityOf('location', { ...row('l3', '2026-11-20T12:00:00Z'), unnamedAs: 'a place' }).unnamed_as).toBeNull();
   });

@@ -1525,6 +1525,10 @@ class WorldEntity(PlainModel):
     # have generic descriptions unless the player knows their name"): their own unnamed_as, else one
     # built from their species, Role and gender (wiki_shared/Names.generic_unnamed); none for other kinds.
     unnamed_as: Optional[str] = None
+    # A person's gender as authored (operator, 2026-11-25: "It's misgendering characters … Need
+    # pronoun enforcement"): their own field, else their public Gender property (vault_import's
+    # gender:); none for other kinds.
+    gender: Optional[str] = None
     _own_unnamed: bool = PrivateAttr(default=False)
     _gender: Optional[str] = PrivateAttr(default=None)
     # A person's schedule and motivations (the GM side's world tick; gm_only as the record is).
@@ -1618,6 +1622,7 @@ def _entity(kind: str, record: Any, changed_at: datetime, deleted: bool) -> Worl
         source=getattr(record, "source", None),
         # Their own, else from gender alone here; _with_tags_and_ties adds species and Role.
         unnamed_as=(own or generic_unnamed(gender=gender)) if kind == "person" else None,
+        gender=gender,
     )
     entity._own_unnamed = own is not None
     entity._gender = gender
@@ -1726,10 +1731,11 @@ ROLE_PROPERTY, GENDER_PROPERTY = "Role", "Gender"
 
 
 def _with_unnamed(model_registry: Any, shown: list[WorldEntity], species: dict[str, str]) -> None:
-    """Each person with no unnamed_as of their own: one built from their species tag, their Role and
-    their gender (their own field, else their Gender property), public properties only, in one
-    query for the page (as SYSTEM: the caller already sees each person)."""
-    wanting = [entity for entity in shown if entity.kind == "person" and not entity._own_unnamed]
+    """Each person's gender with no field of their own: their public Gender property (vault_import's
+    gender:). Each person with no unnamed_as of their own: one built from their species tag, their
+    Role and their gender. Public properties only, in one query for the page (as SYSTEM: the caller
+    already sees each person)."""
+    wanting = [entity for entity in shown if entity.kind == "person" and (not entity._own_unnamed or not entity._gender)]
     if not wanting:
         return
     said: dict[tuple[str, str], str] = {}
@@ -1743,7 +1749,10 @@ def _with_unnamed(model_registry: Any, shown: list[WorldEntity], species: dict[s
             if row.target_entity_type == "person" and not getattr(row, "is_private", False) and str(row.value or "").strip():
                 said.setdefault((str(row.target_entity_id), str(row.key)), str(row.value))
     for entity in wanting:
-        entity.unnamed_as = generic_unnamed(species.get(entity.id), said.get((entity.id, ROLE_PROPERTY)), entity._gender or said.get((entity.id, GENDER_PROPERTY)))
+        if not entity._gender and said.get((entity.id, GENDER_PROPERTY)):
+            entity.gender = said[(entity.id, GENDER_PROPERTY)].strip()
+        if not entity._own_unnamed:
+            entity.unnamed_as = generic_unnamed(species.get(entity.id), said.get((entity.id, ROLE_PROPERTY)), entity.gender)
 
 
 def _with_secrecy(model_registry: Any, shown: list[WorldEntity]) -> list[WorldEntity]:

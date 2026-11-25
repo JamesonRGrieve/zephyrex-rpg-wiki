@@ -81,16 +81,22 @@ const ROLE_PROPERTY = 'Role';
 const GENDER_PROPERTY = 'Gender';
 
 /**
- * Each person with no unnamed_as of their own: one built from their species tag, their Role and
- * their gender (their own field, else their Gender property), public properties only, as the
- * server's _with_unnamed; one query each for the page.
+ * Each person's gender with no field of their own: their public Gender property (vault_import's
+ * gender:). Each person with no unnamed_as of their own: one built from their species tag, their
+ * Role and their gender. Public properties only, as the server's _with_unnamed; one query each for
+ * the page.
  */
-async function unnamedOf(shown: readonly { id: string; kind: string }[], species: Map<string, [number, string]>): Promise<Map<string, string>> {
+async function personWordsOf(
+  shown: readonly { id: string; kind: string }[],
+  species: Map<string, [number, string]>,
+): Promise<{ unnamed: Map<string, string>; gender: Map<string, string> }> {
+  const unnamed = new Map<string, string>();
+  const gender = new Map<string, string>();
   const ids = shown.filter((entity) => entity.kind === 'person').map((entity) => entity.id);
-  if (ids.length === 0) return new Map();
+  if (ids.length === 0) return { unnamed, gender };
   const people = await prisma.person.findMany({ where: { id: { in: ids } }, select: { id: true, unnamedAs: true, gender: true } });
-  const wanting = people.filter((one) => !one.unnamedAs);
-  if (wanting.length === 0) return new Map();
+  const wanting = people.filter((one) => !one.unnamedAs || !one.gender);
+  if (wanting.length === 0) return { unnamed, gender };
   const said = new Map<string, string>();
   const rows = await prisma.recordMetadata.findMany({
     where: { targetEntityType: 'person', targetEntityId: { in: wanting.map((one) => one.id) }, key: { in: [ROLE_PROPERTY, GENDER_PROPERTY] }, isPrivate: false },
@@ -100,16 +106,19 @@ async function unnamedOf(shown: readonly { id: string; kind: string }[], species
     const key = `${row.targetEntityId}:${row.key}`;
     if ((row.value ?? '').trim() !== '' && !said.has(key)) said.set(key, row.value ?? '');
   }
-  return new Map(
-    wanting.map((one) => [one.id, genericUnnamed(species.get(one.id)?.[1] ?? null, said.get(`${one.id}:${ROLE_PROPERTY}`) ?? null, one.gender || said.get(`${one.id}:${GENDER_PROPERTY}`) || null)]),
-  );
+  for (const one of wanting) {
+    const theirs = one.gender || said.get(`${one.id}:${GENDER_PROPERTY}`)?.trim() || null;
+    if (!one.gender && theirs) gender.set(one.id, theirs);
+    if (!one.unnamedAs) unnamed.set(one.id, genericUnnamed(species.get(one.id)?.[1] ?? null, said.get(`${one.id}:${ROLE_PROPERTY}`) ?? null, theirs));
+  }
+  return { unnamed, gender };
 }
 
 /**
  * Each record's tag names (rpg-ai finds the party by "PC") and each person's ties to other people
  * ({to_id, kind, note}), as the server's; a tie with a GM-only end is left out.
  */
-async function withTagsAndTies<T extends { id: string; kind: string; tags: string[]; relationships: Tie[] | null; unnamed_as: string | null }>(ownerId: string, shown: T[]): Promise<T[]> {
+async function withTagsAndTies<T extends { id: string; kind: string; tags: string[]; relationships: Tie[] | null; unnamed_as: string | null; gender: string | null }>(ownerId: string, shown: T[]): Promise<T[]> {
   if (shown.length === 0) return shown;
   const ids = shown.map((entity) => entity.id);
   const links = await prisma.entityTaxon.findMany({ where: { createdById: ownerId, targetEntityId: { in: ids } }, select: { taxonId: true, targetEntityType: true, targetEntityId: true } });
@@ -129,7 +138,7 @@ async function withTagsAndTies<T extends { id: string; kind: string; tags: strin
     if (link.targetEntityType === 'person' && rank >= 0 && (held === undefined || rank < held[0] || (rank === held[0] && name < held[1])))
       species.set(link.targetEntityId, [rank, name]);
   }
-  const unnamed = await unnamedOf(shown, species);
+  const words = await personWordsOf(shown, species);
   const people = shown.filter((entity) => entity.kind === 'person').map((entity) => entity.id);
   const ties = people.length === 0 ? [] : await prisma.relationship.findMany({ where: { createdById: ownerId, personId: { in: people }, targetPersonId: { not: null } } });
   const secret = await secretsOf([...people, ...ties.flatMap((tie) => (tie.targetPersonId === null ? [] : [tie.targetPersonId]))]);
@@ -140,7 +149,8 @@ async function withTagsAndTies<T extends { id: string; kind: string; tags: strin
   }
   return shown.map((entity) => ({
     ...entity,
-    unnamed_as: entity.kind === 'person' ? (unnamed.get(entity.id) ?? entity.unnamed_as) : entity.unnamed_as,
+    unnamed_as: entity.kind === 'person' ? (words.unnamed.get(entity.id) ?? entity.unnamed_as) : entity.unnamed_as,
+    gender: entity.kind === 'person' ? (words.gender.get(entity.id) ?? entity.gender) : entity.gender,
     tags: [...(tagged.get(`${entity.kind}:${entity.id}`) ?? [])].sort(),
     relationships: entity.kind === 'person' ? (byPerson.get(entity.id) ?? []) : null,
   }));

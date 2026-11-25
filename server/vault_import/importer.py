@@ -771,6 +771,10 @@ class Importer:
                 "first_message": str(given.get("first_message") or ""),
                 "examples": [str(one) for one in _list(given.get("examples")) if _text(one)],
             })
+        if kind == "person" and _text(meta.get("gender")):
+            # Their gender on the record itself, beside the Gender property (operator, 2026-11-25:
+            # "It's misgendering characters … Need pronoun enforcement").
+            fields["gender"] = _text(meta.get("gender"))
         if kind == "person" and _text(meta.get("unnamed_as")):
             # How they read to a party that doesn't know their name (operator, 2026-11-25).
             try:
