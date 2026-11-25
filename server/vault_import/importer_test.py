@@ -52,6 +52,8 @@ def test_the_vault_imports_with_its_links_and_a_second_run_changes_nothing(serve
         ("Lore/The Split Antler Framing.md", "its starting_level: this back end keeps no starting level"),
     ]
     assert first.unresolved == {"Characters/Holst.md": ["Nobody Here"]}
+    # Its map: waits for a composed app too (VTT's rpg_scene makes a place's scenes).
+    assert first.maps == [("Locations/Brindlemarsh Stable.md", "skipped (this back end serves no scenes)")]
     # The vault's own kind fields read as kinds; a word that isn't one is reported, never guessed.
     assert first.unread.get("Locations/The Fens.md") == ["location_type: warp-passage (not one of the location kinds)"]
 
@@ -418,3 +420,73 @@ def test_a_framing_notes_levels_are_read_and_checked(tmp_path: Path) -> None:
     importer._framing = {"Capped": {"starting_level_max": 99, "path": "Lore/Capped.md"}}
     importer._settle_framing()
     assert importer.report.refused == [("Lore/Capped.md", "PUT /v1/campaign/c1: 422 starting_level_max is 1 to 30")]
+
+
+def test_a_places_maps_become_its_scenes_a_floor_each(tmp_path: Path) -> None:
+    """Zephyrex VTT, 2026-11-25 (the operator: "MAPS ARE STILL FUCKING BROKEN"): a place note's
+    map: (one file or a list, ground floor first; paths against the note's folder) is made into its
+    scenes through VTT's map_location, a floor each; a Universal VTT file beside a note with its name
+    counts too; a picture beside it with its name stays its picture. Each floor reports a line."""
+    import base64
+
+    from vault_import.api import ApiError
+    from vault_import.importer import Placed
+    from vault_import.notes import Note
+
+    folder = tmp_path / "Locations"
+    folder.mkdir()
+    (folder / "the-square.0.dd2vtt").write_text(json.dumps({"format": 0.3, "line_of_sight": []}), encoding="utf-8")
+    (folder / "the-square.0.png").write_bytes(b"art")
+    (folder / "the-square.1.dd2vtt").write_text("{}", encoding="utf-8")
+    (folder / "Crop.jpg").write_bytes(b"crop")
+    (folder / "Lone.uvtt").write_text("{}", encoding="utf-8")
+    (folder / "Pictured.png").write_bytes(b"illustration")
+
+    def place(name: str, meta: dict[str, Any], record_id: str, campaign: Any = "c1") -> Placed:
+        note = Note(f"Locations/{name}.md", {"entity_type": "location", **meta}, "", source=folder / f"{name}.md")
+        return Placed(note, "location", {"campaign_id": campaign, "setting_id": None}, {"id": record_id, "campaign_id": campaign})
+
+    class Back:
+        def __init__(self) -> None:
+            self.asks: list[dict[str, Any]] = []
+
+        def extensions(self) -> set[str]:
+            return {"rpg_scene"}
+
+        def post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
+            ask = body["map_location"]
+            if ask["location_id"] == "bad":
+                raise ApiError(403, "POST", path, "not the campaign's GM")
+            self.asks.append(ask)
+            return {"created": ask["floor"] == 0, "name": ask.get("name", "x"), "walls": 2}
+
+    back = Back()
+    importer = Importer(back)  # type: ignore[arg-type]
+    importer._maps(
+        [
+            place("The Square", {"map": ["the-square.0.dd2vtt", {"file": "the-square.1.dd2vtt", "name": "The Square (cellar)"}]}, "p1"),
+            place("Crop", {"map": "Crop.jpg", "map_grid": 100}, "p2"),
+            place("Lone", {}, "p3"),
+            place("Pictured", {}, "p4"),
+            place("Canon", {"map": "Crop.jpg"}, "p5", campaign=None),
+            place("Missing", {"map": "nope.dd2vtt"}, "p6"),
+            place("Refused", {"map": "Crop.jpg"}, "bad"),
+        ]
+    )
+    art = base64.b64encode(b"art").decode("ascii")
+    crop = base64.b64encode(b"crop").decode("ascii")
+    assert back.asks == [
+        {"location_id": "p1", "floor": 0, "uvtt": {"format": 0.3, "line_of_sight": []}, "image_base64": art, "image_name": "the-square.0.png"},
+        {"location_id": "p1", "floor": 1, "name": "The Square (cellar)", "uvtt": {}},
+        {"location_id": "p2", "floor": 0, "grid_size": 100, "image_base64": crop, "image_name": "Crop.jpg"},
+        {"location_id": "p3", "floor": 0, "uvtt": {}},
+    ]
+    assert importer.report.maps == [
+        ("Locations/The Square.md", "floor 0 the-square.0.dd2vtt created (scene x, 2 walls)"),
+        ("Locations/The Square.md", "floor 1 the-square.1.dd2vtt updated (scene The Square (cellar), 2 walls)"),
+        ("Locations/Crop.md", "floor 0 Crop.jpg created (scene x, 2 walls)"),
+        ("Locations/Lone.md", "floor 0 Lone.uvtt created (scene x, 2 walls)"),
+        ("Locations/Canon.md", "skipped (a setting's place, with no campaign to keep its scene)"),
+        ("Locations/Missing.md", "floor 0 nope.dd2vtt skipped (no such file)"),
+        ("Locations/Refused.md", "floor 0 Crop.jpg refused (not the campaign's GM)"),
+    ]

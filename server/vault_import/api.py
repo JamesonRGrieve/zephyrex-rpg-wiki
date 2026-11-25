@@ -103,6 +103,11 @@ class Api:
         record: dict[str, Any] = self._call("POST", f"/v1/{resource}", (200, 201), json={resource: fields}).json()[resource]
         return record
 
+    def post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
+        """An ability's route (another product's too, e.g. VTT's /v1/scene/map_location): its answer."""
+        answer: dict[str, Any] = self._call("POST", path, (200, 201), json=body).json()
+        return answer
+
     def plural(self, resource: str) -> str:
         """The name a resource's list answers under (its plural, as the framework names it)."""
         if resource not in self._plurals:

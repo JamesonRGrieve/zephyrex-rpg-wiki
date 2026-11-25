@@ -14,6 +14,7 @@ kind are refused and reported). A value already as the vault says is left alone,
 changes nothing.
 """
 
+import base64
 import fcntl
 import json
 import re
@@ -78,7 +79,7 @@ READ = {
     "entity_type", "kind", "name", "campaign", "setting_wide", "is_private", "tags", "aliases", "status", "era",
     "race", "faction", "location", "relations", "parent_location", "parent", "parent_hook", "depends_on",
     "initial_build", "canonical_sheet",
-    "holder", "quantity", "session_number", "session_date", "maps", "keywords", "voice", "provenance", "source", "image", "picture", "system", "editions", "starting_level", "starting_level_max", "description",
+    "holder", "quantity", "session_number", "session_date", "maps", "keywords", "voice", "provenance", "source", "image", "picture", "system", "editions", "starting_level", "starting_level_max", "map", "map_grid", "description",
     "unnamed_as", "known",
     *PROPERTIES,
     *(one for fields in KIND_FIELDS.values() for one in fields),
@@ -148,6 +149,8 @@ class Report:
     unread: dict[str, list[str]] = field(default_factory=dict)
     # Each campaign the run touched that still isn't playable (scenario_repair.rules.scenario_problems).
     unplayable: dict[str, list[str]] = field(default_factory=dict)
+    # Each place's map, a line a floor: created, updated, would be made, skipped (why) or refused (why).
+    maps: list[tuple[str, str]] = field(default_factory=list)
 
     def text(self, dry_run: bool) -> str:
         made = "would create" if dry_run else "created"
@@ -159,8 +162,14 @@ class Report:
         lines += [f"  refused {path}: {why}" for path, why in self.refused]
         lines += [f"  unresolved in {path}: {', '.join(sorted(set(names)))}" for path, names in sorted(self.unresolved.items())]
         lines += [f"  unread in {path}: {', '.join(keys)}" for path, keys in sorted(self.unread.items())]
+        lines += [f"  map {path}: {what}" for path, what in self.maps]
         lines += [f"  UNPLAYABLE {name}: {'; '.join(problems)}" for name, problems in sorted(self.unplayable.items())]
         return "\n".join(lines)
+
+
+# A place's map (VTT's rpg_scene map_location): a Universal VTT file, or a picture.
+MAP_FILES = (".dd2vtt", ".uvtt")
+MAP_PICTURES = {**PICTURE_TYPES, ".gif": "image/gif"}
 
 
 @dataclass
@@ -1060,6 +1069,7 @@ class Importer:
         if not self.dry_run:
             self._flush_pending()
             self._flush_changes()
+        self._maps(placed)
         try:
             self._settle_provenance()
             self._settle_play_styles()
@@ -1069,6 +1079,84 @@ class Importer:
         if not self.dry_run:
             self._mend_and_validate()
         return self.report
+
+    def _map_entries(self, note: Note) -> list[dict[str, Any]]:
+        """A place note's maps, ground floor first: its `map:` (one file or a list; an entry a file
+        name, or {file, name, grid}; paths read against the note's own folder), else a Universal VTT
+        file beside it with its name. A picture beside it with its name is its picture, never its map
+        (the vaults' are illustrations, not maps drawn to a grid)."""
+        raw = note.meta.get("map")
+        grid = note.meta.get("map_grid")
+        if raw is None:
+            beside = [note.source.with_suffix(suffix) for suffix in MAP_FILES] if note.source is not None else []
+            return [{"file": one.name, "grid": grid} for one in beside if one.is_file()][:1]
+        entries: list[dict[str, Any]] = []
+        for item in raw if isinstance(raw, list) else [raw]:
+            if isinstance(item, str) and item.strip():
+                entries.append({"file": item.strip(), "grid": grid})
+            elif isinstance(item, dict) and _text(item.get("file")):
+                entries.append({"file": _text(item.get("file")), "name": _text(item.get("name")), "grid": item.get("grid", grid)})
+            else:
+                self.report.unread.setdefault(note.path, []).append(f"map: {item!r} (a file name, or {{file, name, grid}})")
+        return entries
+
+    def _maps(self, placed: list[Placed]) -> None:
+        """Each place's maps made into its scenes through VTT's map_location (rpg_scene), a scene a
+        floor (Zephyrex VTT, 2026-11-25, for the operator's "MAPS ARE STILL FUCKING BROKEN"): a
+        Universal VTT file gives walls, doors, lights and grid, with a picture of its name beside it
+        as the art; a plain picture takes its own size at its grid. Reported a line a floor."""
+        mapped = [(one, self._map_entries(one.note)) for one in placed if one.kind == "location"]
+        mapped = [(one, entries) for one, entries in mapped if entries]
+        if not mapped:
+            return
+        if "rpg_scene" not in self.api.extensions():
+            for one, _entries in mapped:
+                self.report.maps.append((one.note.path, "skipped (this back end serves no scenes)"))
+            return
+        for one, entries in mapped:
+            if not one.record.get("campaign_id"):
+                self.report.maps.append((one.note.path, "skipped (a setting's place, with no campaign to keep its scene)"))
+                continue
+            for floor, entry in enumerate(entries):
+                self._map(one, floor, entry)
+
+    def _map(self, one: Placed, floor: int, entry: dict[str, Any]) -> None:
+        where = f"floor {floor} {entry['file']}"
+        assert one.note.source is not None
+        path = one.note.source.parent / str(entry["file"])
+        suffix = path.suffix.lower()
+        if not path.is_file():
+            self.report.maps.append((one.note.path, f"{where} skipped (no such file)"))
+            return
+        if suffix not in MAP_FILES and suffix not in MAP_PICTURES:
+            self.report.maps.append((one.note.path, f"{where} skipped (not a .dd2vtt, .uvtt or picture)"))
+            return
+        if self.dry_run or str(one.record["id"]).startswith("(new"):
+            self.report.maps.append((one.note.path, f"{where} would be made"))
+            return
+        ask: dict[str, Any] = {"location_id": str(one.record["id"]), "floor": floor}
+        if entry.get("name"):
+            ask["name"] = entry["name"]
+        if isinstance(entry.get("grid"), (int, float)) and not isinstance(entry.get("grid"), bool) and entry["grid"] > 0:
+            ask["grid_size"] = entry["grid"]
+        picture = path
+        if suffix in MAP_FILES:
+            try:
+                ask["uvtt"] = json.loads(path.read_text(encoding="utf-8"))
+            except (ValueError, UnicodeDecodeError) as error:
+                self.report.maps.append((one.note.path, f"{where} skipped (not readable: {error})"))
+                return
+            # The art beside it with its name, when there is one; else the file's own.
+            picture = next((path.with_suffix(kind) for kind in MAP_PICTURES if path.with_suffix(kind).is_file()), None)
+        if picture is not None:
+            ask["image_base64"] = base64.b64encode(picture.read_bytes()).decode("ascii")
+            ask["image_name"] = picture.name
+        try:
+            made = self.api.post("/v1/scene/map_location", {"map_location": ask})
+        except ApiError as error:
+            self.report.maps.append((one.note.path, f"{where} refused ({error.detail})"))
+            return
+        self.report.maps.append((one.note.path, f"{where} {'created' if made.get('created') else 'updated'} (scene {made.get('name')}, {made.get('walls', 0)} walls)"))
 
     def _mend_and_validate(self) -> None:
         """Each scenario the run touched mended as scenario_repair mends it (a pointer opening written

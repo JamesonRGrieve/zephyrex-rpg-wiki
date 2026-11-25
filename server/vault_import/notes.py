@@ -26,6 +26,8 @@ class Note:
     problems: list[str] = field(default_factory=list)
     # The same-name image beside the note, if there is one (its full path).
     picture: Optional[Path] = None
+    # The note's own file (its full path): what its map: paths are read against.
+    source: Optional[Path] = None
 
     @property
     def entity_type(self) -> str:
@@ -76,7 +78,7 @@ def read_note(root: Path, path: Path) -> Optional[Note]:
         return note
     if not isinstance(meta, dict) or not meta.get("entity_type"):
         return None
-    return Note(str(path.relative_to(root)), meta, text[found.end():], picture=picture_beside(path))
+    return Note(str(path.relative_to(root)), meta, text[found.end():], picture=picture_beside(path), source=path)
 
 
 def picture_beside(path: Path) -> Optional[Path]:

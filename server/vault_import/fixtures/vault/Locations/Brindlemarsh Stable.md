@@ -1,4 +1,5 @@
 ---
+map: brindlemarsh-stable.0.dd2vtt
 entity_type: location
 location_type: building
 name: Brindlemarsh Stable
