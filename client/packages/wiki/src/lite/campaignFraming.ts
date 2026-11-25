@@ -68,6 +68,8 @@ export async function campaignFramingGet(request: NextRequest, context: Context)
         setting: setting === null ? null : { id: setting.id, name: setting.name, tone: setting.description },
         play_styles: held.styles,
         from_scenario: fromScenario,
+        // As the server's: its game system (zephyrex-vtt's game_systems), which lite doesn't serve.
+        game_system: null,
       },
     });
   } catch (error) {

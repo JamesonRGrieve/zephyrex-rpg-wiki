@@ -459,6 +459,12 @@ class FramingSetting(PlainModel):
     tone: str = Field(..., description="The setting's entry as plain text: its tone and vocabulary")
 
 
+class FramingSystem(PlainModel):
+    id: str
+    slug: str
+    name: str
+
+
 class CampaignFraming(PlainModel):
     campaign_id: str
     name: str
@@ -468,6 +474,9 @@ class CampaignFraming(PlainModel):
     setting: Optional[FramingSetting] = None
     play_styles: list[str]
     from_scenario: bool = Field(..., description="Its own were empty, so these are its scenario's")
+    # Zephyrex RPG, 2026-11-25 (operator: "The decision model prompts are mentioning vox in DnD
+    # campaigns"): the rules the campaign plays by, so the AI offers only that system's speech forms.
+    game_system: Optional[FramingSystem] = Field(None, description="Its game system (zephyrex-vtt's game_systems), else its scenario's; none where none is set or served")
 
 
 class CampaignFramingOne(PlainModel):
@@ -2729,11 +2738,13 @@ def campaign_framing(model_registry: Any, requester_id: str, campaign_id: str) -
     description, framing, gm, styles = _framing_of(model_registry, requester_id, campaign)
     from_scenario = False
     scenario_id = getattr(campaign, "scenario_id", None)
-    if not (description or framing or gm) and scenario_id:
+    scenario: Any = None
+    if scenario_id and (not (description or framing or gm) or not getattr(campaign, "game_system_id", None)):
         try:
             scenario = campaigns.get(id=str(scenario_id))
         except HTTPException:
             scenario = None
+    if not (description or framing or gm) and scenario_id:
         if scenario is not None:
             held = _framing_of(model_registry, requester_id, scenario)
             if any(held[:3]):
@@ -2758,7 +2769,23 @@ def campaign_framing(model_registry: Any, requester_id: str, campaign_id: str) -
         setting=setting,
         play_styles=styles,
         from_scenario=from_scenario,
+        game_system=_game_system_of(model_registry, requester_id, getattr(campaign, "game_system_id", None) or getattr(scenario, "game_system_id", None)),
     )
+
+
+def _game_system_of(model_registry: Any, requester_id: str, game_system_id: Optional[str]) -> Optional[FramingSystem]:
+    """A game system's id, slug and name, read through the framework's record lookup (game_systems
+    are zephyrex-vtt's rpg_systems': never its internals); none when there is none, it isn't
+    served, or the caller can't see it."""
+    if not game_system_id:
+        return None
+    from zephyrex.lib.RecordTarget import record_manager
+
+    try:
+        row = record_manager(model_registry, "game_system")(requester_id=requester_id, model_registry=model_registry).get(id=str(game_system_id))
+    except HTTPException:
+        return None
+    return FramingSystem(id=str(row.id), slug=str(getattr(row, "slug", "") or ""), name=str(getattr(row, "name", "") or ""))
 
 
 FILL_FIELDS = ("summary", "entry", "personality", "motive", "voice", "tts_voice", "picture")

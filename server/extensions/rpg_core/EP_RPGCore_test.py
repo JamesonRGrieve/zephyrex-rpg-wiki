@@ -1339,6 +1339,8 @@ class TestCampaignFraming:
             "setting": {"id": setting["id"], "name": "Framed Setting", "tone": "Grim and gothic."},
             "play_styles": ["Exploration"],
             "from_scenario": False,
+            # The wiki alone serves no game systems (zephyrex-vtt's).
+            "game_system": None,
         }
         # A playthrough with nothing of its own takes its scenario's.
         bare = _create(server, person, "campaign", name="Run, bare", setting_id=setting["id"], scenario_id=scenario["id"])
@@ -1352,6 +1354,28 @@ class TestCampaignFraming:
 
         monkeypatch.setattr(target, "can_edit", lambda *_args: False)
         assert framing(registry, str(person.id), scenario["id"])["campaign_framing"]["gm_notes"] == ""
+
+        # A served game system (zephyrex-vtt's, through the framework's record lookup) reads as
+        # {id, slug, name} (operator, 2026-11-25: "The decision model prompts are mentioning vox in
+        # DnD campaigns"); none set, none served or not visible is none.
+        from types import SimpleNamespace
+
+        from fastapi import HTTPException
+        from zephyrex.extensions.rpg_core import BLL_RPGCore  # type: ignore[import-not-found]
+
+        class Systems:
+            def __init__(self, requester_id: str, model_registry: Any) -> None:
+                pass
+
+            def get(self, id: str) -> Any:
+                if id != "gs1":
+                    raise HTTPException(status_code=404, detail="GameSystemModel not found")
+                return SimpleNamespace(id=id, slug="srd-5e", name="D&D 5e (SRD)")
+
+        monkeypatch.setattr(target, "record_manager", lambda _registry, kind: Systems)
+        assert BLL_RPGCore._game_system_of(registry, str(person.id), "gs1") == BLL_RPGCore.FramingSystem(id="gs1", slug="srd-5e", name="D&D 5e (SRD)")
+        assert BLL_RPGCore._game_system_of(registry, str(person.id), "gone") is None
+        assert BLL_RPGCore._game_system_of(registry, str(person.id), None) is None
 
 
 class TestDeletingACampaign:
