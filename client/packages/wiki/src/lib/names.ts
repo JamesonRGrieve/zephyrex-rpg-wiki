@@ -150,16 +150,38 @@ export function unnamedAs(value: unknown): string | null {
   return text === '' ? null : text;
 }
 
+// The words that end a Role's head noun ("Heir to Ashgrove Manor", "Captain of the Guard").
+const ROLE_LINKS = new Set(['to', 'of', 'at', 'from']);
+
+/** Words as common nouns: each part just capitalised ("Heir", "Half-Orc") lowercased, a part with
+ * other capitals ("AI", "McAllister") kept as written. */
+function common(text: string): string {
+  const part = (one: string): string => ([...one.slice(1)].some((character) => character !== character.toLowerCase()) ? one : one.toLowerCase());
+  return text
+    .split(/\s+/)
+    .filter((word) => word !== '')
+    .map((word) => word.split('-').map(part).join('-'))
+    .join(' ');
+}
+
+/** A Role's head noun phrase: its words before the first to, of, at or from ("Heir to Ashgrove
+ * Manor" → "heir"), as common nouns. */
+function roleHead(role: string | null | undefined): string {
+  const words = (role ?? '').split(/\s+/).filter((word) => word !== '');
+  const end = words.findIndex((word, index) => index > 0 && ROLE_LINKS.has(word.toLowerCase()));
+  return common((end === -1 ? words : words.slice(0, end)).join(' '));
+}
+
 /** A person with no unnamed_as of their own, as a party that doesn't know their name sees them
- * (contract/unnamed-as-cases.json): their species, a short Role or else their gender, with a or an;
- * "a stranger" when nothing is known. */
+ * (contract/unnamed-as-cases.json): their species, their Role's head noun (a short one) or else
+ * their gender, with a or an; "a stranger" when nothing is known. */
 export function genericUnnamed(species?: string | null, role?: string | null, gender?: string | null): string {
   const words: string[] = [];
-  const kind = (species ?? '').trim().toLowerCase();
+  const kind = common((species ?? '').trim());
   if (kind !== '') words.push(kind);
-  const job = (role ?? '').split(/\s+/).filter((word) => word !== '').join(' ').toLowerCase();
+  const job = roleHead(role);
   const noun = job !== '' && job.split(' ').length <= ROLE_WORDS && job.length <= ROLE_CHARACTERS ? job : GENDER_NOUNS[(gender ?? '').trim().toLowerCase()];
   if (noun) words.push(noun);
   const phrase = words.join(' ') || 'stranger';
-  return `${'aeiou'.includes(phrase.charAt(0)) ? 'an' : 'a'} ${phrase}`;
+  return `${'aeiou'.includes(phrase.charAt(0).toLowerCase()) ? 'an' : 'a'} ${phrase}`;
 }

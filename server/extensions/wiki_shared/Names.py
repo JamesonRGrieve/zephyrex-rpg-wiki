@@ -154,6 +154,8 @@ MAX_UNNAMED_AS = LIMITS["unnamed_as_characters"]
 SPECIES_KINDS = ("species", "race", "creature_type")
 # A Role short enough to name someone by (contract/unnamed-as-cases.json).
 ROLE_WORDS, ROLE_CHARACTERS = 4, 40
+# The words that end a Role's head noun ("Heir to Ashgrove Manor", "Captain of the Guard").
+ROLE_LINKS = frozenset(("to", "of", "at", "from"))
 _GENDER_NOUNS = {
     **dict.fromkeys(("female", "woman", "f", "girl", "lady"), "woman"),
     **dict.fromkeys(("male", "man", "m", "boy", "gentleman"), "man"),
@@ -176,17 +178,38 @@ def unnamed_as_text(value: Any) -> Any:
     return text or None
 
 
+def _common(text: str) -> str:
+    """Words as common nouns: each part just capitalised ("Heir", "Half-Orc") lowercased, a part
+    with other capitals ("AI", "McAllister") kept as written."""
+
+    def part(one: str) -> str:
+        return one if any(character.isupper() for character in one[1:]) else one.lower()
+
+    return " ".join("-".join(part(one) for one in word.split("-")) for word in text.split())
+
+
+def _role_head(role: Any) -> str:
+    """A Role's head noun phrase: its words before the first to, of, at or from ("Heir to Ashgrove
+    Manor" → "heir"), as common nouns."""
+    words = str(role or "").split()
+    for index, word in enumerate(words):
+        if index and word.casefold() in ROLE_LINKS:
+            words = words[:index]
+            break
+    return _common(" ".join(words))
+
+
 def generic_unnamed(species: Any = None, role: Any = None, gender: Any = None) -> str:
     """A person with no unnamed_as of their own, as a party that doesn't know their name sees them
-    (contract/unnamed-as-cases.json): their species, a short Role or else their gender, with a or an;
-    "a stranger" when nothing is known."""
+    (contract/unnamed-as-cases.json): their species, their Role's head noun (a short one) or else
+    their gender, with a or an; "a stranger" when nothing is known."""
     words: list[str] = []
-    kind = str(species or "").strip().casefold()
+    kind = _common(str(species or "").strip())
     if kind:
         words.append(kind)
-    job = " ".join(str(role or "").split()).casefold()
+    job = _role_head(role)
     noun = job if job and len(job.split()) <= ROLE_WORDS and len(job) <= ROLE_CHARACTERS else _GENDER_NOUNS.get(str(gender or "").strip().casefold())
     if noun:
         words.append(noun)
     phrase = " ".join(words) or "stranger"
-    return f"{'an' if phrase[:1] in 'aeiou' else 'a'} {phrase}"
+    return f"{'an' if phrase[:1].lower() in 'aeiou' else 'a'} {phrase}"
