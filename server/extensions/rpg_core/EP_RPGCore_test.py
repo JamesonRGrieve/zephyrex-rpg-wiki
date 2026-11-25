@@ -2197,3 +2197,25 @@ class TestUnnamedAndKnownNames:
         assert server.get(f"/v1/campaign/{world['id']}/known_names", headers=_headers(other)).status_code in (403, 404)
         empty = _create(server, person, "campaign", name="No Party")
         assert server.get(f"/v1/campaign/{empty['id']}/known_names", headers=_headers(person)).json()["known_names"] == {"party": [], "by_pc": {}}
+
+    def test_a_scenario_says_whom_the_party_knows_from_the_start(self, server: TestClient, person: Any) -> None:
+        """Operator, 2026-11-25, of a scenario's patron: "Presumably he hired them so they should know
+        his name. This is campaign context that should be in the scenario." known_to_party is known
+        to every PC: copied on start, and read through the scenario by name for an older copy."""
+        scenario = _create(server, person, "campaign", name="Haunted Manor Test", is_scenario=True)
+        _create(server, person, "person", name="Bastian", kind="npc", campaign_id=scenario["id"], known_to_party=True)
+        _create(server, person, "person", name="Hester", kind="npc", campaign_id=scenario["id"])
+        _create(server, person, "person", name="Seraph", kind="pc", campaign_id=scenario["id"])
+        start = _start(server, person, scenario["id"])
+        assert start["state"] == "done", start
+        run = start["campaign_id"]
+        people = {one["name"]: one for one in _rows(server.get(f"/v1/person?campaign_id={run}", headers=_headers(person)).json())}
+        assert people["Bastian"]["known_to_party"] is True
+        names = server.get(f"/v1/campaign/{run}/known_names", headers=_headers(person)).json()["known_names"]
+        assert people["Bastian"]["id"] in names["party"] and people["Hester"]["id"] not in names["party"]
+        assert names["by_pc"][people["Seraph"]["id"]] == sorted([people["Seraph"]["id"], people["Bastian"]["id"]])
+        # A playthrough copied before the mark (no known_to_party on its copy) reads it from its scenario.
+        older = _create(server, person, "campaign", name="Older Run", scenario_id=scenario["id"])
+        copy = _create(server, person, "person", name="Bastian", kind="npc", campaign_id=older["id"])
+        pc = _create(server, person, "person", name="Seraph", kind="pc", campaign_id=older["id"])
+        assert server.get(f"/v1/campaign/{older['id']}/known_names", headers=_headers(person)).json()["known_names"]["party"] == sorted([copy["id"], pc["id"]])

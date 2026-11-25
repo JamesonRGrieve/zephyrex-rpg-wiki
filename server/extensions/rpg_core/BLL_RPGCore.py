@@ -688,6 +688,8 @@ class RPG_PersonModel(BaseModel):
     tts_voice: Optional[str] = Field(None, description="The TTS model's voice id for their lines (alloy, onyx…); none is the default")
     # Operator, 2026-11-25: "NPCs should have generic descriptions unless the player knows their name".
     unnamed_as: Optional[str] = Field(None, description="How they read to a party that doesn't know their name (\"the hooded woman\"); none: built from species, Role and gender")
+    # Operator, 2026-11-25, of a scenario's patron: "Presumably he hired them so they should know his name."
+    known_to_party: Optional[bool] = Field(None, description="The party knows them by name from the start (a scenario's patron): known_names counts them for every PC")
     # The world tick (operator, 2026-11-21): the GM side pilots each person by these as time advances.
     routine: Optional[str] = Field(None, description="Their schedule: slots {from, to, days, location_id, activity}, as JSON text (GM-facing)")
     motivations: Optional[str] = Field(None, description="Their goals, fears and current intent, a list as JSON text (GM-facing)")
@@ -720,6 +722,7 @@ class RPG_PersonModel(BaseModel):
         _tts_voice = field_validator("tts_voice")(tts_voice_text)
         unnamed_as: Optional[str] = None
         _unnamed_as = field_validator("unnamed_as")(unnamed_as_text)
+        known_to_party: Optional[bool] = None
         routine: Optional[Any] = None
         _routine = field_validator("routine")(routine_text)
         motivations: Optional[Any] = None
@@ -761,6 +764,7 @@ class RPG_PersonModel(BaseModel):
         # "" clears it back to the generic one (none leaves it as it is).
         unnamed_as: Optional[str] = None
         _unnamed_as = field_validator("unnamed_as")(lambda value: value if value is None else (unnamed_as_text(value) or ""))
+        known_to_party: Optional[bool] = None
         routine: Optional[Any] = None
         _routine = field_validator("routine")(routine_text)
         motivations: Optional[Any] = None
@@ -2387,12 +2391,15 @@ def learn_fact(
 # Whose names the party knows (operator, 2026-11-25: "NPCs should have generic descriptions unless
 # the player knows their name which gets replaced as names are learned"). Knowing of a person (a
 # known fact with no text, learn_fact's default) is knowing their name: it already opens their page,
-# named, to that PC. A fact with text alone ("the hooded woman sells poison") is not.
+# named, to that PC. A fact with text alone ("the hooded woman sells poison") is not. A person marked
+# known_to_party (a scenario's patron: "Presumably he hired them so they should know his name") is
+# known to every PC, through a playthrough's scenario too (a copy made before the mark was copied
+# reads it from its scenario's person of the same name).
 
 
 class KnownNames(PlainModel):
-    party: list[str] = Field(..., description="Every person some PC of the campaign knows by name, the PCs among them")
-    by_pc: dict[str, list[str]] = Field(..., description="Each PC the caller may see: the persons they know by name, themselves and the party among them")
+    party: list[str] = Field(..., description="Every person some PC of the campaign knows by name, the PCs and those known to the party among them")
+    by_pc: dict[str, list[str]] = Field(..., description="Each PC the caller may see: the persons they know by name, themselves, the party and those known to the party among them")
 
 
 class KnownNamesOne(PlainModel):
@@ -2414,13 +2421,30 @@ def known_names(model_registry: Any, requester_id: str, campaign_id: str) -> Kno
     if not pcs:
         return KnownNames(party=[], by_pc={})
     facts = _manager(model_registry, root, KnownFactManager)
-    knows: dict[str, set[str]] = {one: set(pcs) for one in pcs}
+    everyone = set(pcs) | _known_to_party(model_registry, campaign_id)
+    knows: dict[str, set[str]] = {one: set(everyone) for one in pcs}
     for row in _live(facts.list(filters=[FieldComparison(facts.Model, "person_id", "in", pcs)])):
         if row.target_entity_type == "person" and not (row.text or None) and str(row.person_id) in knows:
             knows[str(row.person_id)].add(str(row.target_entity_id))
     seen = _manager(model_registry, requester_id, PersonManager)
     visible = {str(row.id) for row in seen.list(filters=[FieldComparison(seen.Model, "id", "in", pcs)]) or []}
     return KnownNames(party=sorted(set().union(*knows.values())), by_pc={one: sorted(knows[one]) for one in pcs if one in visible})
+
+
+def _known_to_party(model_registry: Any, campaign_id: str) -> set[str]:
+    """The campaign's persons the party knows by name from the start: marked known_to_party, or (a
+    playthrough copied before the mark was) of the same name as one so marked in its scenario."""
+    root = env("ROOT_ID")
+    people = [row for row in _live(_manager(model_registry, root, PersonManager).list(campaign_id=campaign_id)) if not getattr(row, "is_template", None)]
+    known = {str(row.id) for row in people if getattr(row, "known_to_party", None)}
+    try:
+        scenario_id = getattr(_manager(model_registry, root, CampaignManager).get(id=campaign_id), "scenario_id", None)
+    except HTTPException:
+        scenario_id = None
+    if scenario_id:
+        marked = {str(row.name) for row in _live(_manager(model_registry, root, PersonManager).list(campaign_id=str(scenario_id))) if getattr(row, "known_to_party", None)}
+        known |= {str(row.id) for row in people if str(row.name) in marked}
+    return known
 
 
 # GET /v1/campaign/{id}/known_names, attached as lore_search is (its model comes after the manager's).

@@ -122,6 +122,8 @@ model Person {
   ttsVoice    String?
   /// How they read to a party that doesn't know their name (2026-11-25: "the hooded woman"); null: built from species, Role and gender.
   unnamedAs   String?
+  /// Known to the party by name from the start (2026-11-25: a scenario's patron); null is no.
+  knownToParty Boolean?
   /// The world tick: their schedule and motivations (JSON text, GM-facing).
   routine     String?
   motivations String?

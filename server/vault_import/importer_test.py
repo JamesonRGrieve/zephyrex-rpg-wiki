@@ -88,6 +88,8 @@ def test_the_vault_imports_with_its_links_and_a_second_run_changes_nothing(serve
     assert (holst["unnamed_as"], synced["Holst"]["unnamed_as"], synced["Dingus"]["unnamed_as"]) == ("a broad man smelling of horses",) * 2 + ("a stranger",)
     # The note's gender: on the record itself, for pronouns (Dingus's note gives none).
     assert (holst["gender"], synced["Holst"]["gender"], synced["Dingus"]["gender"]) == ("male", "male", None)
+    # The note's known: party, the party knows him by name from the start.
+    assert (holst["known_to_party"], dingus.get("known_to_party")) == (True, None)
     assert holst["location_id"] == stable["id"]
     assert (json.loads(holst["keywords"]), json.loads(holst["voice"])["first_message"]) == (["stablemaster"], "Stalls are full.")
     properties = {row["key"]: row for row in api.properties("person", holst["id"])}

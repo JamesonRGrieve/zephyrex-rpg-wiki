@@ -11,6 +11,7 @@ gender: male
 age: 50s
 role: Stablemaster
 unnamed_as: a broad man smelling of horses
+known: party
 faction: "[[Circle Compact]]"
 status: alive
 location: "[[Brindlemarsh Stable]]"

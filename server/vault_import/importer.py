@@ -79,7 +79,7 @@ READ = {
     "race", "faction", "location", "relations", "parent_location", "parent", "parent_hook", "depends_on",
     "initial_build", "canonical_sheet",
     "holder", "quantity", "session_number", "session_date", "maps", "keywords", "voice", "provenance", "source", "image", "picture", "system", "editions", "description",
-    "unnamed_as",
+    "unnamed_as", "known",
     *PROPERTIES,
     *(one for fields in KIND_FIELDS.values() for one in fields),
 }
@@ -775,6 +775,12 @@ class Importer:
             # Their gender on the record itself, beside the Gender property (operator, 2026-11-25:
             # "It's misgendering characters … Need pronoun enforcement").
             fields["gender"] = _text(meta.get("gender"))
+        if kind == "person" and _text(meta.get("known")):
+            # Known to the party by name from the start (a scenario's patron; operator, 2026-11-25).
+            if _text(meta.get("known")) == "party":
+                fields["known_to_party"] = True
+            else:
+                self.report.unread.setdefault(placed.note.path, []).append(f"known: {_text(meta.get('known'))} (only party is read)")
         if kind == "person" and _text(meta.get("unnamed_as")):
             # How they read to a party that doesn't know their name (operator, 2026-11-25).
             try:
