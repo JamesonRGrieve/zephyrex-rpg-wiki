@@ -78,7 +78,7 @@ READ = {
     "entity_type", "kind", "name", "campaign", "setting_wide", "is_private", "tags", "aliases", "status", "era",
     "race", "faction", "location", "relations", "parent_location", "parent", "parent_hook", "depends_on",
     "initial_build", "canonical_sheet",
-    "holder", "quantity", "session_number", "session_date", "maps", "keywords", "voice", "provenance", "source", "image", "picture", "system", "editions", "starting_level", "description",
+    "holder", "quantity", "session_number", "session_date", "maps", "keywords", "voice", "provenance", "source", "image", "picture", "system", "editions", "starting_level", "starting_level_max", "description",
     "unnamed_as", "known",
     *PROPERTIES,
     *(one for fields in KIND_FIELDS.values() for one in fields),
@@ -361,14 +361,24 @@ class Importer:
             editions = [str(one).strip() for one in _list(note.meta.get("editions")) if _text(one)]
             if editions:
                 framing["editions"] = editions
-            # The level its characters start at (VTT's campaigns.starting_level; Zephyrex RPG,
-            # 2026-11-25: a fresh import should be playable as imported).
-            level = note.meta.get("starting_level")
-            if level is not None:
+            # The level its characters start at, and the highest a party may choose (VTT's
+            # campaigns.starting_level and starting_level_max; Zephyrex RPG, 2026-11-25: a fresh
+            # import should be playable as imported; the operator: "selectable 1-4, not constant 4").
+            levels: dict[str, int] = {}
+            for key in ("starting_level", "starting_level_max"):
+                level = note.meta.get(key)
+                if level is None:
+                    continue
                 if isinstance(level, int) and not isinstance(level, bool) and level >= 1:
-                    framing["starting_level"] = level
+                    levels[key] = level
                 else:
-                    self.report.unread.setdefault(note.path, []).append(f"starting_level: {level} (a whole number from 1)")
+                    self.report.unread.setdefault(note.path, []).append(f"{key}: {level} (a whole number from 1)")
+            if len(levels) == 2 and levels["starting_level"] > levels["starting_level_max"]:
+                self.report.unread.setdefault(note.path, []).append(
+                    f"starting_level: {levels['starting_level']} above starting_level_max: {levels['starting_level_max']} (neither set)"
+                )
+                levels = {}
+            framing.update(levels)
             framing["path"] = note.path
             if "provenance" not in note.meta and "source" not in note.meta:
                 continue
@@ -488,14 +498,20 @@ class Importer:
                 editions = [(systems or {})[slug] for slug in framing.get("editions", []) if slug in (systems or {})]
                 if editions:
                     self._property("campaign", str(row["id"]), "Editions", json.dumps(editions))
-            if framing.get("starting_level"):
-                # VTT's field on campaigns: set where the back end keeps it, reported where it doesn't.
-                if "starting_level" not in row:
-                    self.report.skipped.append((framing["path"], "its starting_level: this back end keeps no starting level"))
-                elif row.get("starting_level") != framing["starting_level"]:
-                    changes["starting_level"] = framing["starting_level"]
+            for key, what in (("starting_level", "starting level"), ("starting_level_max", "starting level cap")):
+                if framing.get(key):
+                    # VTT's fields on campaigns: set where the back end keeps them, reported where it doesn't.
+                    if key not in row:
+                        self.report.skipped.append((framing["path"], f"its {key}: this back end keeps no {what}"))
+                    elif row.get(key) != framing[key]:
+                        changes[key] = framing[key]
             if changes:
-                self._campaign_rows[name] = self.api.update("campaign", str(row["id"]), **changes)
+                try:
+                    self._campaign_rows[name] = self.api.update("campaign", str(row["id"]), **changes)
+                except ApiError as error:
+                    # The back end's own limits (VTT's levels 1..30) refuse that note's changes, not the run.
+                    self.report.refused.append((framing["path"], str(error)))
+                    continue
                 label = f"campaign {name}"
                 if label not in self.report.created and label not in self.report.updated:
                     self.report.updated.append(label)

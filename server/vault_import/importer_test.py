@@ -364,12 +364,57 @@ def test_a_framing_notes_starting_level_is_set_where_the_back_end_keeps_it() -> 
 
     back = Back()
     importer = Importer(back)  # type: ignore[arg-type]
-    importer._campaign_rows = {"Kept": {"id": "c1", "starting_level": None}, "Same": {"id": "c3", "starting_level": 4}, "Bare": {"id": "c2"}}
+    importer._campaign_rows = {
+        "Kept": {"id": "c1", "starting_level": None, "starting_level_max": None},
+        "Same": {"id": "c3", "starting_level": 4, "starting_level_max": 4},
+        "Bare": {"id": "c2"},
+    }
     importer._framing = {
-        "Kept": {"starting_level": 4, "path": "kept.md"},
-        "Same": {"starting_level": 4, "path": "same.md"},
-        "Bare": {"starting_level": 4, "path": "bare.md"},
+        "Kept": {"starting_level": 1, "starting_level_max": 4, "path": "kept.md"},
+        "Same": {"starting_level": 4, "starting_level_max": 4, "path": "same.md"},
+        "Bare": {"starting_level_max": 4, "path": "bare.md"},
     }
     importer._settle_framing()
-    assert back.updates == [("campaign", "c1", {"starting_level": 4})]
-    assert importer.report.skipped == [("bare.md", "its starting_level: this back end keeps no starting level")]
+    assert back.updates == [("campaign", "c1", {"starting_level": 1, "starting_level_max": 4})]
+    assert importer.report.skipped == [("bare.md", "its starting_level_max: this back end keeps no starting level cap")]
+
+
+def test_a_framing_notes_levels_are_read_and_checked(tmp_path: Path) -> None:
+    """The operator, 2026-11-25: one-shots' starting level "selectable 1-4, not constant 4". A
+    framing note's starting_level_max is read beside starting_level; a level above its cap, or
+    a value that isn't a whole number from 1, is unread and nothing of it is set; a refused change
+    is that note's, not the run's."""
+    from vault_import.api import ApiError
+
+    vault = tmp_path / "vault"
+    (vault / "Lore").mkdir(parents=True)
+    note = "---\nentity_type: journal\nkind: campaign_framing\nname: {name} Framing\ncampaign: {name}\n{extra}\n---\nText.\n"
+    (vault / "Lore" / "Capped.md").write_text(note.format(name="Capped", extra="starting_level_max: 4"), encoding="utf-8")
+    (vault / "Lore" / "Upside.md").write_text(note.format(name="Upside", extra="starting_level: 5\nstarting_level_max: 4"), encoding="utf-8")
+    (vault / "Lore" / "Words.md").write_text(note.format(name="Words", extra="starting_level_max: four"), encoding="utf-8")
+
+    class Back:
+        def __init__(self) -> None:
+            self.updates: list[dict[str, Any]] = []
+
+        def extensions(self) -> set[str]:
+            return set()
+
+        def update(self, resource: str, record_id: str, **fields: Any) -> dict[str, Any]:
+            if fields.get("starting_level_max") == 99:
+                raise ApiError(422, "PUT", f"/v1/campaign/{record_id}", "starting_level_max is 1 to 30")
+            self.updates.append(fields)
+            return {"id": record_id, **fields}
+
+    importer = Importer(Back())  # type: ignore[arg-type]
+    for one in read_vault(vault):
+        importer._gather_provenance([one])
+    assert {name: {k: v for k, v in framing.items() if k != "path"} for name, framing in importer._framing.items()} == {"Capped": {"starting_level_max": 4}, "Upside": {}, "Words": {}}
+    assert importer.report.unread == {
+        "Lore/Upside.md": ["starting_level: 5 above starting_level_max: 4 (neither set)"],
+        "Lore/Words.md": ["starting_level_max: four (a whole number from 1)"],
+    }
+    importer._campaign_rows = {"Capped": {"id": "c1", "starting_level_max": None}}
+    importer._framing = {"Capped": {"starting_level_max": 99, "path": "Lore/Capped.md"}}
+    importer._settle_framing()
+    assert importer.report.refused == [("Lore/Capped.md", "PUT /v1/campaign/c1: 422 starting_level_max is 1 to 30")]
