@@ -54,6 +54,8 @@ import {
   worlds,
 } from '../features/data/records';
 import { useIsGm, useViewer, type Viewer, ViewerProvider } from '../features/viewer';
+import { ShownAsProvider, useShownAs } from '../features/shownAs';
+import { entryWithoutName, type Naming, withoutName } from '../lib/shownAs';
 import { type KnownFactLine, KnownFacts } from '../components/world/KnownFacts';
 import { GM_ONLY_PROPERTY } from '../contract';
 import { currentAttitude } from '../lib/dispositions';
@@ -340,11 +342,12 @@ function Standing({ id }: { id: string }): ReactElement | null {
 /** The record's picture by link, through its own resource. */
 function Picture({ kind, id }: { kind: EntityKind; id: string }): ReactElement {
   const readOnly = !useIsGm();
+  const shownAs = useShownAs();
   switch (kind) {
     case 'location':
       return <PictureOf resource={places} id={id} readOnly={readOnly} />;
     case 'person':
-      return <PictureOf resource={people} id={id} readOnly={readOnly} />;
+      return <PictureOf resource={people} id={id} readOnly={readOnly} name={shownAs ?? undefined} />;
     case 'faction':
       return <PictureOf resource={factions} id={id} readOnly={readOnly} />;
     case 'item':
@@ -384,7 +387,9 @@ function Posts({ type, id }: { type: EntityKind; id: string }): ReactElement {
 /** What the player characters know about this record (rpg_core 020): for the GM, who knows what, a
  * fact added for one of the campaign's characters and any removed; for a player, what their own
  * character knows (with no text, only that they know of it, which opened the record to them). */
-function Known({ world, kind, id }: { world: string; kind: EntityKind; id: string }): ReactElement | null {
+function Known({ world, kind, id, naming = null }: { world: string; kind: EntityKind; id: string; naming?: Naming | null }): ReactElement | null {
+  // A fact's text keeps the name of a person shown as unnamed out too.
+  const said = (text: string | null): string | null => (text === null || naming === null ? text : withoutName(text, naming));
   const viewer = useViewer();
   const personId = viewer === 'gm' ? null : viewer.personId;
   const facts = knownFacts.useList(personId === null ? { target_entity_id: id } : { person_id: personId, target_entity_id: id });
@@ -395,12 +400,12 @@ function Known({ world, kind, id }: { world: string; kind: EntityKind; id: strin
   const inCampaign = settingOf(world) === null;
   const characters = people.useList({ campaign_id: world, kind: 'pc' }, personId === null && inCampaign);
   if (personId !== null) {
-    const learned = facts.data?.filter((row) => row.text !== null).map((row): KnownFactLine => ({ id: row.id, who: null, text: row.text }));
+    const learned = facts.data?.filter((row) => row.text !== null).map((row): KnownFactLine => ({ id: row.id, who: null, text: said(row.text) }));
     if (learned !== undefined && learned.length === 0) return null;
     return <KnownFacts title={`What ${self.data?.name ?? 'your character'} knows`} lines={learned} error={facts.error} onRetry={() => facts.mutate()} />;
   }
   if (!inCampaign) return null;
-  const lines = facts.data?.map((row): KnownFactLine => ({ id: row.id, who: named.data?.get(row.person_id)?.name ?? 'Someone', text: row.text }));
+  const lines = facts.data?.map((row): KnownFactLine => ({ id: row.id, who: named.data?.get(row.person_id)?.name ?? 'Someone', text: said(row.text) }));
   return (
     <KnownFacts
       title='Who knows'
@@ -458,18 +463,25 @@ function Record({
   // A character who knows of it (a known fact, rpg_core 020) may read a record kept to the GM.
   const known = knownFacts.useList(viewer === 'gm' ? {} : { person_id: viewer.personId, target_entity_id: id }, viewer !== 'gm' && secrecy.data?.get(id)?.gm_only === true);
   const unlocked = (known.data ?? []).length > 0;
+  // A person the reader can't name (features/shownAs): titled by their description, every word of
+  // their names kept out of what the page shows (lib/shownAs).
+  const shownAs = useShownAs();
+  const naming: Naming | null = kind === 'person' && shownAs !== null && record !== undefined ? { names: [record.name, ...storedNames(record.aliases ?? null)], shownAs } : null;
+  const title = kind === 'person' && shownAs !== null ? shownAs : record?.name;
   if (!gm && (kind === 'hook' || (secrecy.data?.get(id)?.gm_only === true && !unlocked))) {
     return (
       <>
-        <PageHeader title={kind === 'hook' ? 'Kept to the GM' : (record?.name ?? 'Kept to the GM')} />
+        <PageHeader title={kind === 'hook' ? 'Kept to the GM' : (title ?? 'Kept to the GM')} />
         <p className='text-sm text-muted-foreground'>This is the GM&rsquo;s, not something your character knows.</p>
       </>
     );
   }
-  const entry = gm || record === undefined ? record?.entry : publicEntry(record.entry);
+  const shown = gm || record === undefined ? record?.entry : publicEntry(record.entry);
+  const entry = naming === null || shown === undefined ? shown : entryWithoutName(shown, naming);
+  const description = record === undefined ? undefined : naming === null ? record.description : withoutName(record.description ?? '', naming);
   return (
     <>
-      <PageHeader title={record?.name ?? 'Loading'} />
+      <PageHeader title={title ?? 'Loading'} />
       <Link href={kindPath(base, world, kind)} className='text-sm underline-offset-4 hover:underline'>
         {`All ${words.plural}`}
       </Link>
@@ -480,12 +492,12 @@ function Record({
           {record.is_template === true && (
             <p className='rounded-md border px-3 py-2 text-sm'>A template: copied into campaigns, never one of a campaign&rsquo;s facts.</p>
           )}
-          <Names aliases={storedNames(record.aliases ?? null)} keywords={storedNames(record.keywords ?? null)} />
+          {naming === null && <Names aliases={storedNames(record.aliases ?? null)} keywords={storedNames(record.keywords ?? null)} />}
           <Picture kind={kind} id={id} />
           <Origin kind={kind} id={id} />
-          <EntityPage kind={record.kind} entry={entry ?? null} description={gm || record.entry === null ? record.description : null} where={where} />
+          <EntityPage kind={record.kind} entry={entry ?? null} description={gm || record.entry === null ? (description ?? null) : null} where={where} />
           {gm && extra}
-          {kind !== 'hook' && <Known world={world} kind={kind} id={id} />}
+          {kind !== 'hook' && <Known world={world} kind={kind} id={id} naming={naming} />}
           {can.properties && <Properties type={kind} id={id} />}
           {can.taxonomy && <Classification world={world} type={kind} id={id} />}
           {can.relations && (kind === 'person' || kind === 'faction') && <Relations world={world} type={kind} id={id} />}
@@ -689,11 +701,26 @@ const PAGES = { location: PlacePage, person: PersonPage, faction: FactionPage, i
 /**
  * A record's page. `viewer` (default 'gm') is who reads it: rpg-ai's play drawer passes
  * `{ personId }` for a player's seat, and the page then shows only what a player may (features/viewer).
+ * `shownAs`, for a person the reader doesn't know by name (operator, 2026-11-25: "Their character
+ * page should still work"), is what the page calls them (their unnamed_as): it titles the page and
+ * stands in for their name and aliases wherever the page shows them (features/shownAs).
  */
-export function RecordPage({ viewer = 'gm', ...params }: { world: string; kind: string; id: string; viewer?: Viewer }): ReactElement {
+export function RecordPage({
+  viewer = 'gm',
+  shownAs,
+  ...params
+}: {
+  world: string;
+  kind: string;
+  id: string;
+  viewer?: Viewer;
+  shownAs?: string;
+}): ReactElement {
   return (
     <ViewerProvider viewer={viewer}>
-      <RecordPageBody {...params} />
+      <ShownAsProvider shownAs={shownAs?.trim() ? shownAs.trim() : null}>
+        <RecordPageBody {...params} />
+      </ShownAsProvider>
     </ViewerProvider>
   );
 }

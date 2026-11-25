@@ -67,6 +67,28 @@ export const PlayerView: Story = {
   },
 };
 
+/** A person the reader doesn't know by name (rpg-ai opens it with their unnamed_as; operator,
+ * 2026-11-25: "Their character page should still work"): titled by the description, their name
+ * and aliases kept out of the entry, the picture and what their character learned. */
+export const ShownAsUnnamed: Story = {
+  args: { viewer: { personId: 'person-2' }, shownAs: 'a woman in a grey hood' },
+  parameters: {
+    msw: {
+      handlers: wikiHandlers({ properties: { 'person-1': [{ key: 'Role', value: 'Innkeeper' }] } }),
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole('heading', { level: 1, name: 'a woman in a grey hood' })).toBeInTheDocument();
+    await expect(await canvas.findByText('Keeps the Lantern House.')).toBeInTheDocument();
+    await expect(await canvas.findByText('Innkeeper')).toBeInTheDocument();
+    // What their character learned, with her name kept out.
+    await expect(await canvas.findByText('… keeps the lamp oil in the cellar.')).toBeInTheDocument();
+    await expect(canvas.queryByRole('heading', { level: 1, name: 'Mara Quill' })).not.toBeInTheDocument();
+    await expect(canvas.queryByText(/Mara|Quill/)).not.toBeInTheDocument();
+  },
+};
+
 /** The same page for the GM: the GM section, private properties and the lorebook keys show. */
 export const GmView: Story = {
   parameters: {

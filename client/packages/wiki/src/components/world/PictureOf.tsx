@@ -18,7 +18,18 @@ interface PictureResource<T extends WithPicture> {
   useActions(): { update(seen: T, changes: { picture_url: string }): Promise<T> };
 }
 
-export function PictureOf<T extends WithPicture>({ resource, id, readOnly = false }: { resource: PictureResource<T>; id: string; readOnly?: boolean }): ReactElement | null {
+export function PictureOf<T extends WithPicture>({
+  resource,
+  id,
+  readOnly = false,
+  name,
+}: {
+  resource: PictureResource<T>;
+  id: string;
+  readOnly?: boolean;
+  /** What the picture's description calls the record, when not its name (a person shown as unnamed). */
+  name?: string;
+}): ReactElement | null {
   const one = resource.useOne(id);
   const { update } = resource.useActions();
   const writes = useWrites(() => one.mutate());
@@ -26,7 +37,7 @@ export function PictureOf<T extends WithPicture>({ resource, id, readOnly = fals
   if (record === undefined) return null;
   return (
     <PicturePanel
-      name={record.name}
+      name={name ?? record.name}
       url={record.picture_url}
       // Read only for a player (the page's viewer, features/viewer).
       onSave={readOnly ? undefined : async (next) =>
