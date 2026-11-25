@@ -48,6 +48,8 @@ def test_the_vault_imports_with_its_links_and_a_second_run_changes_nothing(serve
         ("Characters/Stray.md", "no campaign: and not setting_wide: true"),
         # The wiki alone serves no game systems (VTT's): its system: waits for a composed app.
         ("Lore/The Split Antler Framing.md", "its system and editions: this back end serves no game systems"),
+        # Nor a starting level (VTT's campaigns.starting_level).
+        ("Lore/The Split Antler Framing.md", "its starting_level: this back end keeps no starting level"),
     ]
     assert first.unresolved == {"Characters/Holst.md": ["Nobody Here"]}
     # The vault's own kind fields read as kinds; a word that isn't one is reported, never guessed.
@@ -342,3 +344,32 @@ def test_a_re_run_writes_the_scenarios_own_record_beside_a_playthrough_that_has_
     forced = Importer(api, setting_slug=api.fantasy, force=True).run(read_vault(tmp_path))  # type: ignore[attr-defined]
     assert forced.refused == [], forced.refused
     assert "person Bryn" in forced.updated
+
+
+def test_a_framing_notes_starting_level_is_set_where_the_back_end_keeps_it() -> None:
+    """Zephyrex RPG, 2026-11-25: a fresh import should be playable as imported. A framing note's
+    starting_level: sets the campaign's (VTT's field) where the campaign carries it; a campaign
+    without the field reports it skipped; a value that isn't a whole number from 1 is unread."""
+
+    class Back:
+        def __init__(self) -> None:
+            self.updates: list[tuple[str, str, dict[str, Any]]] = []
+
+        def extensions(self) -> set[str]:
+            return set()
+
+        def update(self, resource: str, record_id: str, **fields: Any) -> dict[str, Any]:
+            self.updates.append((resource, record_id, fields))
+            return {"id": record_id, **fields}
+
+    back = Back()
+    importer = Importer(back)  # type: ignore[arg-type]
+    importer._campaign_rows = {"Kept": {"id": "c1", "starting_level": None}, "Same": {"id": "c3", "starting_level": 4}, "Bare": {"id": "c2"}}
+    importer._framing = {
+        "Kept": {"starting_level": 4, "path": "kept.md"},
+        "Same": {"starting_level": 4, "path": "same.md"},
+        "Bare": {"starting_level": 4, "path": "bare.md"},
+    }
+    importer._settle_framing()
+    assert back.updates == [("campaign", "c1", {"starting_level": 4})]
+    assert importer.report.skipped == [("bare.md", "its starting_level: this back end keeps no starting level")]

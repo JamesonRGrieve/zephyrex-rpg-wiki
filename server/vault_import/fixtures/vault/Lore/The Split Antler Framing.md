@@ -7,6 +7,7 @@ provenance: adapted
 source: "The Lost Mine of Phandelver, Wizards of the Coast"
 tags: [journal, framing, mystery, Combat heavy, slow burn]
 system: dnd-5e
+starting_level: 3
 description: "A stable town at the edge of the fens."
 ---
 ## Premise

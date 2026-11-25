@@ -78,7 +78,7 @@ READ = {
     "entity_type", "kind", "name", "campaign", "setting_wide", "is_private", "tags", "aliases", "status", "era",
     "race", "faction", "location", "relations", "parent_location", "parent", "parent_hook", "depends_on",
     "initial_build", "canonical_sheet",
-    "holder", "quantity", "session_number", "session_date", "maps", "keywords", "voice", "provenance", "source", "image", "picture", "system", "editions", "description",
+    "holder", "quantity", "session_number", "session_date", "maps", "keywords", "voice", "provenance", "source", "image", "picture", "system", "editions", "starting_level", "description",
     "unnamed_as", "known",
     *PROPERTIES,
     *(one for fields in KIND_FIELDS.values() for one in fields),
@@ -361,6 +361,14 @@ class Importer:
             editions = [str(one).strip() for one in _list(note.meta.get("editions")) if _text(one)]
             if editions:
                 framing["editions"] = editions
+            # The level its characters start at (VTT's campaigns.starting_level; Zephyrex RPG,
+            # 2026-11-25: a fresh import should be playable as imported).
+            level = note.meta.get("starting_level")
+            if level is not None:
+                if isinstance(level, int) and not isinstance(level, bool) and level >= 1:
+                    framing["starting_level"] = level
+                else:
+                    self.report.unread.setdefault(note.path, []).append(f"starting_level: {level} (a whole number from 1)")
             framing["path"] = note.path
             if "provenance" not in note.meta and "source" not in note.meta:
                 continue
@@ -451,7 +459,7 @@ class Importer:
             return None
 
     def _settle_framing(self) -> None:
-        """A campaign's description, game system and editions as its framing note gives them. The
+        """A campaign's description, game system, editions and starting level as its framing note gives them. The
         system and editions are VTT's game systems by slug: set where the back end serves them
         (rpg_systems), reported and skipped where it doesn't; editions are kept as the campaign's
         "Editions" property (their ids, JSON), for an edition choice at the start."""
@@ -480,6 +488,12 @@ class Importer:
                 editions = [(systems or {})[slug] for slug in framing.get("editions", []) if slug in (systems or {})]
                 if editions:
                     self._property("campaign", str(row["id"]), "Editions", json.dumps(editions))
+            if framing.get("starting_level"):
+                # VTT's field on campaigns: set where the back end keeps it, reported where it doesn't.
+                if "starting_level" not in row:
+                    self.report.skipped.append((framing["path"], "its starting_level: this back end keeps no starting level"))
+                elif row.get("starting_level") != framing["starting_level"]:
+                    changes["starting_level"] = framing["starting_level"]
             if changes:
                 self._campaign_rows[name] = self.api.update("campaign", str(row["id"]), **changes)
                 label = f"campaign {name}"
