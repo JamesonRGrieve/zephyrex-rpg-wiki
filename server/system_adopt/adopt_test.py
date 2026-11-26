@@ -260,3 +260,87 @@ def test_the_accounts_copies_inside_one_setting_are_merged_into_one(server: Test
     assert server.get(f"/v1/campaign/{copy['id']}", headers=_headers(b)).status_code == 404
     run = theirs.get("campaign", run_b["id"])[0]
     assert (run["created_by_user_id"], run["scenario_id"], run["setting_id"]) == (b.id, kept["id"], kept["setting_id"])
+
+
+def test_records_match_by_kind_and_fall_back_to_the_primarys_canon() -> None:
+    """Zephyrex RPG, 2026-11-25 (prod's dry run listed each tester's race and place taxa as
+    unmatched): a taxon is made per scope, kind and name, so a copy's "Pregen" tag finds the
+    primary's tag, not its category; and a scenario's taxon with no twin in the primary's
+    scenario finds the primary's canon one of its kind and name."""
+    from types import SimpleNamespace as Row
+
+    from zephyrex.extensions.rpg_core.SystemAdopt import Held, _match  # type: ignore[import-not-found]
+
+    taxa = object()
+
+    def held(setting: str, scenario: str, rows: list[Row]) -> Held:
+        return Held(setting=Row(id=setting), scenarios=[Row(id=scenario, name="The Split Antler")], records=[(taxa, rows)], dependents=[])
+
+    primary = held("s", "p", [
+        Row(id="p-tag", name="Pregen", kind="tag", campaign_id="p"),
+        Row(id="p-cat", name="Pregen", kind="category", campaign_id="p"),
+        Row(id="p-orc", name="Orc", kind="race", campaign_id=None),
+    ])
+    copy = held("s", "c", [
+        Row(id="c-cat", name="Pregen", kind="category", campaign_id="c"),
+        Row(id="c-tag", name="Pregen", kind="tag", campaign_id="c"),
+        Row(id="c-orc", name="Orc", kind="race", campaign_id="c"),
+        Row(id="c-new", name="Owlbear", kind="race", campaign_id="c"),
+    ])
+    id_map, unmatched = _match(primary, copy)
+    assert (id_map["c"], id_map["c-cat"], id_map["c-tag"], id_map["c-orc"]) == ("p", "p-cat", "p-tag", "p-orc")
+    assert [row.id for _manager, row in unmatched] == ["c-new"]
+
+
+def test_what_one_copy_moved_in_is_matched_by_the_next() -> None:
+    """Zephyrex RPG, 2026-11-25: each tester's newer copy had an Orc the kept copy lacked; the
+    first copy's moves in, and the next copies' Orcs match it, so one Orc, not three."""
+    from types import SimpleNamespace as Row
+
+    from zephyrex.extensions.rpg_core.SystemAdopt import Held, _join, _match  # type: ignore[import-not-found]
+
+    taxa = object()
+
+    def held(scenario: str, rows: list[Row]) -> Held:
+        return Held(setting=Row(id="s"), scenarios=[Row(id=scenario, name="Goblin Ambush")], records=[(taxa, rows)], dependents=[])
+
+    kept = held("k", [])
+    first, second = held("a", [Row(id="a-orc", name="Orc", kind="race", campaign_id="a")]), held("b", [Row(id="b-orc", name="Orc", kind="race", campaign_id="b")])
+    id_map, unmatched = _match(kept, first)
+    assert [row.id for _manager, row in unmatched] == ["a-orc"]
+    _join(kept, first, id_map, set(id_map), unmatched)
+    id_map, unmatched = _match(kept, second)
+    assert (id_map["b-orc"], unmatched) == ("a-orc", [])
+
+
+def test_drop_unmatched_removes_an_older_copys_leftovers(server: TestClient) -> None:
+    """--drop-unmatched (Zephyrex RPG, 2026-11-25: the operator's copy is of an older vault): a
+    merged copy's records with no match in the kept copy are removed, not moved in."""
+    registry = _registry(server)
+    from sqlalchemy import update
+
+    from zephyrex.extensions.rpg_core.SystemAdopt import _clear_cache, _every_table, adopt_settings  # type: ignore[import-not-found]
+
+    a, b = create_user(server), create_user(server)
+    mine, theirs = _as(server, a), _as(server, b)
+    slug = setting_of(mine, f"drop-{uuid.uuid4().hex[:8]}")
+    other = setting_of(theirs, f"drop-b-{uuid.uuid4().hex[:8]}")
+    assert Importer(mine, setting_slug=slug).run(read_vault(FIXTURE)).refused == []
+    assert Importer(theirs, setting_slug=other).run(read_vault(FIXTURE)).refused == []
+    kept, copy = _scenario_of(mine, slug), _scenario_of(theirs, other)
+    stale = theirs.create("person", name="Only In The Old Vault", kind="npc", campaign_id=copy["id"], setting_id=copy["setting_id"])
+    session = registry.DB.session()
+    try:
+        for table in _every_table(registry):
+            if "setting_id" in table.c:
+                session.execute(update(table).where(table.c.setting_id == copy["setting_id"]).values(setting_id=kept["setting_id"]))
+        session.commit()
+    finally:
+        session.close()
+    _clear_cache({table.name for table in _every_table(registry)})
+
+    done = adopt_settings(registry, [slug], dry_run=False, merge_copies=True, keep_owner=str(a.id), drop_unmatched=True)
+    assert "Only In The Old Vault" in done[0].line() and "dropped (no match)" in done[0].line(), done[0].line()
+    names = [row["name"] for row in _as(server, create_user(server)).list("person", campaign_id=kept["id"])]
+    assert "Only In The Old Vault" not in names and len(names) == len(set(names)), names
+    assert server.get(f"/v1/person/{stale['id']}", headers=_headers(b)).status_code == 404

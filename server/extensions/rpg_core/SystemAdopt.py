@@ -64,6 +64,8 @@ class Adoption:
     moved: list[str] = field(default_factory=list)
     repointed: dict[str, int] = field(default_factory=dict)
     hooks: list[str] = field(default_factory=list)
+    # With drop_unmatched: what had no match and was removed rather than moved in.
+    dropped: list[str] = field(default_factory=list)
     # The ids it removed (or, dry, would): never adopted after.
     doomed: set[str] = field(default_factory=set, repr=False)
 
@@ -76,6 +78,8 @@ class Adoption:
         if self.merged_into:
             parts.append(f"duplicates removed: {counts(self.removed)}")
             parts.append(f"moved in (no match): {', '.join(self.moved) or 'none'}")
+            if self.dropped:
+                parts.append(f"dropped (no match): {', '.join(self.dropped)}")
         parts.append(f"references turned to the system copy: {counts(self.repointed)}")
         parts.extend(self.hooks)
         return "\n  ".join(parts)
@@ -344,6 +348,10 @@ def _by_name(rows: Iterable[Any]) -> dict[str, Any]:
     return found
 
 
+def _kind(row: Any) -> str:
+    return str(getattr(row, "kind", None) or "")
+
+
 def _match(primary: Held, duplicate: Held) -> tuple[dict[str, str], list[tuple[Any, Any]]]:
     """The duplicate's ids → the primary's, by kind and name; and the unmatched records, each with
     what it moves to: (row, (campaign_id or None, setting_id))."""
@@ -355,14 +363,25 @@ def _match(primary: Held, duplicate: Held) -> tuple[dict[str, str], list[tuple[A
             id_map[str(one.id)] = str(twin.id)
     unmatched: list[tuple[Any, Any]] = []
     for (manager, rows), (_same, theirs) in zip(duplicate.records, primary.records):
-        # The primary's records of this kind, by (its scope, name): canon under "", else its scenario.
-        named: dict[tuple[str, str], Any] = {}
+        # The primary's records of this table by (scope, kind, name), scope "" for canon, else its
+        # scenario; and by (scope, name) for a match whatever the kind. A taxon is made per scope,
+        # kind and name (a "Pregen" tag beside a "Pregen" category), and an older import kept a
+        # copy's taxa at the other scope (Zephyrex RPG, 2026-11-25: prod's testers' race and place
+        # taxa found no twin), so a scenario's row falls back to the primary's canon one.
+        named: dict[tuple[str, str, Optional[str]], Any] = {}
         for row in theirs:
-            named.setdefault((str(getattr(row, "campaign_id", None) or ""), str(row.name)), row)
+            where = str(getattr(row, "campaign_id", None) or "")
+            named.setdefault((where, str(row.name), _kind(row)), row)
+            named.setdefault((where, str(row.name), None), row)
         for row in rows:
             campaign = str(getattr(row, "campaign_id", None) or "")
             scope = id_map.get(campaign, "") if campaign else ""
-            twin = named.get((scope, str(row.name))) if (not campaign or scope) else None
+            twin = None
+            if not campaign or scope:
+                for key in ((scope, str(row.name), _kind(row)), (scope, str(row.name), None), ("", str(row.name), _kind(row)), ("", str(row.name), None)):
+                    twin = named.get(key)
+                    if twin is not None:
+                        break
             if twin is not None:
                 id_map[str(row.id)] = str(twin.id)
             else:
@@ -411,7 +430,7 @@ def _split(held: Held, keep_owner: Optional[str]) -> tuple[Held, list[tuple[str,
     return kept, copies
 
 
-def adopt_settings(model_registry: Any, slugs: list[str], dry_run: bool = True, merge_copies: bool = False, keep_owner: Optional[str] = None) -> list[Adoption]:
+def adopt_settings(model_registry: Any, slugs: list[str], dry_run: bool = True, merge_copies: bool = False, keep_owner: Optional[str] = None, drop_unmatched: bool = False) -> list[Adoption]:
     """The first setting made system level, each further one merged into it (see the module);
     with ``merge_copies``, the accounts' copies inside the first merged into one first."""
     from fastapi import HTTPException
@@ -442,7 +461,7 @@ def adopt_settings(model_registry: Any, slugs: list[str], dry_run: bool = True, 
         if merge_copies:
             kept, copies = _split(primary, keep_owner)
             for author, copy in copies:
-                merged, scenario_ids, id_map = _merge(model_registry, session, kept, copy, system, dry_run, touched, within=True)
+                merged, scenario_ids, id_map = _merge(model_registry, session, kept, copy, system, dry_run, touched, within=True, drop_unmatched=drop_unmatched)
                 merged.slug = f"{found[0].slug}: {author}'s copy"
                 if not dry_run:
                     session.commit()
@@ -486,16 +505,21 @@ def _campaign_manager() -> Any:
     return CampaignManager
 
 
-def _merge(model_registry: Any, session: Any, primary: Held, duplicate: Held, system: str, dry_run: bool, touched: set[str], within: bool = False) -> tuple[Adoption, list[str], dict[str, str]]:
+def _merge(model_registry: Any, session: Any, primary: Held, duplicate: Held, system: str, dry_run: bool, touched: set[str], within: bool = False, drop_unmatched: bool = False) -> tuple[Adoption, list[str], dict[str, str]]:
     """One duplicate merged into the primary (see the module): what it did, the system scenarios
     after it, and its id map (the duplicate's → the primary's), for the adopt hooks. ``within``:
-    an account's copy inside the primary's own setting, which stays."""
+    an account's copy inside the primary's own setting, which stays. ``drop_unmatched``: what has no
+    match is removed with the rest, not moved in (a copy of an older vault's leftovers)."""
     from zephyrex.extensions.rpg_core.BLL_RPGCore import SettingManager, _manager  # type: ignore[import-not-found]
     from zephyrex.lib.Environment import env
 
     root = env("ROOT_ID")
     done = Adoption(slug=str(duplicate.setting.slug), setting_id=str(duplicate.setting.id), merged_into=str(primary.setting.slug))
     id_map, unmatched = _match(primary, duplicate)
+    if drop_unmatched:
+        done.dropped = [f"{_table(manager).name} {row.name} ({row.id})" for manager, row in unmatched]
+        done.dropped += [f"scenario {one.name} ({one.id})" for one in duplicate.scenarios if str(one.id) not in id_map]
+        unmatched = []
     if within:
         # The one setting is both; it stays, and nothing hangs on it as a match.
         id_map.pop(str(duplicate.setting.id), None)
@@ -516,7 +540,7 @@ def _merge(model_registry: Any, session: Any, primary: Held, duplicate: Held, sy
         note(removed, settings_table, str(duplicate.setting.id))
     tables[campaigns_table.name] = campaigns_table
     for one in duplicate.scenarios:
-        if str(one.id) in matched:
+        if str(one.id) in matched or drop_unmatched:
             note(removed, campaigns_table, str(one.id))
         else:
             note(kept, campaigns_table, str(one.id))
@@ -534,7 +558,7 @@ def _merge(model_registry: Any, session: Any, primary: Held, duplicate: Held, sy
         table = _table(manager)
         tables[table.name] = table
         for row in rows:
-            note(removed if _anchored_only_to(row, matched, scope) else kept, table, str(row.id))
+            note(removed if drop_unmatched or _anchored_only_to(row, matched, scope) else kept, table, str(row.id))
     doomed = {one for ids in removed.values() for one in ids}
     done.doomed = set(doomed)
     # Every reference to a removed row (the duplicate's moved rows, and anyone's playthroughs) turned.
@@ -548,8 +572,26 @@ def _merge(model_registry: Any, session: Any, primary: Held, duplicate: Held, sy
             done.adopted[name] = count
     for name, ids in removed.items():
         done.removed[name] = _remove(session, tables[name], ids, dry_run, touched)
-    scenario_ids = sorted({str(one.id) for one in primary.scenarios} | {str(one.id) for one in duplicate.scenarios if str(one.id) not in matched})
+    scenario_ids = sorted({str(one.id) for one in primary.scenarios} | {str(one.id) for one in duplicate.scenarios if str(one.id) not in matched and not drop_unmatched})
+    _join(primary, duplicate, id_map, matched, unmatched, drop_unmatched)
     return done, scenario_ids, id_map
+
+
+def _join(primary: Held, duplicate: Held, id_map: dict[str, str], matched: set[str], unmatched: list[tuple[Any, Any]], dropped: bool = False) -> None:
+    """What a merge moved in counted the primary's for the next duplicate's match (Zephyrex RPG,
+    2026-11-25: three testers' copies each moved in the same Orc, three in one scenario): each
+    moved scenario, and each moved record as it now stands (its campaign turned to the primary's)."""
+    from types import SimpleNamespace
+
+    if not dropped:
+        primary.scenarios.extend(one for one in duplicate.scenarios if str(one.id) not in matched)
+    moved = {id(row) for _manager, row in unmatched}
+    for (_manager, rows), (_same, theirs) in zip(duplicate.records, primary.records):
+        for row in rows:
+            if id(row) in moved:
+                campaign = str(getattr(row, "campaign_id", None) or "")
+                rows_view = SimpleNamespace(id=row.id, name=row.name, kind=getattr(row, "kind", None), campaign_id=id_map.get(campaign, campaign) or None)
+                theirs.append(rows_view)
 
 
 def _run_hooks(model_registry: Any, setting_id: str, scenario_ids: list[str], id_map: dict[str, str], dry_run: bool) -> list[str]:
