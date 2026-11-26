@@ -427,8 +427,6 @@ def test_a_places_maps_become_its_scenes_a_floor_each(tmp_path: Path) -> None:
     map: (one file or a list, ground floor first; paths against the note's folder) is made into its
     scenes through VTT's map_location, a floor each; a Universal VTT file beside a note with its name
     counts too; a picture beside it with its name stays its picture. Each floor reports a line."""
-    import base64
-
     from vault_import.api import ApiError
     from vault_import.importer import Placed
     from vault_import.notes import Note
@@ -458,6 +456,9 @@ def test_a_places_maps_become_its_scenes_a_floor_each(tmp_path: Path) -> None:
         def extensions(self) -> set[str]:
             return {"rpg_scene"}
 
+        def upload(self, name: str, content_type: str, content: bytes) -> dict[str, Any]:
+            return {"id": f"asset:{name}:{content_type}:{content.decode()}"}
+
         def post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
             ask = body["map_location"]
             if ask["location_id"] == "bad":
@@ -481,14 +482,12 @@ def test_a_places_maps_become_its_scenes_a_floor_each(tmp_path: Path) -> None:
             place("Lost", {"map": [{"file": "inn.0.dd2vtt", "picture": "gone.png"}]}, "p9"),
         ]
     )
-    art = base64.b64encode(b"art").decode("ascii")
-    crop = base64.b64encode(b"crop").decode("ascii")
     assert back.asks == [
-        {"location_id": "p1", "floor": 0, "uvtt": {"format": 0.3, "line_of_sight": []}, "image_base64": art, "image_name": "the-square.0.png"},
+        {"location_id": "p1", "floor": 0, "uvtt": {"format": 0.3, "line_of_sight": []}, "asset_id": "asset:the-square.0.png:image/png:art"},
         {"location_id": "p1", "floor": 1, "name": "The Square (cellar)", "uvtt": {}},
-        {"location_id": "p2", "floor": 0, "grid_size": 100, "image_base64": crop, "image_name": "Crop.jpg"},
+        {"location_id": "p2", "floor": 0, "grid_size": 100, "asset_id": "asset:Crop.jpg:image/jpeg:crop"},
         {"location_id": "p3", "floor": 0, "uvtt": {}},
-        {"location_id": "p7", "floor": 0, "uvtt": {"format": 0.3, "image": "", "line_of_sight": [[{"x": 0, "y": 0}, {"x": 1, "y": 0}]]}, "image_base64": base64.b64encode(b"inn art").decode("ascii"), "image_name": "The Inn.map.png"},
+        {"location_id": "p7", "floor": 0, "uvtt": {"format": 0.3, "image": "", "line_of_sight": [[{"x": 0, "y": 0}, {"x": 1, "y": 0}]]}, "asset_id": "asset:The Inn.map.png:image/png:inn art"},
         {"location_id": "p8", "floor": 0, "uvtt": {"format": 0.3, "image": "aGVsbG8="}},
         {"location_id": "p9", "floor": 0, "uvtt": {"format": 0.3, "image": "", "line_of_sight": [[{"x": 0, "y": 0}, {"x": 1, "y": 0}]]}},
     ]

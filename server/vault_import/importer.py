@@ -14,7 +14,6 @@ kind are refused and reported). A value already as the vault says is left alone,
 changes nothing.
 """
 
-import base64
 import fcntl
 import json
 import re
@@ -1178,10 +1177,12 @@ class Importer:
                         missing = f"; picture {named} {'not a picture' if found.is_file() else 'not found'}, no art"
                 else:
                     picture = next((path.with_suffix(kind) for kind in MAP_PICTURES if path.with_suffix(kind).is_file()), None)
-        if picture is not None:
-            ask["image_base64"] = base64.b64encode(picture.read_bytes()).decode("ascii")
-            ask["image_name"] = picture.name
         try:
+            if picture is not None:
+                # The art uploaded as the importer's asset, then named by id (VTT fe35cbd: a 7.5–8.9 MB
+                # map as base64 went over the request-body limit).
+                content_type = MAP_PICTURES[picture.suffix.lower()]
+                ask["asset_id"] = str(self.api.upload(picture.name, content_type, picture.read_bytes())["id"])
             made = self.api.post("/v1/scene/map_location", {"map_location": ask})
         except ApiError as error:
             self.report.maps.append((one.note.path, f"{where} refused ({error.detail})"))
