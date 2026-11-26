@@ -1110,7 +1110,7 @@ class Importer:
             if isinstance(item, str) and item.strip():
                 entries.append({"file": item.strip(), "grid": grid})
             elif isinstance(item, dict) and _text(item.get("file")):
-                entries.append({"file": _text(item.get("file")), "name": _text(item.get("name")), "grid": item.get("grid", grid)})
+                entries.append({"file": _text(item.get("file")), "name": _text(item.get("name")), "grid": item.get("grid", grid), "picture": _text(item.get("picture"))})
             else:
                 self.report.unread.setdefault(note.path, []).append(f"map: {item!r} (a file name, or {{file, name, grid}})")
         return entries
@@ -1154,15 +1154,30 @@ class Importer:
             ask["name"] = entry["name"]
         if isinstance(entry.get("grid"), (int, float)) and not isinstance(entry.get("grid"), bool) and entry["grid"] > 0:
             ask["grid_size"] = entry["grid"]
-        picture = path
+        picture: Optional[Path] = path
+        missing = ""
         if suffix in MAP_FILES:
             try:
                 ask["uvtt"] = json.loads(path.read_text(encoding="utf-8"))
             except (ValueError, UnicodeDecodeError) as error:
                 self.report.maps.append((one.note.path, f"{where} skipped (not readable: {error})"))
                 return
-            # The art beside it with its name, when there is one; else the file's own.
-            picture = next((path.with_suffix(kind) for kind in MAP_PICTURES if path.with_suffix(kind).is_file()), None)
+            # The art: the file's own embedded image when it carries one; else the entry's
+            # `picture:` (Zephyrex RPG, 2026-11-26: the Split Antler's dd2vtts carry an empty image,
+            # their art beside them, drawn to the file's map_size × pixels_per_grid); else a
+            # picture beside it with its name.
+            picture = None
+            embedded = ask["uvtt"].get("image") if isinstance(ask["uvtt"], dict) else None
+            if not (isinstance(embedded, str) and embedded.strip()):
+                named = entry.get("picture")
+                if named:
+                    found = one.note.source.parent / str(named)
+                    if found.is_file() and found.suffix.lower() in MAP_PICTURES:
+                        picture = found
+                    else:
+                        missing = f"; picture {named} {'not a picture' if found.is_file() else 'not found'}, no art"
+                else:
+                    picture = next((path.with_suffix(kind) for kind in MAP_PICTURES if path.with_suffix(kind).is_file()), None)
         if picture is not None:
             ask["image_base64"] = base64.b64encode(picture.read_bytes()).decode("ascii")
             ask["image_name"] = picture.name
@@ -1171,7 +1186,7 @@ class Importer:
         except ApiError as error:
             self.report.maps.append((one.note.path, f"{where} refused ({error.detail})"))
             return
-        self.report.maps.append((one.note.path, f"{where} {'created' if made.get('created') else 'updated'} (scene {made.get('name')}, {made.get('walls', 0)} walls)"))
+        self.report.maps.append((one.note.path, f"{where} {'created' if made.get('created') else 'updated'} (scene {made.get('name')}, {made.get('walls', 0)} walls{missing})"))
 
     def _mend_and_validate(self) -> None:
         """Each scenario the run touched mended as scenario_repair mends it (a pointer opening written

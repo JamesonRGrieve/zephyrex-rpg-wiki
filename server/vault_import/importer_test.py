@@ -441,6 +441,11 @@ def test_a_places_maps_become_its_scenes_a_floor_each(tmp_path: Path) -> None:
     (folder / "Crop.jpg").write_bytes(b"crop")
     (folder / "Lone.uvtt").write_text("{}", encoding="utf-8")
     (folder / "Pictured.png").write_bytes(b"illustration")
+    # Zephyrex RPG, 2026-11-26: a dd2vtt with an empty image takes its entry's picture: as the art;
+    # one with an embedded image keeps its own; a missing picture is reported.
+    (folder / "inn.0.dd2vtt").write_text(json.dumps({"format": 0.3, "image": "", "line_of_sight": [[{"x": 0, "y": 0}, {"x": 1, "y": 0}]]}), encoding="utf-8")
+    (folder / "The Inn.map.png").write_bytes(b"inn art")
+    (folder / "own.0.dd2vtt").write_text(json.dumps({"format": 0.3, "image": "aGVsbG8="}), encoding="utf-8")
 
     def place(name: str, meta: dict[str, Any], record_id: str, campaign: Any = "c1") -> Placed:
         note = Note(f"Locations/{name}.md", {"entity_type": "location", **meta}, "", source=folder / f"{name}.md")
@@ -471,6 +476,9 @@ def test_a_places_maps_become_its_scenes_a_floor_each(tmp_path: Path) -> None:
             place("Canon", {"map": "Crop.jpg"}, "p5", campaign=None),
             place("Missing", {"map": "nope.dd2vtt"}, "p6"),
             place("Refused", {"map": "Crop.jpg"}, "bad"),
+            place("Inn", {"map": [{"file": "inn.0.dd2vtt", "picture": "The Inn.map.png"}]}, "p7"),
+            place("Own", {"map": [{"file": "own.0.dd2vtt", "picture": "The Inn.map.png"}]}, "p8"),
+            place("Lost", {"map": [{"file": "inn.0.dd2vtt", "picture": "gone.png"}]}, "p9"),
         ]
     )
     art = base64.b64encode(b"art").decode("ascii")
@@ -480,6 +488,9 @@ def test_a_places_maps_become_its_scenes_a_floor_each(tmp_path: Path) -> None:
         {"location_id": "p1", "floor": 1, "name": "The Square (cellar)", "uvtt": {}},
         {"location_id": "p2", "floor": 0, "grid_size": 100, "image_base64": crop, "image_name": "Crop.jpg"},
         {"location_id": "p3", "floor": 0, "uvtt": {}},
+        {"location_id": "p7", "floor": 0, "uvtt": {"format": 0.3, "image": "", "line_of_sight": [[{"x": 0, "y": 0}, {"x": 1, "y": 0}]]}, "image_base64": base64.b64encode(b"inn art").decode("ascii"), "image_name": "The Inn.map.png"},
+        {"location_id": "p8", "floor": 0, "uvtt": {"format": 0.3, "image": "aGVsbG8="}},
+        {"location_id": "p9", "floor": 0, "uvtt": {"format": 0.3, "image": "", "line_of_sight": [[{"x": 0, "y": 0}, {"x": 1, "y": 0}]]}},
     ]
     assert importer.report.maps == [
         ("Locations/The Square.md", "floor 0 the-square.0.dd2vtt created (scene x, 2 walls)"),
@@ -489,4 +500,7 @@ def test_a_places_maps_become_its_scenes_a_floor_each(tmp_path: Path) -> None:
         ("Locations/Canon.md", "skipped (a setting's place, with no campaign to keep its scene)"),
         ("Locations/Missing.md", "floor 0 nope.dd2vtt skipped (no such file)"),
         ("Locations/Refused.md", "floor 0 Crop.jpg refused (not the campaign's GM)"),
+        ("Locations/Inn.md", "floor 0 inn.0.dd2vtt created (scene x, 2 walls)"),
+        ("Locations/Own.md", "floor 0 own.0.dd2vtt created (scene x, 2 walls)"),
+        ("Locations/Lost.md", "floor 0 inn.0.dd2vtt created (scene x, 2 walls; picture gone.png not found, no art)"),
     ]
