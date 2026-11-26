@@ -443,7 +443,13 @@ def test_a_places_maps_become_its_scenes_a_floor_each(tmp_path: Path) -> None:
     # one with an embedded image keeps its own; a missing picture is reported.
     (folder / "inn.0.dd2vtt").write_text(json.dumps({"format": 0.3, "image": "", "line_of_sight": [[{"x": 0, "y": 0}, {"x": 1, "y": 0}]]}), encoding="utf-8")
     (folder / "The Inn.map.png").write_bytes(b"inn art")
-    (folder / "own.0.dd2vtt").write_text(json.dumps({"format": 0.3, "image": "aGVsbG8="}), encoding="utf-8")
+    # An embedded image is uploaded too, the file sent with "image": "" (VTT: a large one's base64
+    # goes over the request-body limit); one that isn't a picture is sent as is.
+    own_png = b"\x89PNG\r\n\x1a\nown"
+    import base64 as b64
+
+    (folder / "own.0.dd2vtt").write_text(json.dumps({"format": 0.3, "image": b64.b64encode(own_png).decode()}), encoding="utf-8")
+    (folder / "odd.0.dd2vtt").write_text(json.dumps({"format": 0.3, "image": "aGVsbG8="}), encoding="utf-8")
 
     def place(name: str, meta: dict[str, Any], record_id: str, campaign: Any = "c1") -> Placed:
         note = Note(f"Locations/{name}.md", {"entity_type": "location", **meta}, "", source=folder / f"{name}.md")
@@ -457,7 +463,7 @@ def test_a_places_maps_become_its_scenes_a_floor_each(tmp_path: Path) -> None:
             return {"rpg_scene"}
 
         def upload(self, name: str, content_type: str, content: bytes) -> dict[str, Any]:
-            return {"id": f"asset:{name}:{content_type}:{content.decode()}"}
+            return {"id": f"asset:{name}:{content_type}:{content.decode('latin-1')}"}
 
         def post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
             ask = body["map_location"]
@@ -480,6 +486,7 @@ def test_a_places_maps_become_its_scenes_a_floor_each(tmp_path: Path) -> None:
             place("Inn", {"map": [{"file": "inn.0.dd2vtt", "picture": "The Inn.map.png"}]}, "p7"),
             place("Own", {"map": [{"file": "own.0.dd2vtt", "picture": "The Inn.map.png"}]}, "p8"),
             place("Lost", {"map": [{"file": "inn.0.dd2vtt", "picture": "gone.png"}]}, "p9"),
+            place("Odd", {"map": "odd.0.dd2vtt"}, "p10"),
         ]
     )
     assert back.asks == [
@@ -488,8 +495,9 @@ def test_a_places_maps_become_its_scenes_a_floor_each(tmp_path: Path) -> None:
         {"location_id": "p2", "floor": 0, "grid_size": 100, "asset_id": "asset:Crop.jpg:image/jpeg:crop"},
         {"location_id": "p3", "floor": 0, "uvtt": {}},
         {"location_id": "p7", "floor": 0, "uvtt": {"format": 0.3, "image": "", "line_of_sight": [[{"x": 0, "y": 0}, {"x": 1, "y": 0}]]}, "asset_id": "asset:The Inn.map.png:image/png:inn art"},
-        {"location_id": "p8", "floor": 0, "uvtt": {"format": 0.3, "image": "aGVsbG8="}},
+        {"location_id": "p8", "floor": 0, "uvtt": {"format": 0.3, "image": ""}, "asset_id": f"asset:own.0.png:image/png:{own_png.decode('latin-1')}"},
         {"location_id": "p9", "floor": 0, "uvtt": {"format": 0.3, "image": "", "line_of_sight": [[{"x": 0, "y": 0}, {"x": 1, "y": 0}]]}},
+        {"location_id": "p10", "floor": 0, "uvtt": {"format": 0.3, "image": "aGVsbG8="}},
     ]
     assert importer.report.maps == [
         ("Locations/The Square.md", "floor 0 the-square.0.dd2vtt created (scene x, 2 walls)"),
@@ -502,4 +510,5 @@ def test_a_places_maps_become_its_scenes_a_floor_each(tmp_path: Path) -> None:
         ("Locations/Inn.md", "floor 0 inn.0.dd2vtt created (scene x, 2 walls)"),
         ("Locations/Own.md", "floor 0 own.0.dd2vtt created (scene x, 2 walls)"),
         ("Locations/Lost.md", "floor 0 inn.0.dd2vtt created (scene x, 2 walls; picture gone.png not found, no art)"),
+        ("Locations/Odd.md", "floor 0 odd.0.dd2vtt created (scene x, 2 walls; embedded image not a png, jpeg, webp or gif, sent as is)"),
     ]

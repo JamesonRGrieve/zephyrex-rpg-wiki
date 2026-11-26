@@ -169,6 +169,25 @@ class Report:
         return "\n".join(lines)
 
 
+def _embedded_art(image: str, stem: str) -> Optional[tuple[str, str, bytes]]:
+    """A UVTT's embedded image (base64, or a data: URL) as (file name, content type, bytes), its
+    type read from its first bytes; none when it isn't a png, jpeg, webp or gif."""
+    import base64
+    import binascii
+
+    raw = image.split(",", 1)[1] if image.startswith("data:") else image
+    try:
+        content = base64.b64decode(raw, validate=False)
+    except (binascii.Error, ValueError):
+        return None
+    for magic, ext, kind in ((b"\x89PNG", "png", "image/png"), (b"\xff\xd8\xff", "jpg", "image/jpeg"), (b"GIF8", "gif", "image/gif")):
+        if content.startswith(magic):
+            return f"{stem}.{ext}", kind, content
+    if content[:4] == b"RIFF" and content[8:12] == b"WEBP":
+        return f"{stem}.webp", "image/webp", content
+    return None
+
+
 # A place's map (VTT's rpg_scene map_location): a Universal VTT file, or a picture.
 MAP_FILES = (".dd2vtt", ".uvtt")
 MAP_PICTURES = {**PICTURE_TYPES, ".gif": "image/gif"}
@@ -1155,6 +1174,7 @@ class Importer:
             ask["grid_size"] = entry["grid"]
         picture: Optional[Path] = path
         missing = ""
+        art = None
         if suffix in MAP_FILES:
             try:
                 ask["uvtt"] = json.loads(path.read_text(encoding="utf-8"))
@@ -1167,7 +1187,16 @@ class Importer:
             # picture beside it with its name.
             picture = None
             embedded = ask["uvtt"].get("image") if isinstance(ask["uvtt"], dict) else None
-            if not (isinstance(embedded, str) and embedded.strip()):
+            art: Optional[tuple[str, str, bytes]] = None
+            if isinstance(embedded, str) and embedded.strip():
+                # The embedded art uploaded too, the file sent without it (VTT, 2026-11-26: a large
+                # .dd2vtt's base64 image goes over the request-body limit as a picture would).
+                art = _embedded_art(embedded, path.stem)
+                if art is not None:
+                    ask["uvtt"] = {**ask["uvtt"], "image": ""}
+                else:
+                    missing = "; embedded image not a png, jpeg, webp or gif, sent as is"
+            else:
                 named = entry.get("picture")
                 if named:
                     found = one.note.source.parent / str(named)
@@ -1178,7 +1207,9 @@ class Importer:
                 else:
                     picture = next((path.with_suffix(kind) for kind in MAP_PICTURES if path.with_suffix(kind).is_file()), None)
         try:
-            if picture is not None:
+            if art is not None:
+                ask["asset_id"] = str(self.api.upload(art[0], art[1], art[2])["id"])
+            elif picture is not None:
                 # The art uploaded as the importer's asset, then named by id (VTT fe35cbd: a 7.5–8.9 MB
                 # map as base64 went over the request-body limit).
                 content_type = MAP_PICTURES[picture.suffix.lower()]
