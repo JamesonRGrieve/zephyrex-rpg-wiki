@@ -3,7 +3,7 @@ import { act, render, renderHook, screen } from '@testing-library/react';
 import { rememberScope } from './lib/lastScope';
 import { describe, expect, it, vi } from 'vitest';
 import { useWikiBase } from './base';
-import { wikiExtension } from './extension';
+import { wikiExtension, worldsChildren } from './extension';
 
 vi.mock('./pages/WorldsPage', () => ({ WorldsPage: () => <p>{`worlds under ${useWikiBase()}`}</p> }));
 vi.mock('./pages/RecordPage', () => ({
@@ -14,15 +14,15 @@ describe('wikiExtension', () => {
   it('mounts the pages under w by default, most specific first, paired with rpg_core', () => {
     const extension = wikiExtension();
     expect(extension.pages?.map((page) => page.path)).toEqual(['w', 'w/last/:kind', 'w/:world/taxonomy', 'w/:world/plot', 'w/:world/about', 'w/:world/:kind', 'w/:world/:kind/:id']);
-    expect([extension.name, extension.serverExtension, extension.navItems?.map((item) => [item.title, item.url])]).toEqual(['rpg_core', 'rpg_core', [['Settings', '/w']]]);
+    expect([extension.name, extension.serverExtension, extension.navItems?.map((item) => [item.title, item.url])]).toEqual(['rpg_core', 'rpg_core', [['Worlds', '/w']]]);
   });
 
   it('mounts them under a base of the app’s choosing, and passes the route’s values to the page', () => {
     const extension = wikiExtension({ base: '/wiki/' });
-    // Under Settings, each kind in the scope last shown; Settings itself before any.
+    // Under Worlds, each page of the scope last shown; none before any.
     window.localStorage.clear();
     const useChildren = extension.navItems?.[0]?.useChildren;
-    expect(renderHook(() => useChildren?.()).result.current?.[1]).toEqual({ title: 'People', url: '/wiki' });
+    expect(renderHook(() => useChildren?.()).result.current).toEqual([]);
     act(() => rememberScope('c1'));
     expect(renderHook(() => useChildren?.()).result.current?.map((child) => child.url)).toEqual([
       '/wiki/c1/location',
@@ -31,7 +31,6 @@ describe('wikiExtension', () => {
       '/wiki/c1/item',
       '/wiki/c1/journal',
       '/wiki/c1/plot',
-      '/wiki',
     ]);
     const [worlds, , , , , , record] = extension.pages ?? [];
     const Worlds = worlds!.component;
@@ -40,5 +39,23 @@ describe('wikiExtension', () => {
     expect(screen.getByText('worlds under /wiki')).toBeInTheDocument();
     render(<Record params={{ world: 'w1', kind: 'person', id: 'p1' }} searchParams={{}} />);
     expect(screen.getByText('/wiki w1 person p1')).toBeInTheDocument();
+  });
+});
+
+describe('worldsChildren', () => {
+  it('lists none before a world is open, so no sub-entry is the overview', () => {
+    expect(worldsChildren('/w', null)).toEqual([]);
+  });
+
+  it("gives a setting its pages and game systems, a campaign its pages and plot, each its own address", () => {
+    const setting = worldsChildren('/w', 'setting-s1');
+    const campaign = worldsChildren('/w', 'c1');
+    expect(setting.map((one) => one.title)).toEqual(['Places', 'People', 'Organisations', 'Items', 'Lore', 'Game systems']);
+    expect(campaign.map((one) => one.title)).toEqual(['Places', 'People', 'Organisations', 'Items', 'Lore', 'Plot']);
+    for (const children of [setting, campaign]) {
+      const urls = children.map((one) => one.url);
+      expect(new Set(urls).size).toBe(urls.length);
+      expect(urls).not.toContain('/w');
+    }
   });
 });

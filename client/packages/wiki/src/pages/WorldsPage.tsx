@@ -105,7 +105,7 @@ export function WorldsPage(): ReactElement {
   const can = useCapabilities();
   return (
     <main className='mx-auto grid w-full max-w-3xl content-start gap-6 px-4 py-8'>
-      <PageHeader title='Settings' description='Each setting keeps its canon, and its campaigns their own places and people.' />
+      <PageHeader title='Worlds' description='Each setting keeps its canon, and its campaigns their own places and people.' />
       {!can.loaded ? <SkeletonRows rows={2} label='Loading' /> : can.worlds ? <Settings /> : <Unavailable what='settings' />}
     </main>
   );

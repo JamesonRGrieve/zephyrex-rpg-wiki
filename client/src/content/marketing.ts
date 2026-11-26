@@ -105,7 +105,7 @@ export const FOOTER: readonly FooterColumn[] = [
   {
     title: 'Learn',
     links: [
-      { label: 'Settings', href: '/w' },
+      { label: 'Worlds', href: '/w' },
       { label: 'Planned features', href: '#planned' },
       { label: 'FAQ', href: '#faq' },
     ],

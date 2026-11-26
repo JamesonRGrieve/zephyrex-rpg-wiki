@@ -10,6 +10,7 @@ import type { ZephyrexClientExtension } from 'zephyrex';
 import { type SettingSections, SettingSectionsProvider, WikiBaseProvider } from './base';
 import { KindPage } from './pages/KindPage';
 import { LastScopePage, lastScopePath } from './pages/LastScopePage';
+import { settingOf } from './lib/scope';
 import { useLastScope } from './lib/lastScope';
 import { PlotPage } from './pages/PlotPage';
 import { RecordPage } from './pages/RecordPage';
@@ -37,7 +38,7 @@ const of = (params: Record<string, string>, name: string): string => params[name
 /** A sidebar sub-entry, as a nav item's useChildren gives it (the framework's NavChild). */
 type NavChild = { title: string; url: string };
 
-/** The sidebar's entries under Settings, in order: each a kind of page (or the plot board, or game systems). */
+/** The sidebar's entries under Worlds, in order: each a kind of page (or the plot board, or game systems). */
 export const SETTINGS_ENTRIES: readonly (readonly [string, string])[] = [
   ['Places', 'location'],
   ['People', 'person'],
@@ -48,11 +49,25 @@ export const SETTINGS_ENTRIES: readonly (readonly [string, string])[] = [
   ['Game systems', 'systems'],
 ];
 
-/** The Settings entry's useChildren: made once per extension (a stable hook for the sidebar). */
-function settingsChildren(base: string): () => readonly NavChild[] {
-  return function useSettingsChildren(): readonly NavChild[] {
-    const scope = useLastScope();
-    return SETTINGS_ENTRIES.map(([title, kind]) => ({ title, url: lastScopePath(base, scope, kind) }));
+/**
+ * The Worlds entry's sub-entries for the setting or campaign last shown: only the pages it has (a
+ * setting has no plot board, a campaign no game systems), and none before one is open, so no
+ * sub-entry ever leads back to the worlds overview (Zephyrex RPG, 2026-11-26: with none open every
+ * sub-entry was "/w", all drawn current, and Places opened the overview).
+ */
+export function worldsChildren(base: string, scope: string | null): readonly NavChild[] {
+  if (scope === null) return [];
+  const setting = settingOf(scope) !== null;
+  return SETTINGS_ENTRIES.filter(([, kind]) => (kind === 'plot' ? !setting : kind === 'systems' ? setting : true)).map(([title, kind]) => ({
+    title,
+    url: lastScopePath(base, scope, kind),
+  }));
+}
+
+/** The Worlds entry's useChildren: made once per extension (a stable hook for the sidebar). */
+function worldsChildrenHook(base: string): () => readonly NavChild[] {
+  return function useWorldsChildren(): readonly NavChild[] {
+    return worldsChildren(base, useLastScope());
   };
 }
 
@@ -83,8 +98,9 @@ export function wikiExtension({ base = 'w', settingSections = [] }: WikiExtensio
         component: routed(root, (params) => <RecordPage world={of(params, 'world')} kind={of(params, 'kind')} id={of(params, 'id')} />, settingSections),
       },
     ],
-    // Settings, and under it each kind of page in the setting or campaign last shown, computed as
-    // the sidebar renders (useChildren), so they follow the person as they move.
-    navItems: [{ title: 'Settings', url: `/${root}`, useChildren: settingsChildren(`/${root}`) }],
+    // Worlds (the fictional settings and their campaigns; "Settings" read as the app's own), and
+    // under it each kind of page in the setting or campaign last shown, computed as the sidebar
+    // renders (useChildren), so they follow the person as they move.
+    navItems: [{ title: 'Worlds', url: `/${root}`, useChildren: worldsChildrenHook(`/${root}`) }],
   };
 }
