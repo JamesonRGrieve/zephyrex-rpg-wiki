@@ -516,10 +516,16 @@ def _merge(model_registry: Any, session: Any, primary: Held, duplicate: Held, sy
     root = env("ROOT_ID")
     done = Adoption(slug=str(duplicate.setting.slug), setting_id=str(duplicate.setting.id), merged_into=str(primary.setting.slug))
     id_map, unmatched = _match(primary, duplicate)
+    # Only a scenario's rows are dropped: canon (a setting's, no campaign) with no match moves in,
+    # since it may be the only copy of it (Zephyrex RPG, 2026-11-26: prod's SRD canon is the
+    # operator's alone; Hannah's kept copy has none).
+    dropped_ids: set[str] = set()
     if drop_unmatched:
-        done.dropped = [f"{_table(manager).name} {row.name} ({row.id})" for manager, row in unmatched]
+        gone = [(manager, row) for manager, row in unmatched if getattr(row, "campaign_id", None)]
+        dropped_ids = {str(row.id) for _manager, row in gone} | {str(one.id) for one in duplicate.scenarios if str(one.id) not in id_map}
+        done.dropped = [f"{_table(manager).name} {row.name} ({row.id})" for manager, row in gone]
         done.dropped += [f"scenario {one.name} ({one.id})" for one in duplicate.scenarios if str(one.id) not in id_map]
-        unmatched = []
+        unmatched = [(manager, row) for manager, row in unmatched if not getattr(row, "campaign_id", None)]
     if within:
         # The one setting is both; it stays, and nothing hangs on it as a match.
         id_map.pop(str(duplicate.setting.id), None)
@@ -558,7 +564,9 @@ def _merge(model_registry: Any, session: Any, primary: Held, duplicate: Held, sy
         table = _table(manager)
         tables[table.name] = table
         for row in rows:
-            note(removed if drop_unmatched or _anchored_only_to(row, matched, scope) else kept, table, str(row.id))
+            # Gone with what it hangs on: a dropped row, or only matched ones (the primary has its twin).
+            gone_with = bool(_refs(row) & dropped_ids) or _anchored_only_to(row, matched, scope)
+            note(removed if gone_with else kept, table, str(row.id))
     doomed = {one for ids in removed.values() for one in ids}
     done.doomed = set(doomed)
     # Every reference to a removed row (the duplicate's moved rows, and anyone's playthroughs) turned.

@@ -315,7 +315,9 @@ def test_what_one_copy_moved_in_is_matched_by_the_next() -> None:
 
 def test_drop_unmatched_removes_an_older_copys_leftovers(server: TestClient) -> None:
     """--drop-unmatched (Zephyrex RPG, 2026-11-25: the operator's copy is of an older vault): a
-    merged copy's records with no match in the kept copy are removed, not moved in."""
+    merged copy's scenario records with no match in the kept copy are removed, not moved in; its
+    canon with no match moves in all the same (2026-11-26: prod's SRD canon is the operator's alone,
+    and the kept copy has none), with what hangs on it."""
     registry = _registry(server)
     from sqlalchemy import update
 
@@ -329,6 +331,9 @@ def test_drop_unmatched_removes_an_older_copys_leftovers(server: TestClient) -> 
     assert Importer(theirs, setting_slug=other).run(read_vault(FIXTURE)).refused == []
     kept, copy = _scenario_of(mine, slug), _scenario_of(theirs, other)
     stale = theirs.create("person", name="Only In The Old Vault", kind="npc", campaign_id=copy["id"], setting_id=copy["setting_id"])
+    canon = theirs.create("faction", name="Only In The Copy's Canon", setting_id=copy["setting_id"])
+    holst = next(row for row in theirs.list("person", campaign_id=copy["id"]) if row["name"] == "Holst")
+    theirs.create("relationship", person_id=holst["id"], target_faction_id=canon["id"], kind="member_of")
     session = registry.DB.session()
     try:
         for table in _every_table(registry):
@@ -344,3 +349,9 @@ def test_drop_unmatched_removes_an_older_copys_leftovers(server: TestClient) -> 
     names = [row["name"] for row in _as(server, create_user(server)).list("person", campaign_id=kept["id"])]
     assert "Only In The Old Vault" not in names and len(names) == len(set(names)), names
     assert server.get(f"/v1/person/{stale['id']}", headers=_headers(b)).status_code == 404
+    kept_canon = _as(server, create_user(server)).get("faction", canon["id"])[0]
+    assert (kept_canon["created_by_user_id"], kept_canon["setting_id"]) == (env("TEMPLATE_ID"), kept["setting_id"])
+    assert "Only In The Copy's Canon" not in done[0].line().split("dropped (no match)")[-1]
+    # The kept copy's Holst now carries the copy's link to that canon faction.
+    kept_holst = next(row for row in mine.list("person", campaign_id=kept["id"]) if row["name"] == "Holst")
+    assert any(row.get("target_faction_id") == canon["id"] for row in theirs.list("relationship", person_id=kept_holst["id"]))
