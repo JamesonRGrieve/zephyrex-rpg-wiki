@@ -210,6 +210,19 @@ def test_an_accounts_copy_is_adopted_in_place_and_anothers_merged_into_it(server
     holst = next(row for row in people if row["name"] == "Holst")
     etag = server.get(f"/v1/person/{holst['id']}", headers=_headers(a)).headers.get("etag", "")
     assert server.put(f"/v1/person/{holst['id']}", json={"person": {"description": "Mine still?"}}, headers={**_headers(a), "If-Match": etag}).status_code in (403, 404)
+    # Another account starts it, its pictures copied (Zephyrex RPG, 2026-11-26: on dev such a start
+    # failed "copying pictures": the attachments were TEMPLATE's, the files still A's).
+    def pictures(user: Any, person_id: str) -> list[Any]:
+        answer = server.get("/v1/attachment/of", params={"target_entity_type": "person", "target_entity_id": person_id}, headers=_headers(user))
+        assert answer.status_code == 200, answer.text
+        listed: list[Any] = next(value for value in answer.json().values() if isinstance(value, list))
+        return listed
+
+    assert pictures(reader, holst["id"]), "the fixture's Holst has a picture"
+    assert done[0].adopted.get("assets"), done[0].line()
+    run = _start(server, reader, scenario["id"])
+    copied = next(row for row in as_reader.list("person", campaign_id=run["id"]) if row["name"] == "Holst")
+    assert pictures(reader, copied["id"]), "the copy has Holst's picture"
 
 
 def test_the_accounts_copies_inside_one_setting_are_merged_into_one(server: TestClient) -> None:

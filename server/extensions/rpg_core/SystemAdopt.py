@@ -490,6 +490,15 @@ def adopt_settings(model_registry: Any, slugs: list[str], dry_run: bool = True, 
             _clear_cache(touched)
             merged.hooks = _run_hooks(model_registry, str(primary.setting.id), scenario_ids, id_map, dry_run)
             report.append(merged)
+        # The files the shared copy's pictures point to, the template account's too (Zephyrex RPG,
+        # 2026-11-26: on dev every start by another account failed "copying pictures", the assets
+        # still the importer's). Re-running adopt makes an earlier run's leftovers TEMPLATE's.
+        pictured = [str(row.id) for manager, rows in primary.dependents if _table(manager).name == "attachments" for row in rows if str(row.id) not in doomed]
+        assets = _adopt_assets(model_registry, session, pictured, system, dry_run, touched)
+        if assets:
+            made.adopted["assets"] = assets
+        if not dry_run:
+            session.commit()
     except BaseException:
         session.rollback()
         raise
@@ -497,6 +506,28 @@ def adopt_settings(model_registry: Any, slugs: list[str], dry_run: bool = True, 
         session.close()
         _clear_cache(touched)
     return report
+
+
+def _adopt_assets(model_registry: Any, session: Any, attachment_ids: list[str], system: str, dry_run: bool, touched: set[str]) -> int:
+    """Every asset an attachment of ``system``'s points to (and those of ``attachment_ids``, which a
+    dry run hasn't made its yet) made ``system``'s: how many."""
+    from sqlalchemy import select
+
+    from zephyrex.extensions.rpg_core.BLL_RPGCore import _manager, _serves  # type: ignore[import-not-found]
+    from zephyrex.lib.Environment import env
+
+    if not _serves(model_registry, "attachments"):
+        return 0
+    from zephyrex.extensions.attachments.BLL_Attachments import AssetManager, AttachmentManager  # type: ignore[import-not-found]
+
+    root = env("ROOT_ID")
+    links = _table(_manager(model_registry, root, AttachmentManager))
+    files = _table(_manager(model_registry, root, AssetManager))
+    shared = links.c.created_by_user_id == system
+    if attachment_ids:
+        shared = shared | links.c.id.in_(sorted(set(attachment_ids)))
+    asset_ids = [str(one) for one in session.execute(select(links.c.asset_id).where(shared & links.c.deleted_at.is_(None) if "deleted_at" in links.c else shared)).scalars() if one]
+    return _adopt(session, files, asset_ids, system, dry_run, touched)
 
 
 def _campaign_manager() -> Any:
