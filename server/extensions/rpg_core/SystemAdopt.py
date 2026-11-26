@@ -23,6 +23,12 @@ SYSTEM change them, so the server (running as SYSTEM) keeps updating the one sha
   made TEMPLATE's, not lost. Every row that names a removed one (the duplicate's owner's
   playthroughs: their scenario_id, setting_id, a canon place, a scenario's template, an id inside
   an entry's JSON) is turned to the primary's.
+- **Copies inside the primary** (``merge_copies``; Zephyrex RPG, 2026-11-25: on prod four accounts'
+  vault_imports each wrote the seven scenarios into one setting): the primary's rows are grouped
+  by author; one author's copy is kept (``keep_owner``, else the author of the earliest scenario;
+  rows already SYSTEM's or TEMPLATE's go with it) and every other author's is merged into it as a
+  duplicate setting's would be (matched by kind and name, references turned, the rest removed or
+  moved in), the setting itself staying.
 - **Other extensions** (VTT's scenes and sheets) adopt their own rows through ``register_adopt_hook``:
   each hook is called with (model_registry, setting_id, scenario_ids, id_map, dry_run) after the
   wiki's rows, and may return lines for the report.
@@ -58,13 +64,15 @@ class Adoption:
     moved: list[str] = field(default_factory=list)
     repointed: dict[str, int] = field(default_factory=dict)
     hooks: list[str] = field(default_factory=list)
+    # The ids it removed (or, dry, would): never adopted after.
+    doomed: set[str] = field(default_factory=set, repr=False)
 
     def line(self) -> str:
         def counts(found: dict[str, int]) -> str:
             return ", ".join(f"{count} {table}" for table, count in sorted(found.items())) or "nothing"
 
         head = f"setting {self.slug} ({self.setting_id})" + (f" merged into {self.merged_into}" if self.merged_into else " made system level")
-        parts = [head, f"made SYSTEM's: {counts(self.adopted)}"]
+        parts = [head, f"made TEMPLATE's: {counts(self.adopted)}"]
         if self.merged_into:
             parts.append(f"duplicates removed: {counts(self.removed)}")
             parts.append(f"moved in (no match): {', '.join(self.moved) or 'none'}")
@@ -371,8 +379,41 @@ def _anchored_only_to(row: Any, matched: set[str], scope: set[str]) -> bool:
 # ---- adopting --------------------------------------------------------------------------------
 
 
-def adopt_settings(model_registry: Any, slugs: list[str], dry_run: bool = True) -> list[Adoption]:
-    """The first setting made system level, each further one merged into it (see the module)."""
+def _author(row: Any) -> str:
+    return str(getattr(row, "created_by_user_id", None) or "")
+
+
+def _split(held: Held, keep_owner: Optional[str]) -> tuple[Held, list[tuple[str, Held]]]:
+    """A setting's content by author: the copy kept (``keep_owner``'s, else the earliest scenario's
+    author's; with every row of SYSTEM's, TEMPLATE's or no author) and each other author's copy, as
+    a duplicate to merge into it (the same setting)."""
+    from zephyrex.lib.Environment import env
+
+    shared = {"", str(env("SYSTEM_ID")), str(env("TEMPLATE_ID"))}
+    authors = {_author(row) for row in held.scenarios} | {_author(row) for _manager, rows in held.records for row in rows}
+    authors -= shared
+    if len(authors) < 2 and not keep_owner:
+        return held, []
+    if keep_owner is None:
+        theirs = sorted((row for row in held.scenarios if _author(row) not in shared), key=lambda row: (str(getattr(row, "created_at", "") or ""), str(row.id)))
+        keep_owner = _author(theirs[0]) if theirs else sorted(authors)[0]
+
+    def view(wanted: Callable[[str], bool]) -> Held:
+        return Held(
+            setting=held.setting,
+            scenarios=[row for row in held.scenarios if wanted(_author(row))],
+            records=[(manager, [row for row in rows if wanted(_author(row))]) for manager, rows in held.records],
+            dependents=[(manager, [row for row in rows if wanted(_author(row))]) for manager, rows in held.dependents],
+        )
+
+    kept = view(lambda author: author == keep_owner or author in shared)
+    copies = [(author, view(lambda one, author=author: one == author)) for author in sorted(authors - {keep_owner})]
+    return kept, copies
+
+
+def adopt_settings(model_registry: Any, slugs: list[str], dry_run: bool = True, merge_copies: bool = False, keep_owner: Optional[str] = None) -> list[Adoption]:
+    """The first setting made system level, each further one merged into it (see the module);
+    with ``merge_copies``, the accounts' copies inside the first merged into one first."""
     from fastapi import HTTPException
 
     from zephyrex.extensions.rpg_core.BLL_RPGCore import SettingManager, _manager  # type: ignore[import-not-found]
@@ -396,13 +437,26 @@ def adopt_settings(model_registry: Any, slugs: list[str], dry_run: bool = True) 
     session = model_registry.DB.session()
     touched: set[str] = set()
     try:
+        # The accounts' copies inside it merged into one (merge_copies), before it is adopted.
+        doomed: set[str] = set()
+        if merge_copies:
+            kept, copies = _split(primary, keep_owner)
+            for author, copy in copies:
+                merged, scenario_ids, id_map = _merge(model_registry, session, kept, copy, system, dry_run, touched, within=True)
+                merged.slug = f"{found[0].slug}: {author}'s copy"
+                if not dry_run:
+                    session.commit()
+                _clear_cache(touched)
+                merged.hooks = _run_hooks(model_registry, str(found[0].id), scenario_ids, id_map, dry_run)
+                report.append(merged)
+                doomed |= merged.doomed
         # The primary, made TEMPLATE's where it lies.
         made = Adoption(slug=str(found[0].slug), setting_id=str(found[0].id))
         made.adopted["settings"] = _adopt(session, _table(settings), [str(found[0].id)], system, dry_run, touched)
         campaigns_table = _table(_manager(model_registry, env("ROOT_ID"), _campaign_manager()))
-        made.adopted["campaigns"] = _adopt(session, campaigns_table, [str(one.id) for one in primary.scenarios], system, dry_run, touched)
+        made.adopted["campaigns"] = _adopt(session, campaigns_table, [str(one.id) for one in primary.scenarios if str(one.id) not in doomed], system, dry_run, touched)
         for manager, rows in (*primary.records, *primary.dependents):
-            count = _adopt(session, _table(manager), [str(row.id) for row in rows], system, dry_run, touched)
+            count = _adopt(session, _table(manager), [str(row.id) for row in rows if str(row.id) not in doomed], system, dry_run, touched)
             if count:
                 made.adopted[_table(manager).name] = made.adopted.get(_table(manager).name, 0) + count
         if not dry_run:
@@ -432,16 +486,20 @@ def _campaign_manager() -> Any:
     return CampaignManager
 
 
-def _merge(model_registry: Any, session: Any, primary: Held, duplicate: Held, system: str, dry_run: bool, touched: set[str]) -> tuple[Adoption, list[str], dict[str, str]]:
+def _merge(model_registry: Any, session: Any, primary: Held, duplicate: Held, system: str, dry_run: bool, touched: set[str], within: bool = False) -> tuple[Adoption, list[str], dict[str, str]]:
     """One duplicate merged into the primary (see the module): what it did, the system scenarios
-    after it, and its id map (the duplicate's → the primary's), for the adopt hooks."""
+    after it, and its id map (the duplicate's → the primary's), for the adopt hooks. ``within``:
+    an account's copy inside the primary's own setting, which stays."""
     from zephyrex.extensions.rpg_core.BLL_RPGCore import SettingManager, _manager  # type: ignore[import-not-found]
     from zephyrex.lib.Environment import env
 
     root = env("ROOT_ID")
     done = Adoption(slug=str(duplicate.setting.slug), setting_id=str(duplicate.setting.id), merged_into=str(primary.setting.slug))
     id_map, unmatched = _match(primary, duplicate)
-    scope = duplicate.ids()
+    if within:
+        # The one setting is both; it stays, and nothing hangs on it as a match.
+        id_map.pop(str(duplicate.setting.id), None)
+    scope = duplicate.ids() - ({str(duplicate.setting.id)} if within else set())
     matched = set(id_map)
     campaigns_table = _table(_manager(model_registry, root, _campaign_manager()))
     removed: dict[str, list[str]] = {}
@@ -454,7 +512,8 @@ def _merge(model_registry: Any, session: Any, primary: Held, duplicate: Held, sy
     # The duplicate's setting and its matched scenarios go; an unmatched scenario moves in whole.
     settings_table = _table(_manager(model_registry, root, SettingManager))
     tables[settings_table.name] = settings_table
-    note(removed, settings_table, str(duplicate.setting.id))
+    if not within:
+        note(removed, settings_table, str(duplicate.setting.id))
     tables[campaigns_table.name] = campaigns_table
     for one in duplicate.scenarios:
         if str(one.id) in matched:
@@ -477,6 +536,7 @@ def _merge(model_registry: Any, session: Any, primary: Held, duplicate: Held, sy
         for row in rows:
             note(removed if _anchored_only_to(row, matched, scope) else kept, table, str(row.id))
     doomed = {one for ids in removed.values() for one in ids}
+    done.doomed = set(doomed)
     # Every reference to a removed row (the duplicate's moved rows, and anyone's playthroughs) turned.
     for table in _every_table(model_registry):
         count = _repoint(session, table, id_map, doomed, dry_run, touched)

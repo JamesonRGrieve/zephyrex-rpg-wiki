@@ -210,3 +210,53 @@ def test_an_accounts_copy_is_adopted_in_place_and_anothers_merged_into_it(server
     holst = next(row for row in people if row["name"] == "Holst")
     etag = server.get(f"/v1/person/{holst['id']}", headers=_headers(a)).headers.get("etag", "")
     assert server.put(f"/v1/person/{holst['id']}", json={"person": {"description": "Mine still?"}}, headers={**_headers(a), "If-Match": etag}).status_code in (403, 404)
+
+
+def test_the_accounts_copies_inside_one_setting_are_merged_into_one(server: TestClient) -> None:
+    """Zephyrex RPG, 2026-11-25: on prod four accounts' vault_imports each wrote the scenarios into
+    one setting, so adopting it alone would share four copies of each. --merge-copies keeps one
+    author's copy (--keep-owner) and merges every other author's into it inside the setting."""
+    registry = _registry(server)
+    from sqlalchemy import update
+
+    from zephyrex.extensions.rpg_core.SystemAdopt import _every_table, adopt_settings  # type: ignore[import-not-found]
+
+    a, b, reader = create_user(server), create_user(server), create_user(server)
+    mine, theirs = _as(server, a), _as(server, b)
+    slug = setting_of(mine, f"inside-{uuid.uuid4().hex[:8]}")
+    other = setting_of(theirs, f"inside-b-{uuid.uuid4().hex[:8]}")
+    assert Importer(mine, setting_slug=slug).run(read_vault(FIXTURE)).refused == []
+    assert Importer(theirs, setting_slug=other).run(read_vault(FIXTURE)).refused == []
+    kept, copy = _scenario_of(mine, slug), _scenario_of(theirs, other)
+    run_b = _start(server, b, copy["id"])
+    # B's copy moved into A's setting, as prod's imports left it.
+    session = registry.DB.session()
+    try:
+        for table in _every_table(registry):
+            if "setting_id" in table.c:
+                session.execute(update(table).where(table.c.setting_id == copy["setting_id"]).values(setting_id=kept["setting_id"]))
+        session.commit()
+    finally:
+        session.close()
+    from zephyrex.extensions.rpg_core.SystemAdopt import _clear_cache  # type: ignore[import-not-found]
+
+    _clear_cache({table.name for table in _every_table(registry)})
+
+    dry = adopt_settings(registry, [slug], dry_run=True, merge_copies=True, keep_owner=str(a.id))
+    assert len(dry) == 2 and f"{b.id}'s copy" in dry[0].line() and dry[0].removed.get("campaigns") == 1, dry[0].line()
+    assert theirs.get("campaign", copy["id"])[0]["created_by_user_id"] == b.id
+
+    done = adopt_settings(registry, [slug], dry_run=False, merge_copies=True, keep_owner=str(a.id))
+    assert done[0].removed.get("campaigns") == 1 and done[1].adopted.get("campaigns") == 1, [one.line() for one in done]
+    as_reader = _as(server, reader)
+    scenarios = [row for row in as_reader.list("campaign", setting_id=kept["setting_id"]) if row.get("is_scenario") and not row.get("scenario_id")]
+    assert [row["id"] for row in scenarios if row["name"] == SCENARIO] == [kept["id"]]
+    assert scenarios[0]["created_by_user_id"] == env("TEMPLATE_ID")
+    people = as_reader.list("person", campaign_id=kept["id"])
+    names = [row["name"] for row in people]
+    assert len(names) == len(set(names)) and "Holst" in names, names
+    assert {row["created_by_user_id"] for row in people} == {env("TEMPLATE_ID")}
+    # B's copy is gone, and B's playthrough is now of the one shared scenario, still B's.
+    assert server.get(f"/v1/campaign/{copy['id']}", headers=_headers(b)).status_code == 404
+    run = theirs.get("campaign", run_b["id"])[0]
+    assert (run["created_by_user_id"], run["scenario_id"], run["setting_id"]) == (b.id, kept["id"], kept["setting_id"])
