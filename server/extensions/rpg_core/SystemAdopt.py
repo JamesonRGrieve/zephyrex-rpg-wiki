@@ -121,11 +121,6 @@ class Held:
         return found
 
 
-def _live(rows: Iterable[Any]) -> list[Any]:
-    # ROOT's lists include deleted rows.
-    return [row for row in rows if not getattr(row, "deleted_at", None)]
-
-
 def _held(model_registry: Any, setting: Any) -> Held:
     from zephyrex.extensions.rpg_core.BLL_RPGCore import (  # type: ignore[import-not-found]
         _SCENARIO_RECORDS,
@@ -145,15 +140,15 @@ def _held(model_registry: Any, setting: Any) -> Held:
 
     root = env("ROOT_ID")
     campaigns = _manager(model_registry, root, CampaignManager)
-    in_setting = _live(_every(campaigns, [FieldComparison(campaigns.Model, "setting_id", "eq", str(setting.id))]))
+    in_setting = _every(campaigns, [FieldComparison(campaigns.Model, "setting_id", "eq", str(setting.id))], live=True)
     # Its scenarios: playthroughs (a scenario_id) are their players' own, and stay so.
     scenarios = [row for row in in_setting if getattr(row, "is_scenario", None) and not getattr(row, "scenario_id", None)]
     scenario_ids = [str(row.id) for row in scenarios]
     records: list[tuple[Any, list[Any]]] = []
     for manager_class in _SCENARIO_RECORDS:
         manager = _manager(model_registry, root, manager_class)
-        rows = _live(_every(manager, [FieldComparison(manager.Model, "campaign_id", "in", scenario_ids)])) if scenario_ids else []
-        rows += [row for row in _live(_every(manager, [FieldComparison(manager.Model, "setting_id", "eq", str(setting.id))])) if not getattr(row, "campaign_id", None)]
+        rows = _every(manager, [FieldComparison(manager.Model, "campaign_id", "in", scenario_ids)], live=True) if scenario_ids else []
+        rows += [row for row in _every(manager, [FieldComparison(manager.Model, "setting_id", "eq", str(setting.id))], live=True) if not getattr(row, "campaign_id", None)]
         records.append((manager, rows))
     inside = {str(row.id) for _manager, rows in records for row in rows} | set(scenario_ids) | {str(setting.id)}
     known = _known_ids(model_registry)
@@ -163,7 +158,7 @@ def _held(model_registry: Any, setting: Any) -> Held:
         # A row touching the content that names nothing outside it (a playthrough's link to a canon
         # faction is the player's, and stays theirs). Rows taken in anchor the next table's (a
         # relationship's influences, after the relationships).
-        rows = [row for row in _live(touching(manager, fields, sorted(inside))) if not _names_outside(row, inside, known)]
+        rows = [row for row in touching(manager, fields, sorted(inside), live=True) if not _names_outside(row, inside, known)]
         inside.update(str(row.id) for row in rows)
         dependents.append((manager, rows))
 
@@ -181,7 +176,7 @@ def _held(model_registry: Any, setting: Any) -> Held:
         hanging(_manager(model_registry, root, AttachmentManager), ("target_entity_id",))
     for manager_class in (KnownFactManager, PersonMoveManager):
         manager = _manager(model_registry, root, manager_class)
-        dependents.append((manager, _live(_every(manager, [FieldComparison(manager.Model, "campaign_id", "in", scenario_ids)])) if scenario_ids else []))
+        dependents.append((manager, _every(manager, [FieldComparison(manager.Model, "campaign_id", "in", scenario_ids)], live=True) if scenario_ids else []))
     return Held(setting=setting, scenarios=scenarios, records=records, dependents=dependents)
 
 
@@ -435,7 +430,7 @@ def adopt_settings(model_registry: Any, slugs: list[str], dry_run: bool = True, 
     with ``merge_copies``, the accounts' copies inside the first merged into one first."""
     from fastapi import HTTPException
 
-    from zephyrex.extensions.rpg_core.BLL_RPGCore import SettingManager, _manager  # type: ignore[import-not-found]
+    from zephyrex.extensions.rpg_core.BLL_RPGCore import SettingManager, _listed, _manager  # type: ignore[import-not-found]
     from zephyrex.lib.Environment import env
 
     if not slugs:
@@ -447,7 +442,7 @@ def adopt_settings(model_registry: Any, slugs: list[str], dry_run: bool = True, 
     settings = _manager(model_registry, env("ROOT_ID"), SettingManager)
     found = []
     for slug in slugs:
-        rows = _live(settings.list(slug=slug) or [])
+        rows = _listed(settings, slug=slug)
         if not rows:
             raise HTTPException(status_code=404, detail=f"No setting has the slug {slug!r}")
         found.append(rows[0])

@@ -80,8 +80,21 @@ def _managers(model_registry: Any, requester_id: str) -> tuple[Any, Any, Any, An
     )
 
 
-def _live(rows: Any) -> list[Any]:
-    return [row for row in rows or [] if not getattr(row, "deleted_at", None)]
+def _live(manager: Any, filters: Optional[list[Any]] = None, **kwargs: Any) -> list[Any]:
+    """A list's rows without soft-deleted ones, whoever reads (ROOT's reads include them)."""
+    from zephyrex.extensions.rpg_core.BLL_RPGCore import _listed  # type: ignore[import-not-found]
+
+    return _listed(manager, filters, **kwargs)
+
+
+def _one(manager: Any, row_id: Any) -> Any:
+    """A row by id, 404 when it is soft-deleted too (a get as ROOT answers a tombstone)."""
+    from zephyrex.logic.AbstractLogicManager.models import FieldComparison
+
+    rows = _live(manager, [FieldComparison(manager.Model, "id", "in", [str(row_id)])])
+    if not rows:
+        raise HTTPException(status_code=404, detail=f"{manager.Model.__name__} not found")
+    return rows[0]
 
 
 def _quantity(value: Any) -> int:
@@ -99,7 +112,7 @@ def _wanted(quantity: Optional[int], have: int, verb: str) -> int:
 
 
 def _holding(holdings: Any, instance_id: str) -> Optional[Any]:
-    rows = _live(holdings.list(item_instance_id=instance_id))
+    rows = _live(holdings, item_instance_id=instance_id)
     return rows[0] if rows else None
 
 
@@ -118,7 +131,7 @@ def _stackable(items: Any, item_id: Optional[str]) -> bool:
     if not item_id:
         return False
     try:
-        return _quantity(items.get(id=item_id).stack_size) > 1
+        return _quantity(_one(items, item_id).stack_size) > 1
     except HTTPException:
         return False
 
@@ -127,7 +140,7 @@ def _shown(instance: Any, items: Any, holding: Optional[Any]) -> ItemHere:
     name, kind = "", None
     if instance.item_id:
         try:
-            item = items.get(id=instance.item_id)
+            item = _one(items, instance.item_id)
             name, kind = str(item.name or ""), item.kind
         except HTTPException:
             pass
@@ -147,16 +160,16 @@ def items_at(model_registry: Any, requester_id: str, location_id: str, include_i
 
     instances, holdings, items, _people = _managers(model_registry, requester_id)
     places = _manager(model_registry, requester_id, LocationManager)
-    places.get(id=location_id)
+    _one(places, location_id)
     wanted = [location_id]
     if include_inside:
         frontier = [location_id]
         while frontier:
-            children = [str(row.id) for row in _live(places.list(filters=[FieldComparison(places.Model, "parent_id", "in", frontier)])) if str(row.id) not in wanted]
+            children = [str(row.id) for row in _live(places, [FieldComparison(places.Model, "parent_id", "in", frontier)]) if str(row.id) not in wanted]
             wanted.extend(children)
             frontier = children
-    lying = _live(instances.list(filters=[FieldComparison(instances.Model, "location_id", "in", wanted)]))
-    held_here = _live(holdings.list(filters=[FieldComparison(holdings.Model, "target_entity_id", "in", wanted)]))
+    lying = _live(instances, [FieldComparison(instances.Model, "location_id", "in", wanted)])
+    held_here = _live(holdings, [FieldComparison(holdings.Model, "target_entity_id", "in", wanted)])
     shown: dict[str, ItemHere] = {}
     for instance in lying:
         holding = _holding(holdings, str(instance.id))
@@ -166,7 +179,7 @@ def items_at(model_registry: Any, requester_id: str, location_id: str, include_i
         if holding.target_entity_type != "location" or str(holding.item_instance_id) in shown:
             continue
         try:
-            instance = instances.get(id=holding.item_instance_id)
+            instance = _one(instances, holding.item_instance_id)
         except HTTPException:
             continue
         shown[str(instance.id)] = _shown(instance, items, holding)
@@ -184,16 +197,16 @@ def items_carried(model_registry: Any, requester_id: str, person_ids: list[str])
     instances, holdings, items, people = _managers(model_registry, requester_id)
     if not wanted:
         return ItemsCarried(items={})
-    visible = {str(row.id) for row in _live(people.list(filters=[FieldComparison(people.Model, "id", "in", wanted)]))}
+    visible = {str(row.id) for row in _live(people, [FieldComparison(people.Model, "id", "in", wanted)])}
     found: dict[str, list[ItemHere]] = {one: [] for one in wanted if one in visible}
-    rows = [row for row in _live(holdings.list(filters=[FieldComparison(holdings.Model, "target_entity_id", "in", sorted(visible))])) if row.target_entity_type == "person"] if visible else []
+    rows = [row for row in _live(holdings, [FieldComparison(holdings.Model, "target_entity_id", "in", sorted(visible))]) if row.target_entity_type == "person"] if visible else []
     for holding in rows:
         try:
-            instance = instances.get(id=holding.item_instance_id)
+            instance = _one(instances, holding.item_instance_id)
         except HTTPException:
             continue
         found[str(holding.target_entity_id)].append(_shown(instance, items, holding))
-    owned = _live(instances.list(filters=[FieldComparison(instances.Model, "owner_person_id", "in", sorted(visible))])) if visible else []
+    owned = _live(instances, [FieldComparison(instances.Model, "owner_person_id", "in", sorted(visible))]) if visible else []
     for instance in owned:
         if instance.location_id or _holding(holdings, str(instance.id)) is not None:
             continue
@@ -213,8 +226,8 @@ def take_item(model_registry: Any, requester_id: str, person_id: str, item_insta
     it, or ``quantity`` split off its stack. Refused (409) when another person or an organisation
     carries it; the owner never changes."""
     instances, holdings, items, people = _managers(model_registry, requester_id)
-    people.get(id=person_id)
-    instance = instances.get(id=item_instance_id)
+    _one(people, person_id)
+    instance = _one(instances, item_instance_id)
     holding = _holding(holdings, item_instance_id)
     if _carried_by(instance, holding, person_id) is not None:
         # Already theirs to hand: nothing moves.
@@ -237,11 +250,11 @@ def take_item(model_registry: Any, requester_id: str, person_id: str, item_insta
         moving = instances.update(id=item_instance_id, location_id=None) if instance.location_id else instance
     # A stack of the same item and owner the person already carries takes it in.
     if _stackable(items, instance.item_id):
-        for row in _live(holdings.list(target_entity_type="person", target_entity_id=person_id)):
+        for row in _live(holdings, target_entity_type="person", target_entity_id=person_id):
             if str(row.item_instance_id) == str(moving.id):
                 continue
             try:
-                stack = instances.get(id=row.item_instance_id)
+                stack = _one(instances, row.item_instance_id)
             except HTTPException:
                 continue
             if str(stack.item_id) == str(instance.item_id) and str(stack.owner_person_id or "") == str(instance.owner_person_id or ""):
@@ -257,7 +270,7 @@ def take_item(model_registry: Any, requester_id: str, person_id: str, item_insta
 
 
 def _carried_or_refused(instances: Any, holdings: Any, person_id: str, item_instance_id: str) -> tuple[Any, Optional[Any], int]:
-    instance = instances.get(id=item_instance_id)
+    instance = _one(instances, item_instance_id)
     holding = _holding(holdings, item_instance_id)
     have = _carried_by(instance, holding, person_id)
     if have is None:
@@ -269,7 +282,7 @@ def spend_item(model_registry: Any, requester_id: str, person_id: str, item_inst
     """The person uses up ``quantity`` of an item they carry (a potion drunk, an arrow loosed): at 0
     the carry row and the instance are removed."""
     instances, holdings, _items, people = _managers(model_registry, requester_id)
-    people.get(id=person_id)
+    _one(people, person_id)
     instance, holding, have = _carried_or_refused(instances, holdings, person_id, item_instance_id)
     amount = _wanted(quantity, have, "spend")
     left = have - amount
@@ -293,11 +306,11 @@ def drop_item(
     from zephyrex.extensions.world_spatial.BLL_WorldSpatial import LocationManager  # type: ignore[import-not-found]
 
     instances, holdings, items, people = _managers(model_registry, requester_id)
-    person = people.get(id=person_id)
+    person = _one(people, person_id)
     place = location_id or getattr(person, "location_id", None)
     if not place:
         raise HTTPException(status_code=422, detail="Name the place: they are nowhere")
-    _manager(model_registry, requester_id, LocationManager).get(id=place)
+    _one(_manager(model_registry, requester_id, LocationManager), place)
     instance, holding, have = _carried_or_refused(instances, holdings, person_id, item_instance_id)
     amount = _wanted(quantity, have, "drop")
     left = have - amount
@@ -314,7 +327,7 @@ def drop_item(
         moving = instance
     # A stack of the same item and owner already lying free there takes it in.
     if _stackable(items, instance.item_id):
-        for stack in _live(instances.list(location_id=place)):
+        for stack in _live(instances, location_id=place):
             if str(stack.id) == str(moving.id) or str(stack.item_id) != str(instance.item_id) or str(stack.owner_person_id or "") != str(instance.owner_person_id or ""):
                 continue
             if _holding(holdings, str(stack.id)) is not None:

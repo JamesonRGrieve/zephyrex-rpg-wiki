@@ -2386,3 +2386,33 @@ class TestItemsInPlay:
         registry = server.app.state.model_registry  # type: ignore[attr-defined]
         lying = loaded_ability(registry, "rpg_core", "items_at")(registry, str(person.id), copy["id"])["items"]
         assert [(one["name"], one["quantity"]) for one in lying] == [("Gem", 4)]
+
+    def test_as_root_a_spent_item_is_gone(self, server: TestClient, person: Any) -> None:
+        """Zephyrex VTT, 2026-11-28: a ROOT read returns soft-deleted rows, and the rows don't carry
+        deleted_at, so a spent instance stayed in items_carried; the filter is in the query now."""
+        from fastapi import HTTPException
+        from zephyrex.extensions.AbstractExtensionProvider import loaded_ability
+        from zephyrex.lib.Environment import env
+
+        campaign = _create(server, person, "campaign", name="Root Spend")
+        hall = _create(server, person, "location", name="Hall", kind="building", campaign_id=campaign["id"])
+        tam = _create(server, person, "person", name="Tam", kind="pc", campaign_id=campaign["id"], location_id=hall["id"])
+        potion = _create(server, person, "item", name="Potion", kind="consumable", stack_size=10)
+        kit = _create(server, person, "item_instance", item_id=potion["id"], owner_person_id=tam["id"], quantity=2)
+        loose = _create(server, person, "item_instance", item_id=potion["id"], location_id=hall["id"], quantity=1)
+        registry = server.app.state.model_registry  # type: ignore[attr-defined]
+        root = str(env("ROOT_ID"))
+        call = lambda name, *args: loaded_ability(registry, "rpg_core", name)(registry, root, *args)  # noqa: E731
+        assert call("spend_item", tam["id"], kit["id"])["left"] == 1
+        assert call("spend_item", tam["id"], kit["id"])["left"] == 0
+        assert call("items_carried", [tam["id"]])["items"][tam["id"]] == []
+        try:
+            call("spend_item", tam["id"], kit["id"])
+        except HTTPException as error:
+            assert error.status_code == 404
+        else:
+            raise AssertionError("a spent instance was spent again")
+        # A loose one taken and spent is gone from the place and the person, read as ROOT.
+        call("take_item", tam["id"], loose["id"])
+        call("spend_item", tam["id"], loose["id"])
+        assert call("items_at", hall["id"])["items"] == [] and call("items_carried", [tam["id"]])["items"][tam["id"]] == []

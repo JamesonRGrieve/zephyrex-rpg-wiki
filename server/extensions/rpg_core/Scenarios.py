@@ -137,15 +137,21 @@ def undo(copying: Copying) -> None:
             continue
 
 
-def touching(manager: Any, anchors: tuple[str, ...], ids: list[str]) -> list[Any]:
-    """A link table's rows whose anchors name any of ``ids``, each once."""
+def touching(manager: Any, anchors: tuple[str, ...], ids: list[str], live: bool = False) -> list[Any]:
+    """A link table's rows whose anchors name any of ``ids``, each once; with live, no
+    soft-deleted ones even for ROOT."""
     from zephyrex.logic.AbstractLogicManager.models import FieldComparison
 
     if not ids:
         return []
+    deleted_out: list[Any] = []
+    if live:
+        from zephyrex.extensions.rpg_core.BLL_RPGCore import _not_deleted  # type: ignore[import-not-found]
+
+        deleted_out = _not_deleted(manager)
     seen: dict[str, Any] = {}
     for anchor in anchors:
-        for row in manager.list(filters=[FieldComparison(manager.Model, anchor, "in", ids)]) or []:
+        for row in manager.list(filters=[FieldComparison(manager.Model, anchor, "in", ids), *deleted_out]) or []:
             seen.setdefault(str(row.id), row)
     return list(seen.values())
 

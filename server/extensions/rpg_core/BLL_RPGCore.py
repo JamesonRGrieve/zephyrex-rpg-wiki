@@ -2428,14 +2428,14 @@ def known_names(model_registry: Any, requester_id: str, campaign_id: str) -> Kno
 
     _manager(model_registry, requester_id, CampaignManager).get(id=campaign_id)
     root = env("ROOT_ID")
-    every_pc = [row for row in _live(_manager(model_registry, root, PersonManager).list(campaign_id=campaign_id, kind="pc")) if not getattr(row, "is_template", None)]
+    every_pc = [row for row in _listed(_manager(model_registry, root, PersonManager), campaign_id=campaign_id, kind="pc") if not getattr(row, "is_template", None)]
     pcs = sorted(str(row.id) for row in every_pc)
     if not pcs:
         return KnownNames(party=[], by_pc={})
     facts = _manager(model_registry, root, KnownFactManager)
     everyone = set(pcs) | _known_to_party(model_registry, campaign_id)
     knows: dict[str, set[str]] = {one: set(everyone) for one in pcs}
-    for row in _live(facts.list(filters=[FieldComparison(facts.Model, "person_id", "in", pcs)])):
+    for row in _listed(facts, filters=[FieldComparison(facts.Model, "person_id", "in", pcs)]):
         if row.target_entity_type == "person" and not (row.text or None) and str(row.person_id) in knows:
             knows[str(row.person_id)].add(str(row.target_entity_id))
     seen = _manager(model_registry, requester_id, PersonManager)
@@ -2447,14 +2447,14 @@ def _known_to_party(model_registry: Any, campaign_id: str) -> set[str]:
     """The campaign's persons the party knows by name from the start: marked known_to_party, or (a
     playthrough copied before the mark was) of the same name as one so marked in its scenario."""
     root = env("ROOT_ID")
-    people = [row for row in _live(_manager(model_registry, root, PersonManager).list(campaign_id=campaign_id)) if not getattr(row, "is_template", None)]
+    people = [row for row in _listed(_manager(model_registry, root, PersonManager), campaign_id=campaign_id) if not getattr(row, "is_template", None)]
     known = {str(row.id) for row in people if getattr(row, "known_to_party", None)}
     try:
         scenario_id = getattr(_manager(model_registry, root, CampaignManager).get(id=campaign_id), "scenario_id", None)
     except HTTPException:
         scenario_id = None
     if scenario_id:
-        marked = {str(row.name) for row in _live(_manager(model_registry, root, PersonManager).list(campaign_id=str(scenario_id))) if getattr(row, "known_to_party", None)}
+        marked = {str(row.name) for row in _listed(_manager(model_registry, root, PersonManager), campaign_id=str(scenario_id)) if getattr(row, "known_to_party", None)}
         known |= {str(row.id) for row in people if str(row.name) in marked}
     return known
 
@@ -2490,9 +2490,17 @@ _PERSON_ARGUMENTS = ("person_id", "near_person_id")
 _LIST_ARGUMENTS = ("person_ids", "ids", "target_ids")
 
 
-def _live(rows: Any) -> list[Any]:
-    """Rows not deleted (a lookup as ROOT also returns soft-deleted rows)."""
-    return [row for row in rows or [] if getattr(row, "deleted_at", None) is None]
+def _not_deleted(manager: Any) -> list[Any]:
+    """The query filter that leaves soft-deleted rows out. A read as ROOT returns them (the framework
+    filters deleted_at for every other requester), and the rows it hands back don't carry
+    deleted_at, so the test goes in the query (Zephyrex VTT's finding, 2026-11-28)."""
+    table = getattr(manager, "DB", None)
+    return [table.deleted_at.is_(None)] if table is not None and hasattr(table, "deleted_at") else []
+
+
+def _listed(manager: Any, filters: Optional[list[Any]] = None, **kwargs: Any) -> list[Any]:
+    """A list's rows, soft-deleted ones left out whoever reads."""
+    return list(manager.list(filters=[*(filters or []), *_not_deleted(manager)], **kwargs) or [])
 
 
 def campaign_of_call(model_registry: Any, arguments: Any) -> Optional[str]:
@@ -2514,7 +2522,7 @@ def campaign_of_call(model_registry: Any, arguments: Any) -> Optional[str]:
     for record_id in named:
         for manager_class in WORLD_ENTITY_MANAGERS.values():
             manager = _manager(model_registry, env("ROOT_ID"), manager_class)
-            for row in _live(manager.list(filters=[FieldComparison(manager.Model, "id", "in", [record_id])])):
+            for row in _listed(manager, filters=[FieldComparison(manager.Model, "id", "in", [record_id])]):
                 campaign_id = getattr(row, "campaign_id", None)
                 if campaign_id:
                     return str(campaign_id)
@@ -2540,7 +2548,7 @@ def _world_holds(context: HookContext) -> None:
     if not world:
         return
     instances = ProviderInstanceManager(requester_id=env("ROOT_ID"), model_registry=context.manager.model_registry)
-    if not _live(instances.list(filters=[FieldComparison(instances.Model, "id", "in", [str(world)])])):
+    if not _listed(instances, filters=[FieldComparison(instances.Model, "id", "in", [str(world)])]):
         raise HTTPException(status_code=422, detail="foundry_world_id names no Foundry world (provider instance)")
 
 
@@ -2587,7 +2595,7 @@ def campaign_backend(
     if not wanted:
         return native
     campaigns = _manager(model_registry, env("ROOT_ID"), CampaignManager)
-    rows = _live(campaigns.list(filters=[FieldComparison(campaigns.Model, "id", "in", [str(wanted)])]))
+    rows = _listed(campaigns, filters=[FieldComparison(campaigns.Model, "id", "in", [str(wanted)])])
     if not rows:
         return native
     backend = getattr(rows[0], "backend", None) or NATIVE_BACKEND
@@ -2739,7 +2747,7 @@ def set_attitude(model_registry: Any, requester_id: str, person_id: str, toward:
     held = _manager(model_registry, requester_id, DispositionManager)
     rows = [
         row
-        for row in _live(held.list(person_id=person_id) or [])
+        for row in _listed(held, person_id=person_id)
         if row.target_kind == kind and (kind == PARTY or str(row.target_person_id or row.target_faction_id or "") == target)
     ]
     rows.sort(key=lambda row: (row.created_at, str(row.id)))
@@ -3504,11 +3512,13 @@ def remove_campaign_records(model_registry: Any, requester_id: str, campaign_ids
     return RecordsRemoved(campaigns=sorted(campaign_ids), removed=removed)
 
 
-def _every(manager: Any, filters: Optional[list[Any]] = None, page: int = 500) -> list[Any]:
-    """Every row a list answers, page by page (a list answers one page)."""
+def _every(manager: Any, filters: Optional[list[Any]] = None, page: int = 500, live: bool = False) -> list[Any]:
+    """Every row a list answers, page by page (a list answers one page); with live, no
+    soft-deleted ones even for ROOT (_not_deleted)."""
     rows: list[Any] = []
+    wanted = [*(filters or []), *_not_deleted(manager)] if live else filters
     while True:
-        found = manager.list(filters=filters, limit=page, offset=len(rows)) or []
+        found = manager.list(filters=wanted, limit=page, offset=len(rows)) or []
         rows.extend(found)
         if len(found) < page:
             return rows
