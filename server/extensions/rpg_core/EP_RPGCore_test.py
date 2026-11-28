@@ -2253,6 +2253,38 @@ class TestInvariants:
         assert json.loads(copies["Warden"]["invariants"]) == ["Never harms a child", "Never lies to a priest"]
 
 
+    def test_only_the_gm_reads_them_and_a_players_start_keeps_them(self, server: TestClient, other: Any) -> None:
+        """Zephyrex RPG and Vault Author Atomic 40k, 2026-11-28: an honest invariant on a public
+        NPC gives a hidden truth away, so they're the GM's as gm_notes are. A shared scenario (SYSTEM's
+        here, TEMPLATE's on prod) is read by everyone and edited by none of them: they see no
+        invariants, yet a start from it gives their copy the scenario's."""
+        from zephyrex.extensions.AbstractExtensionProvider import loaded_ability
+        from zephyrex.extensions.genealogy.BLL_Genealogy import PersonManager
+        from zephyrex.extensions.rpg_core.BLL_RPGCore import CampaignManager  # type: ignore[import-not-found]
+        from zephyrex.lib.Environment import env
+
+        registry = server.app.state.model_registry  # type: ignore[attr-defined]
+        system = str(env("SYSTEM_ID"))
+        scenario = CampaignManager(requester_id=system, model_registry=registry).create(name="Shared Cult Test", is_scenario=True)
+        cultist = PersonManager(requester_id=system, model_registry=registry).create(
+            name="Brother Vey", kind="npc", campaign_id=str(scenario.id), invariants=["Never betrays the Patriarch"]
+        )
+        # The scenario's GM (SYSTEM) reads them; a player of it doesn't, by any read.
+        assert PersonManager(requester_id=system, model_registry=registry).get(id=str(cultist.id)).invariants
+        one = server.get(f"/v1/person/{cultist.id}", headers=_headers(other))
+        assert one.status_code == 200, one.text
+        assert one.json()["person"]["invariants"] is None
+        listed = _rows(server.get(f"/v1/person?campaign_id={scenario.id}", headers=_headers(other)).json())
+        assert [row["invariants"] for row in listed] == [None]
+        [entity] = loaded_ability(registry, "rpg_core", "world_entities_by_id")(registry, str(other.id), [str(cultist.id)])["world_entities"]
+        assert entity["invariants"] == []
+        # Their start copies the scenario's people whole; in their own playthrough they're the GM.
+        start = _start(server, other, str(scenario.id))
+        assert start["state"] == "done", start
+        [copy] = _rows(server.get(f"/v1/person?campaign_id={start['campaign_id']}", headers=_headers(other)).json())
+        assert json.loads(copy["invariants"]) == ["Never betrays the Patriarch"]
+
+
 class TestSetAttitude:
     """Zephyrex RPG, 2026-11-28: play writes an attitude back for the story's dispositions check;
     current_attitudes reads it at once, and a trigger resolved later still wins."""

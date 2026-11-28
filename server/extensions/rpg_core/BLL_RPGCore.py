@@ -19,6 +19,7 @@ rpg_systems (operator, 2026-11-20): the wiki depends on no other suite product.
 Each ``*_id`` names its model, so the framework gives it a real foreign key.
 """
 
+import contextvars
 import json
 from datetime import datetime
 from typing import Any, Callable, ClassVar, Optional, Type
@@ -3299,6 +3300,14 @@ def instantiate(model_registry: Any, requester_id: str, use: TemplateUse) -> Tem
         raise HTTPException(status_code=422, detail=f"A template is one of: {', '.join(MANAGER_OF_TYPE)}")
     records = _manager(model_registry, requester_id, MANAGER_OF_TYPE[use.kind])
     source = records.get(id=use.template_id)
+    if getattr(source, "is_template", None) and hasattr(source, "invariants"):
+        # A template's copy carries its invariants (_mask_invariants); a record saved as a template
+        # by someone who can't edit it is read as they see it.
+        unmasked = _INVARIANTS_UNMASKED.set(True)
+        try:
+            source = records.get(id=use.template_id)
+        finally:
+            _INVARIANTS_UNMASKED.reset(unmasked)
     if not use.as_template and not getattr(source, "is_template", None):
         raise HTTPException(status_code=422, detail="That record isn't a template")
     writable = set(records._model.Create.model_fields)
@@ -3433,12 +3442,16 @@ def instantiate_campaign(
     source = campaigns.get(id=source_campaign_id)
     picked = _pregen_rows(model_registry, requester_id, getattr(source, "setting_id", None), pregens or [])
     copying = Copying()
+    # The scenario's people are read whole, invariants included (_mask_invariants).
+    unmasked = _INVARIANTS_UNMASKED.set(True)
     try:
         made = _instantiate(model_registry, requester_id, campaigns, source, copying, name, progress or (lambda *_args: None), picked)
     except BaseException:
         # All or nothing: a start that fails partway leaves no half-copied campaign.
         undo(copying)
         raise
+    finally:
+        _INVARIANTS_UNMASKED.reset(unmasked)
     _after_instantiate(model_registry, requester_id, str(source.id), str(made.id), dict(copying.id_map))
     return CampaignStarted(campaign=_manager(model_registry, requester_id, CampaignManager).get(id=str(made.id)).model_dump(mode="json"), id_map=copying.id_map)
 
@@ -3585,6 +3598,42 @@ def remove_orphaned_records(model_registry: Any, requester_id: str, dry_run: boo
     others = {str(row.id) for row in root.list(filters=[FieldComparison(root.Model, "id", "in", sorted(named))]) or [] if str(getattr(row, "created_by_user_id", "") or "") != str(requester_id)}
     # dry_run: what would go, counted, nothing deleted.
     return remove_campaign_records(model_registry, requester_id, sorted(named - others), dry_run=dry_run)
+
+
+# A person's invariants are the GM's (Zephyrex RPG and Vault Author Atomic 40k, 2026-11-28: an honest
+# "never betrays the Patriarch" on a public NPC gives a hidden cultist away), as a framing's
+# gm_notes are: every read of a person (a REST get or list, the world-entity reads built on them)
+# answers invariants none for anyone who can't edit the person's campaign (a canon person's: its
+# setting). A start copies a scenario's people as a player who can't edit it, so the copy reads
+# them unmasked (_INVARIANTS_UNMASKED), or its NPCs would lose theirs.
+_INVARIANTS_UNMASKED: "contextvars.ContextVar[bool]" = contextvars.ContextVar("rpg_core_invariants_unmasked", default=False)
+
+
+def _mask_invariants(context: HookContext) -> None:
+    if context.method_name not in ("get", "list") or _INVARIANTS_UNMASKED.get():
+        return
+    result = context.modified_result if context.modified_result is not None else context.result
+    rows = result if isinstance(result, list) else [result]
+    if not any(getattr(row, "invariants", None) for row in rows):
+        return
+    from zephyrex.lib.RecordTarget import can_edit
+
+    registry, requester = context.manager.model_registry, str(context.manager.requester.id)
+    allowed: dict[tuple[str, str], bool] = {}
+
+    def gm_of(row: Any) -> bool:
+        campaign, setting = getattr(row, "campaign_id", None), getattr(row, "setting_id", None)
+        scope = ("campaign", str(campaign)) if campaign else ("setting", str(setting)) if setting else ("person", str(row.id))
+        if scope not in allowed:
+            allowed[scope] = bool(can_edit(registry, requester, *scope))
+        return allowed[scope]
+
+    shown = [row.model_copy(update={"invariants": None}) if getattr(row, "invariants", None) and not gm_of(row) else row for row in rows]
+    if any(new is not old for new, old in zip(shown, rows)):
+        context.set_result(shown if isinstance(result, list) else shown[0])
+
+
+hook_bll(PersonManager, timing=HookTiming.AFTER, priority=50)(_mask_invariants)
 
 
 def _campaign_records_go(context: HookContext) -> None:
