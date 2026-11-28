@@ -339,6 +339,16 @@ class RPGCoreExtension(AbstractStaticExtension):
         return spend_item(model_registry, requester_id, person_id, item_instance_id, quantity).model_dump(mode="json")
 
     @classmethod
+    @ability("give_item")
+    def give_item(cls, model_registry: Any, requester_id: str, person_id: str, item_id: str, quantity: int = 1) -> dict[str, Any]:
+        """``quantity`` of a kind of item (an Item's id) made for the person, owned and carried by
+        them, as starting equipment is: {item_instance_id, quantity}; a stackable item merges into
+        the stack of it they own and carry."""
+        from zephyrex.extensions.rpg_core.Items import give_item  # type: ignore[import-not-found]
+
+        return give_item(model_registry, requester_id, person_id, item_id, quantity).model_dump(mode="json")
+
+    @classmethod
     @ability("drop_item")
     def drop_item(
         cls, model_registry: Any, requester_id: str, person_id: str, item_instance_id: str, quantity: Optional[int] = None, location_id: Optional[str] = None

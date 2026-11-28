@@ -337,3 +337,35 @@ def drop_item(
             return ItemDropped(item_instance_id=str(stack.id), dropped=amount, location_id=place)
     instances.update(id=str(moving.id), location_id=place)
     return ItemDropped(item_instance_id=str(moving.id), dropped=amount, location_id=place)
+
+
+class ItemGiven(PlainModel):
+    item_instance_id: str = Field(..., description="The instance the person now owns and carries (their stack's, when it merged)")
+    quantity: int = Field(..., description="How many of it they carry now")
+
+
+def give_item(model_registry: Any, requester_id: str, person_id: str, item_id: str, quantity: int = 1) -> ItemGiven:
+    """``quantity`` of a kind of item made for the person, theirs and carried by them (Zephyrex RPG,
+    2026-11-28: pregens and the party carried nothing; the VTT builder grants starting equipment,
+    the vault a person's `carries:`). A stackable item merges into the stack of it they own and
+    carry."""
+    instances, holdings, items, people = _managers(model_registry, requester_id)
+    _one(people, person_id)
+    item = _one(items, item_id)
+    if not isinstance(quantity, int) or isinstance(quantity, bool) or quantity < 1:
+        raise HTTPException(status_code=422, detail="quantity is a whole number from 1")
+    amount = quantity
+    if _quantity(item.stack_size) > 1:
+        for row in _live(holdings, target_entity_type="person", target_entity_id=person_id):
+            try:
+                stack = _one(instances, row.item_instance_id)
+            except HTTPException:
+                continue
+            if str(stack.item_id) == str(item_id) and str(stack.owner_person_id or "") == person_id:
+                total = _quantity(row.quantity) + amount
+                instances.update(id=str(stack.id), quantity=total)
+                holdings.update(id=str(row.id), quantity=total)
+                return ItemGiven(item_instance_id=str(stack.id), quantity=total)
+    made = instances.create(item_id=item_id, owner_person_id=person_id, quantity=amount)
+    holdings.create(item_instance_id=str(made.id), target_entity_type="person", target_entity_id=person_id, quantity=amount)
+    return ItemGiven(item_instance_id=str(made.id), quantity=amount)

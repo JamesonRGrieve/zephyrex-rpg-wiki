@@ -115,6 +115,10 @@ def test_the_vault_imports_with_its_links_and_a_second_run_changes_nothing(serve
     [holding] = api.list("entity_inventory", target_entity_type="person", target_entity_id=dingus["id"])
     instance, _etag = api.get("item_instance", holding["item_instance_id"])
     assert (instance["item_id"], instance["owner_person_id"], holding["quantity"]) == (item["id"], dingus["id"], 1)
+    # Holst's note carries two of it too: his own instance, held by him.
+    [carried] = api.list("entity_inventory", target_entity_type="person", target_entity_id=holst["id"])
+    his, _etag = api.get("item_instance", carried["item_instance_id"])
+    assert (his["item_id"], his["owner_person_id"], carried["quantity"]) == (item["id"], holst["id"], 2)
     journal = _one(api, "journal", world, "Session 1 — Arrival")
     assert (journal["session_number"], journal["occurred_at"][:10]) == (1, "2026-11-01")
     assert (journal["provenance"], journal["source"]) == ("adapted", "The Lost Mine of Phandelver, Wizards of the Coast, ch. 1")

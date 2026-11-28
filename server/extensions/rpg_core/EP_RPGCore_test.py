@@ -2458,3 +2458,34 @@ class TestRemoveHooks:
             assert server.get(f"/v1/person/{tam['id']}", headers=_headers(person)).status_code == 404
         finally:
             CAMPAIGN_REMOVE_HOOKS[:] = held
+
+
+class TestGiveItem:
+    """Starting equipment as items: give_item (Zephyrex RPG, 2026-11-28)."""
+
+    def test_give_item_makes_it_theirs_and_carried(self, server: TestClient, person: Any) -> None:
+        """Zephyrex RPG, 2026-11-28: pregens carried nothing; the VTT builder grants starting
+        equipment through give_item. A stackable item merges into their own stack."""
+        from fastapi import HTTPException
+        from zephyrex.extensions.AbstractExtensionProvider import loaded_ability
+
+        campaign = _create(server, person, "campaign", name="Kit")
+        pip = _create(server, person, "person", name="Pip", kind="pc", campaign_id=campaign["id"])
+        lute = _create(server, person, "item", name="Lute", kind="misc")
+        darts = _create(server, person, "item", name="Dart", kind="weapon", stack_size=20)
+        registry = server.app.state.model_registry  # type: ignore[attr-defined]
+        call = lambda name, *args: loaded_ability(registry, "rpg_core", name)(registry, str(person.id), *args)  # noqa: E731
+        given = call("give_item", pip["id"], lute["id"])
+        assert given["quantity"] == 1
+        first = call("give_item", pip["id"], darts["id"], 10)
+        more = call("give_item", pip["id"], darts["id"], 5)
+        assert (more["item_instance_id"], more["quantity"]) == (first["item_instance_id"], 15)
+        carried = {one["name"]: (one["quantity"], one["owner_person_id"]) for one in call("items_carried", [pip["id"]])["items"][pip["id"]]}
+        assert carried == {"Lute": (1, pip["id"]), "Dart": (15, pip["id"])}
+        for bad in ((pip["id"], lute["id"], 0), (pip["id"], "no-such-item", 1)):
+            try:
+                call("give_item", *bad)
+            except HTTPException as error:
+                assert error.status_code in (404, 422), bad
+            else:
+                raise AssertionError(bad)

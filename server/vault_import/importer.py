@@ -80,7 +80,7 @@ READ = {
     "race", "faction", "location", "relations", "parent_location", "parent", "parent_hook", "depends_on",
     "initial_build", "canonical_sheet",
     "holder", "quantity", "session_number", "session_date", "maps", "keywords", "voice", "provenance", "source", "image", "picture", "system", "editions", "starting_level", "starting_level_max", "map", "map_grid", "description",
-    "unnamed_as", "known", "invariants",
+    "unnamed_as", "known", "invariants", "carries",
     *PROPERTIES,
     *(one for fields in KIND_FIELDS.values() for one in fields),
 }
@@ -964,6 +964,7 @@ class Importer:
                 changed = True
         if kind == "person":
             changed |= self._person_links(placed, resolve)
+            changed |= self._carries(placed, resolve)
         elif kind == "hook":
             changed |= self._hook_links(placed, resolve)
         elif kind == "item":
@@ -1038,18 +1039,44 @@ class Importer:
             if name:
                 self.report.unresolved.setdefault(placed.note.path, []).append(name)
             return False
-        quantity = int(meta.get("quantity") or 1)
-        instances = {str(one["id"]) for one in self.api.list("item_instance", item_id=record_id)}
+        return self._carry(record_id, target, int(meta.get("quantity") or 1), placed.note.path)
+
+    def _carry(self, item_id: str, target: tuple[str, str], quantity: int, path: str) -> bool:
+        """``target`` carries ``quantity`` of the item: its carried instance's quantity set, else an
+        instance made (a person's own) and held. Whether anything changed."""
+        instances = {str(one["id"]) for one in self.api.list("item_instance", item_id=item_id)}
         held = [one for one in self.api.list("entity_inventory", target_entity_type=target[0], target_entity_id=target[1]) if one.get("item_instance_id") in instances]
         if held:
             if held[0].get("quantity") != quantity:
-                self._change("entity_inventory", held[0], {"quantity": quantity}, placed.note.path, "its quantity")
+                self._change("entity_inventory", held[0], {"quantity": quantity}, path, "its quantity")
                 return True
             return False
         owner = target[1] if target[0] == "person" else None
-        instance = self.api.create("item_instance", item_id=record_id, owner_person_id=owner, quantity=quantity)
+        instance = self.api.create("item_instance", item_id=item_id, owner_person_id=owner, quantity=quantity)
         self.api.create("entity_inventory", item_instance_id=str(instance["id"]), target_entity_type=target[0], target_entity_id=target[1], quantity=quantity)
         return True
+
+    def _carries(self, placed: Placed, resolve: Callable[[str], Optional[tuple[str, str]]]) -> bool:
+        """A person note's `carries:` (Zephyrex RPG, 2026-11-28: pregens carried nothing): each entry
+        an item link, or {item, quantity}; each carried as an item note's holder: is. An entry that
+        isn't an item, or a quantity that isn't a whole number from 1, is reported unread."""
+        meta, person_id, changed = placed.note.meta, str(placed.record["id"]), False
+        for entry in _list(meta.get("carries")):
+            given = entry.get("item") if isinstance(entry, dict) else entry
+            name = link_name(given)
+            try:
+                quantity = int(entry.get("quantity") or 1) if isinstance(entry, dict) else 1
+            except (TypeError, ValueError):
+                quantity = 0
+            if not name or quantity < 1:
+                self.report.unread.setdefault(placed.note.path, []).append(f"carries: {entry!r} (an item link, or {{item, quantity}} from 1)")
+                continue
+            target = resolve(name)
+            if target is None or target[0] != "item":
+                self.report.unresolved.setdefault(placed.note.path, []).append(name)
+                continue
+            changed |= self._carry(target[1], ("person", person_id), quantity, placed.note.path)
+        return changed
 
     # ---- the run ---------------------------------------------------------------------------
 
