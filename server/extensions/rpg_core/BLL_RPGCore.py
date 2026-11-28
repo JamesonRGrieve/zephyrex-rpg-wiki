@@ -2699,6 +2699,74 @@ def current_attitudes(model_registry: Any, requester_id: str, campaign_id: str, 
     return found
 
 
+class AttitudeSet(PlainModel):
+    person_id: str
+    toward: str = Field(..., description="\"party\", or the person's or organisation's id")
+    attitude: str
+    disposition_id: str
+    created: bool
+
+
+def set_attitude(model_registry: Any, requester_id: str, person_id: str, toward: str, attitude: str, note: Optional[str] = None) -> AttitudeSet:
+    """How ``person_id`` regards ``toward`` from now on (Zephyrex RPG, 2026-11-28: play writes an
+    attitude back, for the story's dispositions check): ``toward`` is "party", a person or an
+    organisation. The entry in effect changes (the trigger resolved most recently, else the
+    default); with none toward that target a default is made. So current_attitudes reads it at
+    once, and a trigger resolved later still wins, as authored. The person's GM's to do."""
+    from zephyrex.extensions.wiki_shared.Dispositions import checked_attitude  # type: ignore[import-not-found]
+    from zephyrex.extensions.world_narrative.BLL_WorldNarrative import DispositionManager  # type: ignore[import-not-found]
+    from zephyrex.logic.AbstractLogicManager.models import FieldComparison
+
+    try:
+        checked_attitude(attitude)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    person = _manager(model_registry, requester_id, PersonManager).get(id=person_id)
+    target = str(toward or "").strip()
+    if not target:
+        raise HTTPException(status_code=422, detail="toward is \"party\", a person or an organisation")
+    if target == PARTY:
+        kind, fields = PARTY, {}
+    else:
+        try:
+            _manager(model_registry, requester_id, PersonManager).get(id=target)
+            kind, fields = "person", {"target_person_id": target}
+        except HTTPException:
+            _manager(model_registry, requester_id, FactionManager).get(id=target)
+            kind, fields = "faction", {"target_faction_id": target}
+        if kind == "person" and target == str(person.id):
+            raise HTTPException(status_code=422, detail="A person has no attitude toward themselves")
+    held = _manager(model_registry, requester_id, DispositionManager)
+    rows = [
+        row
+        for row in _live(held.list(person_id=person_id) or [])
+        if row.target_kind == kind and (kind == PARTY or str(row.target_person_id or row.target_faction_id or "") == target)
+    ]
+    rows.sort(key=lambda row: (row.created_at, str(row.id)))
+    triggers = sorted({str(row.trigger_hook_id) for row in rows if row.trigger_hook_id})
+    hooks = _manager(model_registry, requester_id, HookManager)
+    resolved = {str(row.id): row.resolved_at for row in (hooks.list(filters=[FieldComparison(hooks.Model, "id", "in", triggers)]) or []) if row.resolved_at} if triggers else {}
+    # The entry in effect, as wiki_shared/Dispositions.current picks it.
+    chosen = None
+    best = None
+    for index, row in enumerate(rows):
+        if row.trigger_hook_id and str(row.trigger_hook_id) in resolved:
+            rank = (resolved[str(row.trigger_hook_id)], index)
+            if best is None or rank >= best:
+                best, chosen = rank, row
+    if chosen is None:
+        defaults = [row for row in rows if row.is_default]
+        chosen = defaults[-1] if defaults else None
+    changes: dict[str, Any] = {"attitude": attitude}
+    if note is not None:
+        changes["note"] = note
+    if chosen is None:
+        made = held.create(person_id=person_id, target_kind=kind, attitude=attitude, is_default=True, note=note, **fields)
+        return AttitudeSet(person_id=person_id, toward=target, attitude=attitude, disposition_id=str(made.id), created=True)
+    held.update(id=str(chosen.id), **changes)
+    return AttitudeSet(person_id=person_id, toward=target, attitude=attitude, disposition_id=str(chosen.id), created=False)
+
+
 class PersonMoved(PlainModel):
     person_id: str
     from_location_id: Optional[str] = Field(None, alias="from")
@@ -3414,7 +3482,7 @@ def remove_campaign_records(model_registry: Any, requester_id: str, campaign_ids
         holdings = _manager(model_registry, requester_id, EntityInventoryManager)
         drop("entityinventory", holdings, [str(row.id) for row in touching(holdings, ("target_entity_id",), record_ids)])
         instances = _manager(model_registry, requester_id, ItemInstanceManager)
-        drop("iteminstance", instances, [str(row.id) for row in touching(instances, ("owner_person_id",), record_ids)])
+        drop("iteminstance", instances, [str(row.id) for row in touching(instances, ("owner_person_id", "location_id"), record_ids)])
         if _serves(model_registry, "metadata"):
             from zephyrex.extensions.metadata.BLL_Metadata import MetadataManager  # type: ignore[import-not-found]
 
@@ -3706,11 +3774,12 @@ def start_campaign(model_registry: Any, requester_id: str, source_campaign_id: s
 
 
 def _copy_carried(model_registry: Any, requester_id: str, record_ids: list[str], copying: Any, copy_rows: Any, touching: Any) -> None:
-    """What the copied records carry: each item instance they hold or own made anew, then held."""
+    """What the copied records carry: each item instance they hold or own, or that lies at a copied
+    place (Zephyrex RPG, 2026-11-28: a scenario's loose items, for take_item), made anew, then held."""
     holdings = _manager(model_registry, requester_id, EntityInventoryManager)
     instances = _manager(model_registry, requester_id, ItemInstanceManager)
     held = touching(holdings, ("target_entity_id",), record_ids)
-    owned = touching(instances, ("owner_person_id",), record_ids)
+    owned = touching(instances, ("owner_person_id", "location_id"), record_ids)
     wanted = {str(row.item_instance_id) for row in held} - {str(row.id) for row in owned}
     extra = touching(instances, ("id",), sorted(wanted)) if wanted else []
     copy_rows(instances, owned + extra, copying)

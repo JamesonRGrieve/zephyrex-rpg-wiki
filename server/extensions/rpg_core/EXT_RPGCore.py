@@ -290,6 +290,67 @@ class RPGCoreExtension(AbstractStaticExtension):
         return current_attitudes(model_registry, requester_id, campaign_id, person_ids)
 
     @classmethod
+    @ability("set_attitude")
+    def set_attitude(cls, model_registry: Any, requester_id: str, person_id: str, toward: str, attitude: str, note: Optional[str] = None) -> dict[str, Any]:
+        """How ``person_id`` regards ``toward`` ("party", a person or an organisation) from now on,
+        written back by play: the disposition in effect changes (else a default is made), so
+        current_attitudes reads it at once: {person_id, toward, attitude, disposition_id, created}.
+        The attitude is on contract attitudes or a nuance of one. The person's GM's to do."""
+        from zephyrex.extensions.rpg_core.BLL_RPGCore import set_attitude  # type: ignore[import-not-found]
+
+        return set_attitude(model_registry, requester_id, person_id, toward, attitude, note).model_dump(mode="json")
+
+    @classmethod
+    @ability("items_at")
+    def items_at(cls, model_registry: Any, requester_id: str, location_id: str, include_inside: bool = False) -> dict[str, Any]:
+        """What lies at a place, nobody carrying it (and what the place itself holds); with
+        include_inside, the places inside it too: {items: [{item_instance_id, item_id, name, kind,
+        quantity, owner_person_id, held_by}]}."""
+        from zephyrex.extensions.rpg_core.Items import items_at  # type: ignore[import-not-found]
+
+        return items_at(model_registry, requester_id, location_id, include_inside).model_dump(mode="json")
+
+    @classmethod
+    @ability("items_carried")
+    def items_carried(cls, model_registry: Any, requester_id: str, person_ids: list[str]) -> dict[str, Any]:
+        """What each person carries (at most 100): {items: {person_id: [item, ...]}}, items shaped as
+        items_at's; gear they own that nothing holds and lies nowhere counts as carried."""
+        from zephyrex.extensions.rpg_core.Items import items_carried  # type: ignore[import-not-found]
+
+        return items_carried(model_registry, requester_id, person_ids).model_dump(mode="json")
+
+    @classmethod
+    @ability("take_item")
+    def take_item(cls, model_registry: Any, requester_id: str, person_id: str, item_instance_id: str, quantity: Optional[int] = None) -> dict[str, Any]:
+        """The person picks up an item lying free (all, or ``quantity`` split off its stack; a
+        stackable item merges into the same stack they carry): {item_instance_id, taken, left}. 409
+        when another person or an organisation carries it; the owner never changes."""
+        from zephyrex.extensions.rpg_core.Items import take_item  # type: ignore[import-not-found]
+
+        return take_item(model_registry, requester_id, person_id, item_instance_id, quantity).model_dump(mode="json")
+
+    @classmethod
+    @ability("spend_item")
+    def spend_item(cls, model_registry: Any, requester_id: str, person_id: str, item_instance_id: str, quantity: int = 1) -> dict[str, Any]:
+        """The person uses up ``quantity`` of an item they carry; at 0 it is gone:
+        {item_instance_id, spent, left}. 409 when they don't carry it."""
+        from zephyrex.extensions.rpg_core.Items import spend_item  # type: ignore[import-not-found]
+
+        return spend_item(model_registry, requester_id, person_id, item_instance_id, quantity).model_dump(mode="json")
+
+    @classmethod
+    @ability("drop_item")
+    def drop_item(
+        cls, model_registry: Any, requester_id: str, person_id: str, item_instance_id: str, quantity: Optional[int] = None, location_id: Optional[str] = None
+    ) -> dict[str, Any]:
+        """The person puts down an item they carry (all, or ``quantity``) at ``location_id`` or where
+        they are: {item_instance_id, dropped, location_id}; a stackable item merges into the same
+        stack lying there. 422 when they are nowhere and no place is named."""
+        from zephyrex.extensions.rpg_core.Items import drop_item  # type: ignore[import-not-found]
+
+        return drop_item(model_registry, requester_id, person_id, item_instance_id, quantity, location_id).model_dump(mode="json")
+
+    @classmethod
     @ability("campaign_framing")
     def campaign_framing(cls, model_registry: Any, requester_id: str, campaign_id: str) -> dict[str, Any]:
         """A campaign's framing for the narrator: {"campaign_framing": {campaign_id, name,

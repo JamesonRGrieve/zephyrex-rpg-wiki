@@ -327,7 +327,7 @@ class TestWorldEntities:
         assert by_name["Harbour"] | {"updated_at": None} == {
             "id": harbour["id"], "kind": "location", "name": "Harbour", "aliases": [], "summary": "A port city.",
             "picture": None, "updated_at": None, "deleted": False, "setting_id": None, "canon": False, "canon_level": None,
-            "keywords": [], "voice": None, "tts_voice": None, "person_kind": None, "unnamed_as": None, "gender": None, "routine": None, "motivations": None, "tags": [], "relationships": None, "lore": None, "provenance": "homebrew", "source": None, "gm_only": False, "location_id": None, "parent_id": None,
+            "keywords": [], "voice": None, "tts_voice": None, "person_kind": None, "unnamed_as": None, "gender": None, "routine": None, "motivations": None, "invariants": None, "tags": [], "relationships": None, "lore": None, "provenance": "homebrew", "source": None, "gm_only": False, "location_id": None, "parent_id": None,
         }
         assert page["next"] is None
 
@@ -2251,3 +2251,138 @@ class TestInvariants:
         assert start["state"] == "done", start
         copies = {one["name"]: one for one in _rows(server.get(f"/v1/person?campaign_id={start['campaign_id']}", headers=_headers(person)).json())}
         assert json.loads(copies["Warden"]["invariants"]) == ["Never harms a child", "Never lies to a priest"]
+
+
+class TestSetAttitude:
+    """Zephyrex RPG, 2026-11-28: play writes an attitude back for the story's dispositions check;
+    current_attitudes reads it at once, and a trigger resolved later still wins."""
+
+    def test_the_entry_in_effect_changes_else_a_default_is_made(self, server: TestClient, person: Any, other: Any) -> None:
+        from fastapi import HTTPException
+        from zephyrex.extensions.AbstractExtensionProvider import loaded_ability
+
+        campaign = _create(server, person, "campaign", name="Grudges")
+        ada, bram = (_create(server, person, "person", name=name, kind="npc", campaign_id=campaign["id"]) for name in ("Ada", "Bram"))
+        guild = _create(server, person, "faction", name="The Guild", campaign_id=campaign["id"])
+        feud = _create(server, person, "hook", name="The feud", campaign_id=campaign["id"])
+        registry = server.app.state.model_registry  # type: ignore[attr-defined]
+        write = loaded_ability(registry, "rpg_core", "set_attitude")
+        read = loaded_ability(registry, "rpg_core", "current_attitudes")
+        assert write is not None and read is not None
+        ids = [ada["id"], bram["id"]]
+        # None toward the party yet: a default is made.
+        first = write(registry, str(person.id), ada["id"], "party", "wary", "Caught them in the vault")
+        assert (first["created"], first["toward"], first["attitude"]) == (True, "party", "wary")
+        assert read(registry, str(person.id), campaign["id"], ids)[ada["id"]] == {"party": "wary"}
+        # Again: the same default changes.
+        again = write(registry, str(person.id), ada["id"], "party", "hostile")
+        assert (again["created"], again["disposition_id"]) == (False, first["disposition_id"])
+        # Toward a person with an authored default and a trigger: the default until the trigger resolves.
+        _create(server, person, "disposition", person_id=ada["id"], target_kind="person", target_person_id=bram["id"], attitude="friendly", is_default=True)
+        triggered = _create(server, person, "disposition", person_id=ada["id"], target_kind="person", target_person_id=bram["id"], attitude="hostile", trigger_hook_id=feud["id"])
+        assert write(registry, str(person.id), ada["id"], bram["id"], "cautious-neutral")["created"] is False
+        assert read(registry, str(person.id), campaign["id"], ids)[ada["id"]] == {"party": "hostile", bram["id"]: "cautious-neutral"}
+        _put(server, person, "hook", feud, resolved_at="2026-11-28T01:00:00")
+        assert read(registry, str(person.id), campaign["id"], ids)[ada["id"]][bram["id"]] == "hostile"
+        # Once the trigger is in effect, the write changes that entry.
+        assert write(registry, str(person.id), ada["id"], bram["id"], "neutral")["disposition_id"] == triggered["id"]
+        assert read(registry, str(person.id), campaign["id"], ids)[ada["id"]][bram["id"]] == "neutral"
+        # An organisation; refusals.
+        assert write(registry, str(person.id), bram["id"], guild["id"], "helpful")["created"] is True
+        # Not on the scale; toward themselves; toward nobody.
+        for bad in (("party", "furious"), (ada["id"], "wary"), ("", "wary")):
+            try:
+                write(registry, str(person.id), ada["id"], *bad)
+            except HTTPException as error:
+                assert error.status_code == 422, bad
+            else:
+                raise AssertionError(bad)
+        # Someone who can't see the person changes nothing.
+        try:
+            write(registry, str(other.id), ada["id"], "party", "friendly")
+        except HTTPException as error:
+            assert error.status_code in (403, 404)
+        else:
+            raise AssertionError("another account wrote an attitude")
+
+
+class TestItemsInPlay:
+    """Zephyrex RPG, 2026-11-28 (split with Zephyrex VTT): what lies at a place, take, spend and
+    drop; carrying is EntityInventory, the owner never changes, a partial move splits a stack and a
+    stackable item merges."""
+
+    def test_take_spend_and_drop(self, server: TestClient, person: Any) -> None:
+        from fastapi import HTTPException
+        from zephyrex.extensions.AbstractExtensionProvider import loaded_ability
+
+        campaign = _create(server, person, "campaign", name="Loot")
+        hall = _create(server, person, "location", name="Hall", kind="building", campaign_id=campaign["id"])
+        cellar = _create(server, person, "location", name="Cellar", kind="room", campaign_id=campaign["id"], parent_id=hall["id"])
+        tam = _create(server, person, "person", name="Tam", kind="pc", campaign_id=campaign["id"], location_id=hall["id"])
+        wren = _create(server, person, "person", name="Wren", kind="pc", campaign_id=campaign["id"], location_id=hall["id"])
+        potion = _create(server, person, "item", name="Potion of Healing", kind="consumable", stack_size=10)
+        sword = _create(server, person, "item", name="Sword", kind="weapon")
+        potions = _create(server, person, "item_instance", item_id=potion["id"], location_id=hall["id"], quantity=3)
+        blade = _create(server, person, "item_instance", item_id=sword["id"], location_id=cellar["id"], owner_person_id=wren["id"])
+        # Wren's gear from before carry rows: owned, held by nothing, lying nowhere.
+        kit = _create(server, person, "item_instance", item_id=potion["id"], owner_person_id=wren["id"], quantity=2)
+        registry = server.app.state.model_registry  # type: ignore[attr-defined]
+        call = lambda name, *args: loaded_ability(registry, "rpg_core", name)(registry, str(person.id), *args)  # noqa: E731
+
+        here = call("items_at", hall["id"])["items"]
+        assert [(one["name"], one["quantity"]) for one in here] == [("Potion of Healing", 3)]
+        assert [one["name"] for one in call("items_at", hall["id"], True)["items"]] == ["Potion of Healing", "Sword"]
+        assert [(one["item_instance_id"], one["quantity"]) for one in call("items_carried", [wren["id"]])["items"][wren["id"]]] == [(kit["id"], 2)]
+
+        # Take two of three: the stack splits.
+        taken = call("take_item", tam["id"], potions["id"], 2)
+        assert (taken["taken"], taken["left"]) == (2, 1) and taken["item_instance_id"] != potions["id"]
+        assert [one["quantity"] for one in call("items_at", hall["id"])["items"]] == [1]
+        # The last one merges into the stack Tam carries.
+        merged = call("take_item", tam["id"], potions["id"])
+        assert (merged["item_instance_id"], merged["taken"], merged["left"]) == (taken["item_instance_id"], 1, 0)
+        assert call("items_at", hall["id"])["items"] == []
+        assert [(one["name"], one["quantity"]) for one in call("items_carried", [tam["id"]])["items"][tam["id"]]] == [("Potion of Healing", 3)]
+
+        # Spend one, then drop the rest in the cellar; then spend one of Wren's legacy kit.
+        assert call("spend_item", tam["id"], merged["item_instance_id"])["left"] == 2
+        dropped = call("drop_item", tam["id"], merged["item_instance_id"], None, cellar["id"])
+        assert (dropped["dropped"], dropped["location_id"]) == (2, cellar["id"])
+        assert call("items_carried", [tam["id"]])["items"][tam["id"]] == []
+        assert call("spend_item", wren["id"], kit["id"], 2)["left"] == 0
+        assert server.get(f"/v1/item_instance/{kit['id']}", headers=_headers(person)).status_code == 404
+
+        # Wren's sword: Tam takes it (the owner stays Wren), and Wren can't take it from him.
+        assert call("take_item", tam["id"], blade["id"])["taken"] == 1
+        held = server.get(f"/v1/item_instance/{blade['id']}", headers=_headers(person)).json()["item_instance"]
+        assert (held["owner_person_id"], held["location_id"]) == (wren["id"], None)
+        refusals = [
+            ("take_item", wren["id"], blade["id"]),  # Tam carries it
+            ("spend_item", wren["id"], blade["id"]),  # Wren doesn't
+            ("take_item", tam["id"], dropped["item_instance_id"], 5),  # only 2 there
+        ]
+        for name, *args in refusals:
+            try:
+                call(name, *args)
+            except HTTPException as error:
+                assert error.status_code in (409, 422), (name, error.detail)
+            else:
+                raise AssertionError((name, args))
+        # Dropped where he stands (the hall), by default.
+        assert call("drop_item", tam["id"], blade["id"])["location_id"] == hall["id"]
+
+    def test_a_start_copies_the_items_lying_at_its_places(self, server: TestClient, person: Any) -> None:
+        scenario = _create(server, person, "campaign", name="Loose Loot Test", is_scenario=True)
+        vault = _create(server, person, "location", name="Vault", kind="room", campaign_id=scenario["id"])
+        gem = _create(server, person, "item", name="Gem", kind="misc")
+        _create(server, person, "item_instance", item_id=gem["id"], location_id=vault["id"], quantity=4)
+        _create(server, person, "person", name="Seraph", kind="pc", campaign_id=scenario["id"])
+        start = _start(server, person, scenario["id"])
+        assert start["state"] == "done", start
+        places = _rows(server.get(f"/v1/location?campaign_id={start['campaign_id']}", headers=_headers(person)).json())
+        [copy] = [one for one in places if one["name"] == "Vault"]
+        from zephyrex.extensions.AbstractExtensionProvider import loaded_ability
+
+        registry = server.app.state.model_registry  # type: ignore[attr-defined]
+        lying = loaded_ability(registry, "rpg_core", "items_at")(registry, str(person.id), copy["id"])["items"]
+        assert [(one["name"], one["quantity"]) for one in lying] == [("Gem", 4)]
