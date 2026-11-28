@@ -114,6 +114,8 @@ export const personSchema = z.object({
   picture_url: z.string().nullish(),
   /** S4c: how the AI plays them (JSON text); for the GM. */
   voice: z.string().nullish(),
+  /** The lines they never cross (JSON text; operator, 2026-11-28); for the GM. */
+  invariants: z.string().nullish(),
 });
 export type Person = z.infer<typeof personSchema>;
 

@@ -50,6 +50,7 @@ describe('entityOf', () => {
       relationships: null,
       routine: null,
       motivations: null,
+      invariants: null,
       location_id: null,
       parent_id: null,
     });
@@ -64,6 +65,13 @@ describe('entityOf', () => {
     // A person's own kind, for telling a PC from an NPC; none for other kinds.
     expect(entityOf('person', { ...row('p2', '2026-11-20T12:00:00Z'), kind: 'pc' }).person_kind).toBe('pc');
     expect(entityOf('location', { ...row('l2', '2026-11-20T12:00:00Z'), kind: 'region' }).person_kind).toBeNull();
+  });
+
+  it("carries a person's invariants, the lines they never cross; none for other kinds", () => {
+    const invariants = '["Never harms a child","Never breaks a sworn oath"]';
+    expect(entityOf('person', { ...row('p7', '2026-11-20T12:00:00Z'), invariants }).invariants).toEqual(['Never harms a child', 'Never breaks a sworn oath']);
+    expect(entityOf('person', row('p8', '2026-11-20T12:00:00Z')).invariants).toEqual([]);
+    expect(entityOf('location', { ...row('l5', '2026-11-20T12:00:00Z'), invariants }).invariants).toBeNull();
   });
 
   it('reads a person by their own unnamed_as, else a generic one; none for other kinds', () => {

@@ -1,5 +1,5 @@
 {
-  "$comment": "A person's routine (an ordered schedule: each slot from and to HH:MM, on days 0-6 (Monday 0) or every day (null), at a location, doing an activity; a slot may run overnight, from after to) and motivations (goals, fears, current intent: a list of text), checked alike by server/extensions/wiki_shared/Routine.py and client packages/wiki/src/lib/routine.ts. Both kept as JSON text; a campaign's clock counts minutes from day 1, 00:00 (a new one starts at contract clock_start_minutes, day 1 08:00).",
+  "$comment": "A person's routine (an ordered schedule: each slot from and to HH:MM, on days 0-6 (Monday 0) or every day (null), at a location, doing an activity; a slot may run overnight, from after to), motivations (goals, fears, current intent: a list of text) and invariants (the lines they never cross, \"never harms a child\": a list of short sentences), checked alike by server/extensions/wiki_shared/Routine.py and client packages/wiki/src/lib/routine.ts. All three kept as JSON text; a campaign's clock counts minutes from day 1, 00:00 (a new one starts at contract clock_start_minutes, day 1 08:00).",
   "routines": [
     {
       "name": "slots sorted by start, days sorted once, text trimmed",
@@ -137,6 +137,42 @@
         "goal": "Find the map"
       },
       "message": "Motivations are a list of text"
+    }
+  ],
+  "invariants": [
+    {
+      "name": "trimmed, each once, blanks dropped",
+      "value": [
+        " Never harms a child ",
+        "",
+        "Never harms a child",
+        "Never breaks a sworn oath"
+      ],
+      "checked": [
+        "Never harms a child",
+        "Never breaks a sworn oath"
+      ]
+    },
+    {
+      "name": "none is an empty list",
+      "value": [],
+      "checked": []
+    }
+  ],
+  "invalid_invariants": [
+    {
+      "name": "not a list",
+      "value": {
+        "never": "harms a child"
+      },
+      "message": "Invariants are a list of text"
+    },
+    {
+      "name": "one too long",
+      "value": [
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "message": "At most 12 invariants of at most 200 characters"
     }
   ],
   "clocks": [

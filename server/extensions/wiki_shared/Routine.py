@@ -5,8 +5,10 @@ side's world tick pilots people by them as in-world time advances.
 - routine: an ordered schedule, each slot from and to HH:MM on days 0-6 (Monday 0) or every day
   (none), at a location, doing an activity; a slot may run overnight (from after to);
 - motivations: goals, fears and current intent, a list of text;
+- invariants: the lines they never cross ("never harms a child"), a list of short sentences the
+  story's prompt and checks hold them to (operator, 2026-11-28);
 - a clock: minutes from day 1, 00:00; a campaign without one is at clock_start_minutes (day 1, 08:00).
-Both lists are kept as JSON text, as a voice is.
+The lists are kept as JSON text, as a voice is.
 """
 
 import json
@@ -21,6 +23,8 @@ MAX_SLOTS: int = LIMITS["routine_slots"]
 MAX_ACTIVITY: int = LIMITS["activity_characters"]
 MAX_MOTIVATIONS: int = LIMITS["motivations"]
 MAX_MOTIVATION: int = LIMITS["motivation_characters"]
+MAX_INVARIANTS: int = LIMITS["invariants"]
+MAX_INVARIANT: int = LIMITS["invariant_characters"]
 MINUTES_A_DAY = 24 * 60
 
 
@@ -58,15 +62,25 @@ def routine(value: Any) -> list[dict[str, Any]]:
     return sorted((_slot(one) for one in value), key=lambda slot: (slot["from"], slot["to"]))
 
 
-def motivations(value: Any) -> list[str]:
-    """Motivations trimmed, each once, blanks dropped."""
+def _texts(value: Any, what: str, most: int, characters: int) -> list[str]:
+    """A list of text trimmed, each once, blanks dropped: at most ``most`` of ``characters`` each."""
     value = _loaded(value)
     if not isinstance(value, list) or any(not isinstance(one, str) for one in value):
-        raise ValueError("Motivations are a list of text")
+        raise ValueError(f"{what.capitalize()} are a list of text")
     kept = list(dict.fromkeys(one.strip() for one in value if one.strip()))
-    if len(kept) > MAX_MOTIVATIONS or any(len(one) > MAX_MOTIVATION for one in kept):
-        raise ValueError(f"At most {MAX_MOTIVATIONS} motivations of at most {MAX_MOTIVATION} characters")
+    if len(kept) > most or any(len(one) > characters for one in kept):
+        raise ValueError(f"At most {most} {what} of at most {characters} characters")
     return kept
+
+
+def motivations(value: Any) -> list[str]:
+    """Motivations trimmed, each once, blanks dropped."""
+    return _texts(value, "motivations", MAX_MOTIVATIONS, MAX_MOTIVATION)
+
+
+def invariants(value: Any) -> list[str]:
+    """Invariants (lines they never cross) trimmed, each once, blanks dropped."""
+    return _texts(value, "invariants", MAX_INVARIANTS, MAX_INVARIANT)
 
 
 def routine_text(value: Any) -> Any:
@@ -75,6 +89,10 @@ def routine_text(value: Any) -> Any:
 
 def motivations_text(value: Any) -> Any:
     return None if value is None else json.dumps(motivations(value), ensure_ascii=False)
+
+
+def invariants_text(value: Any) -> Any:
+    return None if value is None else json.dumps(invariants(value), ensure_ascii=False)
 
 
 def stored_routine(text: Any) -> list[dict[str, Any]]:
@@ -87,6 +105,13 @@ def stored_routine(text: Any) -> list[dict[str, Any]]:
 def stored_motivations(text: Any) -> list[str]:
     try:
         return motivations(text) if text else []
+    except (json.JSONDecodeError, ValueError):
+        return []
+
+
+def stored_invariants(text: Any) -> list[str]:
+    try:
+        return invariants(text) if text else []
     except (json.JSONDecodeError, ValueError):
         return []
 

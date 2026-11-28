@@ -2219,3 +2219,35 @@ class TestUnnamedAndKnownNames:
         copy = _create(server, person, "person", name="Bastian", kind="npc", campaign_id=older["id"])
         pc = _create(server, person, "person", name="Seraph", kind="pc", campaign_id=older["id"])
         assert server.get(f"/v1/campaign/{older['id']}/known_names", headers=_headers(person)).json()["known_names"]["party"] == sorted([copy["id"], pc["id"]])
+
+
+class TestInvariants:
+    """Operator, 2026-11-28: NPCs get character invariants, lines they never cross ("never harms a
+    child", "never breaks a sworn oath"). A list of short sentences on the person: edited as their
+    other fields, copied on start, and in the world-entity reads rpg-ai holds their turns to."""
+
+    def test_a_persons_invariants_are_kept_copied_and_read(self, server: TestClient, person: Any) -> None:
+        from zephyrex.extensions.AbstractExtensionProvider import loaded_ability
+
+        scenario = _create(server, person, "campaign", name="Oathbound Test", is_scenario=True)
+        oaths = [" Never harms a child ", "Never breaks a sworn oath", "Never harms a child", ""]
+        warden = _create(server, person, "person", name="Warden", kind="npc", campaign_id=scenario["id"], invariants=oaths)
+        assert json.loads(warden["invariants"]) == ["Never harms a child", "Never breaks a sworn oath"]
+        plain = _create(server, person, "person", name="Plain", kind="npc", campaign_id=scenario["id"])
+        assert plain["invariants"] is None
+        # Edited as their other fields.
+        changed = _put(server, person, "person", warden, invariants=["Never harms a child", "Never lies to a priest"])
+        assert changed.status_code == 200, changed.text
+        for bad in ("not a list", [f"x{index}" for index in range(13)], ["x" * 201]):
+            assert _put(server, person, "person", warden, invariants=bad).status_code == 422, bad
+        # Read where rpg-ai reads the world: the sync and by id.
+        synced = {one["name"]: one for one in server.get(f"/v1/world_entity?campaign_id={scenario['id']}", headers=_headers(person)).json()["world_entities"]}
+        assert (synced["Warden"]["invariants"], synced["Plain"]["invariants"]) == (["Never harms a child", "Never lies to a priest"], [])
+        registry = server.app.state.model_registry  # type: ignore[attr-defined]
+        [by_id] = loaded_ability(registry, "rpg_core", "world_entities_by_id")(registry, str(person.id), [warden["id"]])["world_entities"]
+        assert by_id["invariants"] == ["Never harms a child", "Never lies to a priest"]
+        # A start copies them with the person.
+        start = _start(server, person, scenario["id"])
+        assert start["state"] == "done", start
+        copies = {one["name"]: one for one in _rows(server.get(f"/v1/person?campaign_id={start['campaign_id']}", headers=_headers(person)).json())}
+        assert json.loads(copies["Warden"]["invariants"]) == ["Never harms a child", "Never lies to a priest"]

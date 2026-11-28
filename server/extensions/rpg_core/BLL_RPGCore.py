@@ -44,8 +44,10 @@ from zephyrex.extensions.wiki_shared.Provenance import HOMEBREW, checked_provena
 from zephyrex.extensions.wiki_shared.Names import SPECIES_KINDS, generic_unnamed, names_text, stored_names, stored_voice, tts_voice_text, unnamed_as_text, voice_text  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Routine import (  # type: ignore[import-not-found]
     clock,
+    invariants_text,
     motivations_text,
     routine_text,
+    stored_invariants,
     stored_motivations,
     stored_routine,
 )
@@ -693,6 +695,8 @@ class RPG_PersonModel(BaseModel):
     # The world tick (operator, 2026-11-21): the GM side pilots each person by these as time advances.
     routine: Optional[str] = Field(None, description="Their schedule: slots {from, to, days, location_id, activity}, as JSON text (GM-facing)")
     motivations: Optional[str] = Field(None, description="Their goals, fears and current intent, a list as JSON text (GM-facing)")
+    # Operator, 2026-11-28: NPCs get character invariants, lines they never cross ("never harms a child").
+    invariants: Optional[str] = Field(None, description="The lines they never cross (\"never harms a child\"), a list of short sentences as JSON text: the story holds their turns to them")
     user_id: Optional[str] = Field(None, description="FK → users.id; the player. None = an NPC")
     location_id: Optional[str] = Field(None, description="FK → locations.id; where they are")
     entry: Optional[str] = Field(None, description="The entry: a Plate value as JSON text")
@@ -727,6 +731,8 @@ class RPG_PersonModel(BaseModel):
         _routine = field_validator("routine")(routine_text)
         motivations: Optional[Any] = None
         _motivations = field_validator("motivations")(motivations_text)
+        invariants: Optional[Any] = None
+        _invariants = field_validator("invariants")(invariants_text)
         user_id: Optional[str] = None
         location_id: Optional[str] = None
         entry: Optional[Any] = None
@@ -769,6 +775,8 @@ class RPG_PersonModel(BaseModel):
         _routine = field_validator("routine")(routine_text)
         motivations: Optional[Any] = None
         _motivations = field_validator("motivations")(motivations_text)
+        invariants: Optional[Any] = None
+        _invariants = field_validator("invariants")(invariants_text)
         user_id: Optional[str] = None
         location_id: Optional[str] = None
         entry: Optional[Any] = None
@@ -1538,6 +1546,9 @@ class WorldEntity(PlainModel):
     # A person's schedule and motivations (the GM side's world tick; gm_only as the record is).
     routine: Optional[list[dict[str, Any]]] = None
     motivations: Optional[list[str]] = None
+    # A person's invariants, the lines they never cross (operator, 2026-11-28): rpg-ai puts them in
+    # their turn as hard limits and checks each line against them; none for other kinds.
+    invariants: Optional[list[str]] = None
     # S4d: its lorebook activation (SillyTavern World Info's fields), or none.
     lore: Optional[dict[str, Any]] = None
     # Where it came from: homebrew, official or adapted, and its source.
@@ -1611,6 +1622,7 @@ def _entity(kind: str, record: Any, changed_at: datetime, deleted: bool) -> Worl
         person_kind=(getattr(record, "kind", None) or None) if kind == "person" else None,
         routine=stored_routine(getattr(record, "routine", None)) if kind == "person" else None,
         motivations=stored_motivations(getattr(record, "motivations", None)) if kind == "person" else None,
+        invariants=stored_invariants(getattr(record, "invariants", None)) if kind == "person" else None,
         lore=stored_lore(getattr(record, "lore", None)),
         summary=summary(getattr(record, "description", None)),
         # Its picture by link, as it is; else _with_pictures fills its newest upload.

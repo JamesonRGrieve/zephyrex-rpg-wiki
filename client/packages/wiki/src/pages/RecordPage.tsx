@@ -22,6 +22,7 @@ import { OriginOf } from '../components/world/OriginOf';
 import { PictureOf } from '../components/world/PictureOf';
 import { PropertyList } from '../components/world/PropertyList';
 import { VoicePanel } from '../components/world/VoicePanel';
+import { InvariantsPanel } from '../components/world/InvariantsPanel';
 import { ElevatePanel } from '../components/world/ElevatePanel';
 import { type RelationLine, RelationList } from '../components/world/RelationList';
 import { type Chip, TaxonChips } from '../components/world/TaxonChips';
@@ -61,6 +62,7 @@ import { GM_ONLY_PROPERTY } from '../contract';
 import { currentAttitude } from '../lib/dispositions';
 import { publicEntry } from '../lib/framing';
 import { storedNames, storedVoice } from '../lib/names';
+import { storedInvariants } from '../lib/routine';
 import { checkedRequirement, describeRequirement, hookState, leavesOf, type Requirement } from '../lib/requirements';
 import { settingOf } from '../lib/scope';
 import { useWikiBase } from '../base';
@@ -537,6 +539,24 @@ function Voice({ id }: { id: string }): ReactElement | null {
   );
 }
 
+/** The lines a person never crosses (operator, 2026-11-28), edited in place. */
+function Invariants({ id }: { id: string }): ReactElement | null {
+  const one = people.useOne(id);
+  const { update } = people.useActions();
+  const writes = useWrites(() => one.mutate());
+  const person = one.data;
+  if (person === undefined) return null;
+  return (
+    <InvariantsPanel
+      invariants={storedInvariants(person.invariants ?? null)}
+      canEdit
+      onSave={async (lines) =>
+        (await writes.run(update(person, { invariants: JSON.stringify(lines) }), 'The lines could not be saved', 'Lines saved')) ? null : 'The lines could not be saved'
+      }
+    />
+  );
+}
+
 /** A playthrough's person and its scenario: elevate them, or see their copy there. */
 function Elevate({ world, id }: { world: string; id: string }): ReactElement | null {
   const base = useWikiBase();
@@ -593,6 +613,7 @@ function PersonPage({ world, id, can }: { world: string; id: string; can: Capabi
       extra={
         <>
           <Voice id={id} />
+          <Invariants id={id} />
           {can.properties && <Elevate world={world} id={id} />}
           {can.hooks && <Dispositions world={world} id={id} />}
         </>

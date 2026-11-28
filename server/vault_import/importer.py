@@ -36,6 +36,7 @@ from zephyrex.extensions.wiki_shared.Contract import (  # type: ignore[import-no
     PERSON_KINDS,
 )
 from zephyrex.extensions.wiki_shared.Names import names, unnamed_as_text, voice  # type: ignore[import-not-found]
+from zephyrex.extensions.wiki_shared.Routine import invariants  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Pictures import picture_url  # type: ignore[import-not-found]
 from zephyrex.extensions.wiki_shared.Provenance import HOMEBREW, provenance  # type: ignore[import-not-found]
 from vault_import.markdown import to_plate
@@ -79,7 +80,7 @@ READ = {
     "race", "faction", "location", "relations", "parent_location", "parent", "parent_hook", "depends_on",
     "initial_build", "canonical_sheet",
     "holder", "quantity", "session_number", "session_date", "maps", "keywords", "voice", "provenance", "source", "image", "picture", "system", "editions", "starting_level", "starting_level_max", "map", "map_grid", "description",
-    "unnamed_as", "known",
+    "unnamed_as", "known", "invariants",
     *PROPERTIES,
     *(one for fields in KIND_FIELDS.values() for one in fields),
 }
@@ -847,6 +848,13 @@ class Importer:
                 fields["unnamed_as"] = unnamed_as_text(_text(meta.get("unnamed_as")))
             except ValueError as error:
                 self.report.unread.setdefault(placed.note.path, []).append(f"unnamed_as: {error}")
+        if kind == "person" and meta.get("invariants") is not None:
+            # The lines they never cross, a list of short sentences (operator, 2026-11-28): rpg-ai
+            # holds their turns to them. One line alone may be given as text.
+            try:
+                fields["invariants"] = invariants([str(one) for one in _list(meta.get("invariants")) if _text(one)])
+            except ValueError as error:
+                self.report.unread.setdefault(placed.note.path, []).append(f"invariants: {error}")
         if unresolved:
             self.report.unresolved[placed.note.path] = unresolved
 
@@ -878,7 +886,7 @@ class Importer:
         record = placed.record
         changed: dict[str, Any] = {}
         for name, value in fields.items():
-            if name in ("entry", "aliases", "keywords", "voice", "lore"):
+            if name in ("entry", "aliases", "keywords", "voice", "lore", "invariants"):
                 held = record.get(name)
                 loaded = json.loads(held) if isinstance(held, str) and held else None
                 if name == "entry" and placed.kind == "journal" and record.get("kind") == "campaign_framing" and isinstance(loaded, list):

@@ -12,6 +12,7 @@ age: 50s
 role: Stablemaster
 unnamed_as: a broad man smelling of horses
 known: party
+invariants: [Never turns away a lame horse, Never sells to the Circle Compact on credit]
 faction: "[[Circle Compact]]"
 status: alive
 location: "[[Brindlemarsh Stable]]"

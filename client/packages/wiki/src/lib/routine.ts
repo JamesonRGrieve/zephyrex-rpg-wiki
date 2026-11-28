@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /**
- * A person's routine and motivations, and a campaign's clock (contract/routine-cases.json), as the
+ * A person's routine, motivations and invariants, and a campaign's clock (contract/routine-cases.json), as the
  * server's wiki_shared/Routine.py reads them: the GM side's world tick pilots people by them.
  */
 import { CLOCK_START_MINUTES, LIMITS } from '../contract';
@@ -46,13 +46,22 @@ export function routine(value: unknown): Slot[] {
   return given.map(slot).sort((one, two) => one.from.localeCompare(two.from) || one.to.localeCompare(two.to));
 }
 
-export function motivations(value: unknown): string[] {
+/** A list of text trimmed, each once, blanks dropped: at most ``most`` of ``characters`` each. */
+function texts(value: unknown, what: string, most: number, characters: number): string[] {
   const given = loaded(value);
-  if (!Array.isArray(given) || given.some((one) => typeof one !== 'string')) throw new Error('Motivations are a list of text');
+  if (!Array.isArray(given) || given.some((one) => typeof one !== 'string')) throw new Error(`${what[0]!.toUpperCase()}${what.slice(1)} are a list of text`);
   const kept = [...new Set((given as string[]).map((one) => one.trim()).filter((one) => one !== ''))];
-  if (kept.length > LIMITS.motivations || kept.some((one) => one.length > LIMITS.motivation_characters))
-    throw new Error(`At most ${LIMITS.motivations} motivations of at most ${LIMITS.motivation_characters} characters`);
+  if (kept.length > most || kept.some((one) => one.length > characters)) throw new Error(`At most ${most} ${what} of at most ${characters} characters`);
   return kept;
+}
+
+export function motivations(value: unknown): string[] {
+  return texts(value, 'motivations', LIMITS.motivations, LIMITS.motivation_characters);
+}
+
+/** The lines a person never crosses ("never harms a child"; operator, 2026-11-28). */
+export function invariants(value: unknown): string[] {
+  return texts(value, 'invariants', LIMITS.invariants, LIMITS.invariant_characters);
 }
 
 export function storedRoutine(text: string | null | undefined): Slot[] {
@@ -66,6 +75,14 @@ export function storedRoutine(text: string | null | undefined): Slot[] {
 export function storedMotivations(text: string | null | undefined): string[] {
   try {
     return text ? motivations(text) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function storedInvariants(text: string | null | undefined): string[] {
+  try {
+    return text ? invariants(text) : [];
   } catch {
     return [];
   }

@@ -24,6 +24,8 @@
     "activity_characters": 200,
     "motivations": 20,
     "motivation_characters": 500,
+    "invariants": 12,
+    "invariant_characters": 200,
     "clock_advance_minutes": 525600,
     "move_reason_characters": 500,
     "tts_voice_characters": 64,

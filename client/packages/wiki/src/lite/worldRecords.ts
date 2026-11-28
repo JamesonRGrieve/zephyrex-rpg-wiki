@@ -41,7 +41,7 @@ import { lore } from '../lib/lore';
 import { pictureUrl } from '../lib/pictureUrl';
 import { HOMEBREW, type Provenance, ProvenanceError, provenance } from '../lib/provenance';
 import { names, ttsVoice, unnamedAs, voice } from '../lib/names';
-import { motivations, routine } from '../lib/routine';
+import { invariants, motivations, routine } from '../lib/routine';
 import { freeSlug, isSlug, SLUG_RULE, slugify } from '../lib/slug';
 
 const name = z.string().trim().min(1, 'A name is required').max(LIMITS.name_characters);
@@ -172,7 +172,7 @@ const voiceText = z.unknown().transform((value, context) => {
   }
 });
 
-/** The world tick: a JSON-text column checked by ``rule`` (a routine, motivations), as the server's. */
+/** The world tick: a JSON-text column checked by ``rule`` (a routine, motivations, invariants), as the server's. */
 const jsonText = (rule: (value: unknown) => unknown) =>
   z.unknown().transform((value, context) => {
     try {
@@ -184,6 +184,7 @@ const jsonText = (rule: (value: unknown) => unknown) =>
   });
 const routineText = jsonText(routine);
 const motivationsText = jsonText(motivations);
+const invariantsText = jsonText(invariants);
 
 /** S4b, as the server's rpg_core: a record is a template or not from its creation (making one is a copy). */
 function checkTemplateStays(current: boolean | null, wanted: boolean | null | undefined): void {
@@ -708,6 +709,7 @@ const PERSON_COLUMNS: Columns = {
   known_to_party: plain('knownToParty'),
   routine: plain('routine'),
   motivations: plain('motivations'),
+  invariants: plain('invariants'),
   location_id: plain('locationId'),
   gender: plain('gender'),
 };
@@ -732,6 +734,7 @@ const personFields = {
   known_to_party: z.boolean().nullable(),
   routine: routineText,
   motivations: motivationsText,
+  invariants: invariantsText,
   location_id: reference,
   gender: z.string().max(LIMITS.name_characters).nullable(),
 };
@@ -756,6 +759,7 @@ const personCreate = z.object({
   known_to_party: z.boolean().nullish(),
   routine: routineText.optional(),
   motivations: motivationsText.optional(),
+  invariants: invariantsText.optional(),
   location_id: reference.default(null),
   gender: personFields.gender.default(null),
 });

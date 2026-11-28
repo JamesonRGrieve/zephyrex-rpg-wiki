@@ -6,7 +6,7 @@
  * cursor. Deleted ones are tombstones. The paging is pure, here; the lite route reads the rows.
  */
 import { type Lore, storedLore } from '../lib/lore';
-import { type Slot, storedMotivations, storedRoutine } from '../lib/routine';
+import { type Slot, storedInvariants, storedMotivations, storedRoutine } from '../lib/routine';
 import { genericUnnamed, storedNames, storedVoice, type Voice } from '../lib/names';
 import { summary } from '../lib/summary';
 
@@ -21,6 +21,8 @@ export interface EntityRow {
   /** A person's schedule and motivations (JSON text). */
   routine?: string | null;
   motivations?: string | null;
+  /** A person's invariants, the lines they never cross (JSON text). */
+  invariants?: string | null;
   /** A person's place; a place's or an organisation's parent (other kinds have neither). */
   locationId?: string | null;
   parentId?: string | null;
@@ -95,6 +97,9 @@ export interface WorldEntity {
   /** A person's schedule and motivations (the GM side's world tick); null for other kinds. */
   routine: Slot[] | null;
   motivations: string[] | null;
+  /** A person's invariants, the lines they never cross (operator, 2026-11-28): rpg-ai holds their
+   * turns to them; null for other kinds. */
+  invariants: string[] | null;
   /** Where a person is (a scenario's starting position, then play's): who's present in a scene. */
   location_id: string | null;
   /** A place's (or an organisation's) parent in its tree. */
@@ -148,6 +153,7 @@ export function entityOf(kind: WorldEntityKind, row: EntityRow): WorldEntity {
     relationships: kind === 'person' ? [] : null,
     routine: kind === 'person' ? storedRoutine(row.routine) : null,
     motivations: kind === 'person' ? storedMotivations(row.motivations) : null,
+    invariants: kind === 'person' ? storedInvariants(row.invariants) : null,
     location_id: kind === 'person' ? (row.locationId ?? null) : null,
     parent_id: kind === 'location' || kind === 'faction' ? (row.parentId ?? null) : null,
   };

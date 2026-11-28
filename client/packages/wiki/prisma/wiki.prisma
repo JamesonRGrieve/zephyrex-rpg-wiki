@@ -127,6 +127,8 @@ model Person {
   /// The world tick: their schedule and motivations (JSON text, GM-facing).
   routine     String?
   motivations String?
+  /// The lines they never cross (2026-11-28: "never harms a child"), a list of short sentences as JSON text.
+  invariants  String?
   locationId   String?
   gender       String?
   birthDate    DateTime?
