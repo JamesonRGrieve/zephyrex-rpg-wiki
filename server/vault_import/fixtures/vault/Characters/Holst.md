@@ -18,6 +18,7 @@ carries:
 faction: "[[Circle Compact]]"
 status: alive
 location: "[[Brindlemarsh Stable]]"
+start_location: "[[Brindlemarsh]]"
 player:
 keywords: [stablemaster]
 voice:

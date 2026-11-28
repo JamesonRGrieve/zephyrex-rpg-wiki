@@ -80,7 +80,7 @@ READ = {
     "race", "faction", "location", "relations", "parent_location", "parent", "parent_hook", "depends_on",
     "initial_build", "canonical_sheet",
     "holder", "quantity", "session_number", "session_date", "maps", "keywords", "voice", "provenance", "source", "image", "picture", "system", "editions", "starting_level", "starting_level_max", "map", "map_grid", "description",
-    "unnamed_as", "known", "invariants", "carries",
+    "unnamed_as", "known", "invariants", "carries", "start_location", "loot",
     *PROPERTIES,
     *(one for fields in KIND_FIELDS.values() for one in fields),
 }
@@ -871,7 +871,10 @@ class Importer:
         elif kind == "faction":
             fields["parent_id"] = ref("parent", "faction")
         elif kind == "person":
-            fields["location_id"] = ref("location", "location")
+            # Where they are when the scenario starts (a vault campaign is a scenario; a start copies
+            # it, then play moves them): start_location:, else location:. The vault keeps location:
+            # as where they are now, its own truth (Vault Author, 2026-11-28).
+            fields["location_id"] = ref("start_location" if link_name(meta.get("start_location")) else "location", "location")
         elif kind == "journal":
             if meta.get("session_number") is not None:
                 fields["session_number"] = int(meta["session_number"])
@@ -969,6 +972,8 @@ class Importer:
             changed |= self._hook_links(placed, resolve)
         elif kind == "item":
             changed |= self._holder(placed, resolve)
+        if kind == "location":
+            changed |= self._loot(placed, resolve)
         return changed
 
     def _person_links(self, placed: Placed, resolve: Callable[[str], Optional[tuple[str, str]]]) -> bool:
@@ -1038,8 +1043,52 @@ class Importer:
         if target is None:
             if name:
                 self.report.unresolved.setdefault(placed.note.path, []).append(name)
-            return False
+                return False
+            # No holder: an item note's location: is where it lies, for anyone to take (loot).
+            place = link_name(meta.get("location"))
+            found = resolve(place) if place else None
+            if place and (found is None or found[0] != "location"):
+                self.report.unresolved.setdefault(placed.note.path, []).append(place)
+                return False
+            return self._lie(record_id, found[1], int(meta.get("quantity") or 1), placed.note.path) if found else False
         return self._carry(record_id, target, int(meta.get("quantity") or 1), placed.note.path)
+
+    def _lie(self, item_id: str, location_id: str, quantity: int, path: str) -> bool:
+        """``quantity`` of the item lying free at the place (no one holds it, no one owns it): the
+        free instance there set to that quantity, else one made. Whether anything changed."""
+        free = [
+            one for one in self.api.list("item_instance", item_id=item_id, location_id=location_id)
+            if not one.get("owner_person_id") and not self.api.list("entity_inventory", item_instance_id=str(one["id"]))
+        ]
+        if free:
+            if free[0].get("quantity") != quantity:
+                self._change("item_instance", free[0], {"quantity": quantity}, path, "its quantity")
+                return True
+            return False
+        self.api.create("item_instance", item_id=item_id, location_id=location_id, quantity=quantity)
+        return True
+
+    def _loot(self, placed: Placed, resolve: Callable[[str], Optional[tuple[str, str]]]) -> bool:
+        """A location note's `loot:` (Vault Author, 2026-11-28: canon SRD items lying at a place
+        with no vault note of their own): each entry an item link, or {item, quantity}, lying
+        free there. An entry that isn't an item is unresolved; a bad quantity is unread."""
+        meta, place_id, changed = placed.note.meta, str(placed.record["id"]), False
+        for entry in _list(meta.get("loot")):
+            given = entry.get("item") if isinstance(entry, dict) else entry
+            name = link_name(given)
+            try:
+                quantity = int(entry.get("quantity") or 1) if isinstance(entry, dict) else 1
+            except (TypeError, ValueError):
+                quantity = 0
+            if not name or quantity < 1:
+                self.report.unread.setdefault(placed.note.path, []).append(f"loot: {entry!r} (an item link, or {{item, quantity}} from 1)")
+                continue
+            target = resolve(name)
+            if target is None or target[0] != "item":
+                self.report.unresolved.setdefault(placed.note.path, []).append(name)
+                continue
+            changed |= self._lie(target[1], place_id, quantity, placed.note.path)
+        return changed
 
     def _carry(self, item_id: str, target: tuple[str, str], quantity: int, path: str) -> bool:
         """``target`` carries ``quantity`` of the item: its carried instance's quantity set, else an

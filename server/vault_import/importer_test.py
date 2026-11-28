@@ -96,7 +96,11 @@ def test_the_vault_imports_with_its_links_and_a_second_run_changes_nothing(serve
     assert (holst["known_to_party"], dingus.get("known_to_party")) == (True, None)
     # The note's invariants: the lines he never crosses (Dingus's note gives none).
     assert (json.loads(holst["invariants"]), dingus.get("invariants")) == (["Never turns away a lame horse", "Never sells to the Circle Compact on credit"], None)
-    assert holst["location_id"] == stable["id"]
+    # Where the scenario starts him (start_location:), not where the vault has him now (location:).
+    assert holst["location_id"] == marsh["id"]
+    # The stable's loot: three shards lying free there, owned by no one.
+    [lying] = [one for one in api.list("item_instance", location_id=stable["id"]) if one.get("item_id") == _one(api, "item", world, "Waystone Shard")["id"]]
+    assert (lying["quantity"], lying.get("owner_person_id"), api.list("entity_inventory", item_instance_id=lying["id"])) == (3, None, [])
     assert (json.loads(holst["keywords"]), json.loads(holst["voice"])["first_message"]) == (["stablemaster"], "Stalls are full.")
     properties = {row["key"]: row for row in api.properties("person", holst["id"])}
     assert (properties["Role"]["value"], properties["GM only"]["is_private"], properties["vault_path"]["value"]) == ("Stablemaster", True, "Characters/Holst.md")
