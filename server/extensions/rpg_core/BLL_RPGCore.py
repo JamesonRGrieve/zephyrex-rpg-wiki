@@ -3505,11 +3505,50 @@ def remove_campaign_records(model_registry: Any, requester_id: str, campaign_ids
     drop("knownfact", facts, [str(row.id) for row in facts.list(filters=[FieldComparison(facts.Model, "campaign_id", "in", campaign_ids)]) or []])
     moves = _manager(model_registry, requester_id, PersonMoveManager)
     drop("personmove", moves, [str(row.id) for row in moves.list(filters=[FieldComparison(moves.Model, "campaign_id", "in", campaign_ids)]) or []])
+    # Other extensions' rows on these records (VTT's sheets' traits, scenes and tokens) go through
+    # their own hooks, before the records they name.
+    for label, count in _after_campaign_removed(model_registry, requester_id, sorted(campaign_ids), record_ids, dry_run).items():
+        removed[label] = removed.get(label, 0) + count
     # A campaign's starts stay: a start is its starter's history (a failed start's undo deletes the
     # half-made playthrough, and the start must still say why).
     for label, manager, ids in reversed(records):
         drop(label, manager, ids)
     return RecordsRemoved(campaigns=sorted(campaign_ids), removed=removed)
+
+
+# What other extensions remove with a campaign's records (Zephyrex RPG, 2026-11-28: deleted
+# playthroughs left VTT's person_traits, scene_tokens and scenes live on prod): each hook is called
+# with (model_registry, requester_id, campaign_ids, record_ids, dry_run), record_ids every record of
+# those campaigns that goes (people, places, items, …), and answers {label: count} of what it
+# removed (or would, on a dry run), or nothing. A hook that fails is logged; the rest go on.
+CAMPAIGN_REMOVE_HOOKS: list[Callable[..., Any]] = []
+
+
+def register_remove_hook(hook: Callable[..., Any]) -> bool:
+    """Add ``hook`` to CAMPAIGN_REMOVE_HOOKS (see there); the same hook again is not added twice:
+    True when it was added."""
+    if not callable(hook):
+        raise HTTPException(status_code=422, detail="A remove hook is a function")
+    key = _hook_key(hook)
+    if any(held is hook or _hook_key(held) == key for held in CAMPAIGN_REMOVE_HOOKS):
+        return False
+    CAMPAIGN_REMOVE_HOOKS.append(hook)
+    return True
+
+
+def _after_campaign_removed(model_registry: Any, requester_id: str, campaign_ids: list[str], record_ids: list[str], dry_run: bool) -> dict[str, int]:
+    from zephyrex.lib.Logging import logger
+
+    counted: dict[str, int] = {}
+    for hook in list(CAMPAIGN_REMOVE_HOOKS):
+        try:
+            said = hook(model_registry, requester_id, list(campaign_ids), list(record_ids), dry_run)
+        except Exception as error:  # noqa: BLE001 - another extension's failure is logged, not fatal
+            logger.warning(f"rpg_core: a remove hook ({getattr(hook, '__qualname__', hook)}) failed for {campaign_ids}: {error}")
+            continue
+        for label, count in (said or {}).items() if isinstance(said, dict) else []:
+            counted[str(label)] = counted.get(str(label), 0) + int(count)
+    return counted
 
 
 def _every(manager: Any, filters: Optional[list[Any]] = None, page: int = 500, live: bool = False) -> list[Any]:

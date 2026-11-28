@@ -2416,3 +2416,45 @@ class TestItemsInPlay:
         call("take_item", tam["id"], loose["id"])
         call("spend_item", tam["id"], loose["id"])
         assert call("items_at", hall["id"])["items"] == [] and call("items_carried", [tam["id"]])["items"][tam["id"]] == []
+
+
+class TestRemoveHooks:
+    """Zephyrex RPG, 2026-11-28: deleted playthroughs left VTT's person_traits, scene_tokens and
+    scenes live on prod. Another extension removes its own rows on a campaign's records through a
+    hook the delete calls, with the records' ids, before they go; its counts join the report."""
+
+    def test_called_with_the_records_on_delete_and_dry_run_and_a_failure_never_stops_it(self, server: TestClient, person: Any) -> None:
+        from zephyrex.extensions.AbstractExtensionProvider import loaded_ability
+        from zephyrex.extensions.rpg_core.BLL_RPGCore import CAMPAIGN_REMOVE_HOOKS, remove_campaign_records  # type: ignore[import-not-found]
+
+        registry = server.app.state.model_registry  # type: ignore[attr-defined]
+        register = loaded_ability(registry, "rpg_core", "register_remove_hook")
+        assert register is not None
+        seen: list[tuple[list[str], set[str], bool]] = []
+
+        def tokens(model_registry: Any, requester_id: str, campaign_ids: list[str], record_ids: list[str], dry_run: bool) -> dict[str, int]:
+            seen.append((campaign_ids, set(record_ids), dry_run))
+            return {"scenetoken": 2}
+
+        def broken(model_registry: Any, requester_id: str, campaign_ids: list[str], record_ids: list[str], dry_run: bool) -> None:
+            raise RuntimeError("this hook fails")
+
+        held = list(CAMPAIGN_REMOVE_HOOKS)
+        try:
+            assert register(registry, str(person.id), tokens) == {"registered": True}
+            assert register(registry, str(person.id), tokens) == {"registered": False}
+            assert register(registry, str(person.id), broken) == {"registered": True}
+            campaign = _create(server, person, "campaign", name="Doomed Run")
+            tam = _create(server, person, "person", name="Tam", kind="pc", campaign_id=campaign["id"])
+            inn = _create(server, person, "location", name="Inn", kind="building", campaign_id=campaign["id"])
+            # A dry run counts the hook's rows and removes nothing.
+            counted = remove_campaign_records(registry, str(person.id), [campaign["id"]], dry_run=True)
+            assert counted.removed["scenetoken"] == 2 and seen[-1] == ([campaign["id"]], {tam["id"], inn["id"]}, True)
+            assert server.get(f"/v1/person/{tam['id']}", headers=_headers(person)).status_code == 200
+            # Deleting the campaign calls it for real; the broken hook is logged and the records go.
+            gone = server.delete(f"/v1/campaign/{campaign['id']}", headers=_headers(person, **{"If-Match": f'"{campaign["updated_at"] or campaign["created_at"]}"'}))
+            assert gone.status_code in (200, 204), gone.text
+            assert seen[-1] == ([campaign["id"]], {tam["id"], inn["id"]}, False)
+            assert server.get(f"/v1/person/{tam['id']}", headers=_headers(person)).status_code == 404
+        finally:
+            CAMPAIGN_REMOVE_HOOKS[:] = held

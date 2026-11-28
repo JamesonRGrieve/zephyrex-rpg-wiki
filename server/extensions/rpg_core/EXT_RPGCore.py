@@ -486,6 +486,18 @@ class RPGCoreExtension(AbstractStaticExtension):
         return known_names(model_registry, requester_id, campaign_id).model_dump()
 
     @classmethod
+    @ability("register_remove_hook")
+    def register_remove_hook(cls, model_registry: Any, requester_id: str, hook: Any) -> dict[str, Any]:
+        """Add a hook called when a campaign's records are removed (its delete, and
+        remove_orphaned_records) with (model_registry, requester_id, campaign_ids, record_ids,
+        dry_run), before the records go; it removes its own rows on them and answers {label: count}
+        (VTT's traits, scenes and tokens). A failure is logged and never stops the removal; the
+        same hook twice is a no-op: {"registered": bool}."""
+        from zephyrex.extensions.rpg_core.BLL_RPGCore import register_remove_hook  # type: ignore[import-not-found]
+
+        return {"registered": register_remove_hook(hook)}
+
+    @classmethod
     @ability("register_adopt_hook")
     def register_adopt_hook(cls, model_registry: Any, requester_id: str, hook: Any) -> dict[str, Any]:
         """A composing app's hook, called after each setting is made system level (system_adopt, the
