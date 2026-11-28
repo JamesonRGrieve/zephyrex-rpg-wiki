@@ -35,6 +35,10 @@ if __name__ == "__main__":
         extensions=EXTENSIONS,
         extensions_path="./extensions",
         port=2000,
+        # Longer than the Next proxy's idle sockets live, so the API never closes one the proxy is
+        # about to reuse (rpg-ai's dev: "Failed to proxy … read ECONNRESET" against uvicorn's 5 s
+        # default; Zephyrex Infrastructure, 2026-11-28; rpg-ai 48be6ec does the same).
+        timeout_keep_alive=65,
     )
 
 
